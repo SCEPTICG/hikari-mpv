@@ -6,7 +6,7 @@ Work in progress.
 
 ## Palettes
 
-sosc ships a palette picker for uosc. Open it with the palette button in the controls bar or the `p` key, then pick a palette; it is applied straight away.
+sosc ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away.
 
 - Dark: uosc (original), Catppuccin Mocha, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest.
 - Light: Catppuccin Latte, Gruvbox light, Solarized light.

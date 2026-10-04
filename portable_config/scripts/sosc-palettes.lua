@@ -5,7 +5,7 @@
 -- `~~/sosc-palette.conf`, which mpv.conf includes on the next start.
 --
 -- mpv turns this file name into the script name `sosc_palettes`, so:
---   input.conf:  p script-binding sosc_palettes/open-menu
+--   input.conf:  Alt+p script-binding sosc_palettes/open-menu
 --   options:     script-opts=sosc_palettes-palette=<id>
 
 local msg = require('mp.msg')
