@@ -1,7 +1,7 @@
 -- sosc-palettes: colour palette picker for uosc.
 --
 -- Opens a uosc menu with the available palettes, applies the chosen one on the
--- fly through the `uosc-color` script option and saves it to
+-- fly through the `uosc-color` and `uosc-opacity` script options and saves it to
 -- `~~/sosc-palette.conf`, which mpv.conf includes on the next start.
 --
 -- mpv turns this file name into the script name `sosc_palettes`, so:
@@ -20,10 +20,24 @@ local COLOR_KEYS = {
 	'success', 'error', 'match', 'heatmap', 'window_border',
 }
 
+-- Opacity keys understood by uosc's `opacity` option, in the order we write them:
+-- config_defaults.opacity in uosc's main.lua plus pause_indicator, which uosc.conf
+-- documents and PauseIndicator.lua reads. Anything else is rejected.
+local OPACITY_KEYS = {
+	'timeline', 'position', 'chapters', 'slider', 'slider_gauge', 'controls', 'speed',
+	'menu', 'submenu', 'border', 'title', 'tooltip', 'thumbnail', 'curtain',
+	'idle_indicator', 'audio_indicator', 'buffering_indicator', 'playlist_position',
+	'heatmap', 'pause_indicator',
+}
+local OPACITY_KEY_SET = {}
+for _, key in ipairs(OPACITY_KEYS) do OPACITY_KEY_SET[key] = true end
+
 local DEFAULT_ID = 'uosc'
 local PERSIST_PATH = '~~/sosc-palette.conf'
 
 -- group: 'dark', 'light' or 'custom'. Colours are RRGGBB without '#'.
+-- Optional `opacity`: table of OPACITY_KEYS -> number 0..1. Keys left out (or the
+-- whole table) keep uosc's default opacity.
 local PALETTES = {
 	-- uosc defaults, copied from uosc.conf (`color=` comment) and main.lua.
 	{
@@ -133,7 +147,7 @@ local PALETTES = {
 		curtain = 'eee8d5', success = '859900', error = 'dc322f',
 		match = '2aa198', heatmap = 'cb4b16', window_border = 'eee8d5',
 	},
-	-- TODO(SCEPTICG): design your own palette here. Provisional values copied from Catppuccin Mocha.
+	-- SCEPTIC: personal palette (dark, cyan accent, medium transparency). Edit freely.
 	--   foreground      fill of the timeline and volume bar, active buttons and the selected menu item
 	--   foreground_text text drawn on top of foreground (selected item, timeline time labels)
 	--   background      background of menus, timeline and bars
@@ -143,12 +157,15 @@ local PALETTES = {
 	--   match           letters that match a menu search
 	--   heatmap         "most replayed" graph drawn over the timeline (YouTube)
 	--   window_border   thin border around the window in borderless mode
+	--   opacity         0 = fully transparent, 1 = opaque; only backgrounds and shapes, never text.
+	--                   Keys left out keep uosc's default (see OPACITY_KEYS for the full list).
 	{
 		id = 'sceptic', name = 'SCEPTIC', group = 'custom',
-		foreground = 'cba6f7', foreground_text = '1e1e2e',
-		background = '1e1e2e', background_text = 'cdd6f4',
-		curtain = '11111b', success = 'a6e3a1', error = 'f38ba8',
-		match = '89b4fa', heatmap = 'fab387', window_border = '11111b',
+		foreground = '5ad4e6', foreground_text = '0b0d12',
+		background = '0b0d12', background_text = 'e6edf3',
+		curtain = '05070a', success = '7ee787', error = 'ff6b7a',
+		match = 'b48cff', heatmap = '5ad4e6', window_border = '0b0d12',
+		opacity = {menu = 0.75, title = 0.75, tooltip = 0.75, timeline = 0.6, curtain = 0.5},
 	},
 }
 
@@ -159,6 +176,15 @@ for _, palette in ipairs(PALETTES) do by_id[palette.id] = palette end
 
 local function is_valid_id(id) return type(id) == 'string' and id:match('^[a-z0-9_-]+$') ~= nil end
 local function is_valid_color(color) return type(color) == 'string' and color:match('^%x%x%x%x%x%x$') ~= nil end
+
+-- Formats an opacity 0..1 as `0.75` with two decimals. Built from integers so the
+-- decimal separator is always '.', whatever the C locale says. Nil if out of range.
+local function format_opacity(value)
+	if type(value) ~= 'number' or value ~= value or value < 0 or value > 1 then return nil end
+	local hundredths = math.floor(value * 100 + 0.5)
+	local text = string.format('%d.%02d', math.floor(hundredths / 100), hundredths % 100)
+	return text:match('^[01]%.%d%d$') and text or nil
+end
 
 -- Returns the palette for `id`, or the uosc original when the id is unknown.
 local function get_palette(id)
@@ -180,12 +206,44 @@ local function color_string(palette)
 	return table.concat(parts, ',')
 end
 
+-- Builds the value of uosc's `opacity` option: `timeline=0.60,menu=0.75,...`, or ''
+-- when the palette has no opacity (uosc then falls back to its defaults).
+-- Returns nil if a key is unknown or a value is not a number in 0..1.
+local function opacity_string(palette)
+	local opacity = palette.opacity
+	if opacity == nil then return '' end
+	if type(opacity) ~= 'table' then
+		msg.error('Palette "' .. tostring(palette.id) .. '" has an invalid opacity table')
+		return nil
+	end
+	for key in pairs(opacity) do
+		if not OPACITY_KEY_SET[key] then
+			msg.error('Palette "' .. tostring(palette.id) .. '" has an unknown opacity key: ' .. tostring(key))
+			return nil
+		end
+	end
+	local parts = {}
+	for _, key in ipairs(OPACITY_KEYS) do
+		if opacity[key] ~= nil then
+			local text = format_opacity(opacity[key])
+			if not text then
+				msg.error('Palette "' .. tostring(palette.id) .. '" has an invalid opacity ' .. key .. ': '
+					.. tostring(opacity[key]))
+				return nil
+			end
+			parts[#parts + 1] = key .. '=' .. text
+		end
+	end
+	return table.concat(parts, ',')
+end
+
 -- Content of the persisted config file, or nil if the palette doesn't validate.
 local function persist_content(palette)
-	local colors = color_string(palette)
-	if not colors or not is_valid_id(palette.id) or not is_valid_id(script_name) then return nil end
+	local colors, opacity = color_string(palette), opacity_string(palette)
+	if not colors or not opacity or not is_valid_id(palette.id) or not is_valid_id(script_name) then return nil end
 	return '# Generated by sosc-palettes.lua. Palette: ' .. palette.id .. '\n'
 		.. 'script-opts-append=uosc-color=' .. colors .. '\n'
+		.. 'script-opts-append=uosc-opacity=' .. opacity .. '\n'
 		.. 'script-opts-append=' .. script_name .. '-palette=' .. palette.id .. '\n'
 end
 
@@ -221,10 +279,13 @@ if active_id ~= opts.palette then
 end
 
 -- Applies a palette on the fly; uosc reacts to script-opts changes by itself.
+-- Opacity is always set, empty for palettes without it, so a previous palette's
+-- transparency doesn't stick.
 local function apply(palette)
-	local colors = color_string(palette)
-	if not colors then return false end
+	local colors, opacity = color_string(palette), opacity_string(palette)
+	if not colors or not opacity then return false end
 	mp.commandv('change-list', 'script-opts', 'append', 'uosc-color=' .. colors)
+	mp.commandv('change-list', 'script-opts', 'append', 'uosc-opacity=' .. opacity)
 	active_id = palette.id
 	return true
 end
@@ -290,8 +351,9 @@ apply(get_palette(active_id))
 
 if SOSC_PALETTES_TEST then
 	return {
-		PALETTES = PALETTES, COLOR_KEYS = COLOR_KEYS,
+		PALETTES = PALETTES, COLOR_KEYS = COLOR_KEYS, OPACITY_KEYS = OPACITY_KEYS,
 		get_palette = get_palette, color_string = color_string,
+		opacity_string = opacity_string, format_opacity = format_opacity,
 		persist_content = persist_content, write_file_atomic = write_file_atomic,
 		apply = apply, save = save, select_palette = select_palette,
 		menu_data = menu_data, open_menu = open_menu,

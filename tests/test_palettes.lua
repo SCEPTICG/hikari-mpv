@@ -86,15 +86,13 @@ test('uosc palette matches uosc defaults', function()
 		.. 'success=a5e075,error=ff616e,match=69c5ff,heatmap=00adee,window_border=000000', 'uosc colors')
 end)
 
-test('text colours are readable on their backgrounds (built-in palettes)', function()
+test('text colours are readable on their backgrounds (all palettes, SCEPTIC included)', function()
 	local p = load()
 	for _, palette in ipairs(p.PALETTES) do
-		if palette.group ~= 'custom' then
-			local fg = contrast(palette.foreground, palette.foreground_text)
-			local bg = contrast(palette.background, palette.background_text)
-			assert(fg >= 3, string.format('%s foreground contrast %.2f', palette.id, fg))
-			assert(bg >= 4.5, string.format('%s background contrast %.2f', palette.id, bg))
-		end
+		local fg = contrast(palette.foreground, palette.foreground_text)
+		local bg = contrast(palette.background, palette.background_text)
+		assert(fg >= 3, string.format('%s foreground contrast %.2f', palette.id, fg))
+		assert(bg >= 4.5, string.format('%s background contrast %.2f', palette.id, bg))
 	end
 end)
 
@@ -129,11 +127,93 @@ test('applying a palette calls change-list with the right arguments', function()
 	local p = load()
 	mock.commands = {}
 	assert(p.apply(p.get_palette('nord')))
-	eq(#mock.commands, 1, 'command count')
+	eq(#mock.commands, 2, 'command count')
 	local c = mock.commands[1]
 	eq(c[1], 'change-list'); eq(c[2], 'script-opts'); eq(c[3], 'append')
 	eq(c[4], 'uosc-color=' .. p.color_string(p.get_palette('nord')), 'value')
+	c = mock.commands[2]
+	eq(c[1], 'change-list'); eq(c[2], 'script-opts'); eq(c[3], 'append')
+	eq(c[4], 'uosc-opacity=', 'empty opacity for a palette without it')
 	eq(p.get_active_id(), 'nord', 'active id')
+end)
+
+test('SCEPTIC applies its opacity, and switching away resets it', function()
+	local p = load()
+	mock.commands = {}
+	assert(p.apply(p.get_palette('sceptic')))
+	eq(#mock.commands, 2, 'command count')
+	eq(mock.commands[2][1], 'change-list'); eq(mock.commands[2][2], 'script-opts'); eq(mock.commands[2][3], 'append')
+	eq(mock.commands[2][4], 'uosc-opacity=timeline=0.60,menu=0.75,title=0.75,tooltip=0.75,curtain=0.50', 'opacity')
+	mock.commands = {}
+	assert(p.apply(p.get_palette('dracula')))
+	eq(mock.commands[2][4], 'uosc-opacity=', 'reset after switching')
+end)
+
+test('opacity string follows uosc key order and its key=value syntax', function()
+	local p = load()
+	eq(p.opacity_string({id = 'x', opacity = {heatmap = 0.4, timeline = 1, controls = 0}}),
+		'timeline=1.00,controls=0.00,heatmap=0.40', 'ordered')
+	eq(p.opacity_string({id = 'x'}), '', 'no opacity')
+	eq(p.opacity_string({id = 'x', opacity = {}}), '', 'empty table')
+	for _, palette in ipairs(p.PALETTES) do
+		local s = assert(p.opacity_string(palette), palette.id)
+		if s ~= '' then
+			for pair in (s .. ','):gmatch('([^,]*),') do
+				-- Same pattern uosc's serialize_key_value_list uses, plus our stricter value check.
+				local key, value = pair:match('^([%w_]+)=([%w%.]+)$')
+				assert(key and value:match('^[01]%.%d%d$'), palette.id .. ' bad pair ' .. pair)
+			end
+		end
+	end
+end)
+
+test('opacity values are formatted with a decimal point, two decimals, no exponent', function()
+	local p = load()
+	eq(p.format_opacity(0), '0.00'); eq(p.format_opacity(1), '1.00'); eq(p.format_opacity(0.6), '0.60')
+	eq(p.format_opacity(0.755), '0.76'); eq(p.format_opacity(1e-9), '0.00'); eq(p.format_opacity(0.999), '1.00')
+	-- Whatever the process locale, the separator must be a point.
+	local saved = os.setlocale(nil, 'numeric')
+	for _, loc in ipairs({'es_ES.UTF-8', 'de_DE.UTF-8', 'fr_FR.UTF-8'}) do
+		if os.setlocale(loc, 'numeric') then eq(p.format_opacity(0.75), '0.75', 'under ' .. loc) end
+	end
+	os.setlocale(saved, 'numeric')
+end)
+
+test('invalid opacity keys and values are rejected', function()
+	local p = load()
+	local base = p.get_palette('uosc')
+	local function with(opacity)
+		local t = {}
+		for k, v in pairs(base) do t[k] = v end
+		t.id = 'bad'; t.opacity = opacity
+		return t
+	end
+	local bad = {
+		{menu = 1.5}, {menu = -0.1}, {menu = 0 / 0}, {menu = 1 / 0}, {menu = '0.5'}, {menu = true},
+		{evil = 0.5}, {['menu=0,x'] = 0.5}, {[1] = 0.5}, {['MENU'] = 0.5}, 'menu=0.5',
+	}
+	for i, opacity in ipairs(bad) do
+		local palette = with(opacity)
+		eq(p.opacity_string(palette), nil, 'opacity string #' .. i)
+		eq(p.persist_content(palette), nil, 'persist content #' .. i)
+		mock.commands = {}
+		eq(p.apply(palette), false, 'apply #' .. i)
+		eq(#mock.commands, 0, 'commands #' .. i)
+	end
+	for _, v in ipairs({1.5, -0.1, 0 / 0, 1 / 0, -1 / 0, '1'}) do
+		eq(p.format_opacity(v), nil, 'format ' .. tostring(v))
+	end
+end)
+
+test('opacity whitelist matches uosc keys', function()
+	local p = load()
+	eq(#p.OPACITY_KEYS, 20, 'key count')
+	local seen = {}
+	for _, key in ipairs(p.OPACITY_KEYS) do
+		assert(key:match('^[a-z_]+$'), key)
+		assert(not seen[key], 'duplicate ' .. key)
+		seen[key] = true
+	end
 end)
 
 test('start-up applies the configured palette', function()
@@ -155,7 +235,13 @@ test('persisted file content is correct', function()
 	eq(p.persist_content(p.get_palette('gruvbox_light')),
 		'# Generated by sosc-palettes.lua. Palette: gruvbox_light\n'
 		.. 'script-opts-append=uosc-color=' .. p.color_string(p.get_palette('gruvbox_light')) .. '\n'
+		.. 'script-opts-append=uosc-opacity=\n'
 		.. 'script-opts-append=sosc_palettes-palette=gruvbox_light\n', 'content')
+	eq(p.persist_content(p.get_palette('sceptic')),
+		'# Generated by sosc-palettes.lua. Palette: sceptic\n'
+		.. 'script-opts-append=uosc-color=' .. p.color_string(p.get_palette('sceptic')) .. '\n'
+		.. 'script-opts-append=uosc-opacity=timeline=0.60,menu=0.75,title=0.75,tooltip=0.75,curtain=0.50\n'
+		.. 'script-opts-append=sosc_palettes-palette=sceptic\n', 'sceptic content')
 end)
 
 test('atomic write creates and then replaces the file', function()
@@ -176,6 +262,7 @@ test('selecting from the menu applies and saves the palette', function()
 	mock.commands = {}
 	mock.messages['select-palette']('tokyo_night')
 	eq(mock.commands[1][4], 'uosc-color=' .. p.color_string(p.get_palette('tokyo_night')), 'applied')
+	eq(mock.commands[2][4], 'uosc-opacity=', 'opacity applied')
 	local f = assert(io.open(path, 'rb')); local content = f:read('*a'); f:close()
 	eq(content, p.persist_content(p.get_palette('tokyo_night')), 'saved')
 	eq(#mock.osd, 0, 'osd messages')
@@ -231,6 +318,7 @@ test('shipped sosc-palette.conf matches what the script would write', function()
 	local p = load()
 	local f = assert(io.open('portable_config/sosc-palette.conf', 'rb')); local content = f:read('*a'); f:close()
 	eq(content, p.persist_content(p.get_palette('uosc')), 'default file')
+	assert(content:find('\nscript-opts-append=uosc-opacity=\n', 1, true), 'default file resets opacity')
 end)
 
 print(string.format('\n%d passed, %d failed', passed, failed))
