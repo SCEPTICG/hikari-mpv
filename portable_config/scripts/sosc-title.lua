@@ -5,21 +5,29 @@
 -- and with no title of its own mpv (and uosc's top bar) shows the whole URL,
 -- token included. For http(s) URLs with a query this script sets
 -- `force-media-title` to the decoded `filename` parameter without its video
--- extension or, when there is none, to the last path segment without the query.
--- Local files and URLs without a query are left alone.
+-- extension or, when there is none, to the last path segment without the query
+-- (the fallback). URLs whose only path is `/` but that carry `user:password@`
+-- get the bare host. Other local files and URLs are left alone.
 --
 -- Decisions:
--- - Runs on `start-file`, not `file-loaded`: the title is replaced before the
---   network open, so the token is never on screen while the stream buffers.
---   `path` is already set at that point. Hooks that run later (ytdl_hook's
---   on_load, per-file options from a playlist) can still override it.
+-- - Runs on `start-file`, not `file-loaded`, so the title is replaced before
+--   the network open instead of after the stream has buffered. mpv assigns
+--   `path` before sending the event, so reading it there is reliable. The
+--   event is asynchronous, though: the raw URL may still flash for an instant.
+--   Hooks that run later (ytdl_hook's on_load, per-file options from a
+--   playlist) can still override the title.
 -- - Sets `file-local-options/force-media-title`, so mpv itself restores the
 --   previous value when the file ends: the title never sticks to the next
---   playlist entry, and we don't keep any state of our own.
--- - If `force-media-title` is already non-empty (set by the user) it is kept.
+--   playlist entry.
+-- - Nothing is set if `force-media-title` is already non-empty (set by the
+--   user) or the playlist entry has its own title (M3U #EXTINF, IPTV lists).
 -- - The `filename` parameter wins over the file's `title` metadata tag: it is
 --   known before the file opens, it names show and episode, and the tag in
 --   these releases is often missing or just the release group.
+-- - The fallback is weaker (`stream`, `master.m3u8`, `watch`): if the file
+--   turns out to have a `title` tag, it is cleared on `file-loaded` so the tag
+--   shows. It still matters until then and for files without a tag, because
+--   mpv would otherwise show the basename with its query (`stream?api_key=...`).
 --
 -- Options (script-opts/sosc-title.conf): enabled=yes|no
 
@@ -28,6 +36,9 @@ local options = require('mp.options')
 
 local OPTIONS_ID = 'sosc-title'
 local MAX_CHARS = 150
+-- Raw input kept before decoding: enough for MAX_CHARS 4-byte characters
+-- written as %XX%XX%XX%XX, and a bound on the work done per title.
+local MAX_RAW = MAX_CHARS * 12
 local ELLIPSIS = '…'
 
 -- Extensions stripped from the end of `filename` (case-insensitive).
@@ -45,8 +56,9 @@ local function url_decode(text, plus)
 	return (text:gsub('%%(%x%x)', function(hex) return string.char(tonumber(hex, 16)) end))
 end
 
--- Keeps only valid UTF-8 and drops control characters: C0, DEL, C1, line and
--- paragraph separators and bidi overrides. Newlines and tabs become spaces.
+-- Keeps only valid UTF-8 and drops control and invisible characters: C0, DEL,
+-- C1, zero-width and direction marks, line and paragraph separators, bidi
+-- overrides and isolates, BOM. Newlines and tabs become spaces.
 local function sanitize(text)
 	local out = {}
 	local i, len = 1, #text
@@ -74,6 +86,7 @@ local function sanitize(text)
 			if code == 9 or code == 10 or code == 13 then
 				out[#out + 1] = ' '
 			elseif not (code < 32 or code == 127 or (code >= 0x80 and code <= 0x9F)
+				or code == 0x061C or (code >= 0x200B and code <= 0x200F) or code == 0xFEFF
 				or code == 0x2028 or code == 0x2029
 				or (code >= 0x202A and code <= 0x202E) or (code >= 0x2066 and code <= 0x2069)) then
 				out[#out + 1] = text:sub(i, i + size - 1)
@@ -110,55 +123,96 @@ local function clean(text)
 	return title ~= '' and title or nil
 end
 
--- Title for `path`, or nil when the path should keep mpv's own title.
+-- Title for `path` and where it came from ('filename' or 'fallback'), or nil
+-- when the path should keep mpv's own title.
 local function title_for(path)
 	if type(path) ~= 'string' then return nil end
 	local scheme = path:match('^(%a[%w+.-]*)://')
 	if not scheme or (scheme:lower() ~= 'http' and scheme:lower() ~= 'https') then return nil end
 	local rest = path:sub(#scheme + 4):gsub('#.*$', '')
 	local location, query = rest:match('^([^?]*)%?(.*)$')
-	if not query then return nil end
+	location = location or rest
+	local authority, route = location:match('^([^/]*)(.*)$')
+	local host = authority:gsub('^.*@', '')
+	local has_userinfo = host ~= authority
+
+	if not query then
+		-- Credentials in the URL and no path to show instead: the bare host.
+		if has_userinfo and route:match('^/*$') then
+			local title = clean(host:sub(1, MAX_RAW))
+			if title then return title, 'fallback' end
+		end
+		return nil
+	end
 
 	for pair in query:gmatch('[^&;]+') do
 		local key, value = pair:match('^([^=]*)=(.*)$')
-		if key and url_decode(key, true) == 'filename' then
-			local title = clean(strip_extension(url_decode(value, true)))
-			if title then return title end
+		if key and url_decode(key:sub(1, MAX_RAW), true) == 'filename' then
+			local title = clean(strip_extension(url_decode(value:sub(1, MAX_RAW), true)))
+			if title then return title, 'filename' end
 		end
 	end
 
 	-- No usable filename: last path segment, or the host if the path is empty.
-	local host, route = location:match('^([^/]*)(.*)$')
 	local segment = route:match('([^/]+)/*$')
 	if segment then
-		local title = clean(url_decode(segment, false))
-		if title then return title end
+		local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
+		if title then return title, 'fallback' end
 	end
-	return clean((host:gsub('^.*@', '')))
+	local title = clean(host:sub(1, MAX_RAW))
+	if title then return title, 'fallback' end
+	return nil
 end
 
 local opts = {enabled = true}
 options.read_options(opts, OPTIONS_ID)
 
+-- Fallback title we set for the current file, so file-loaded can withdraw it.
+local fallback_title = nil
+
+local function playlist_entry_title()
+	local pos = mp.get_property_number('playlist-playing-pos', -1)
+	if not pos or pos < 0 then return '' end
+	return mp.get_property('playlist/' .. pos .. '/title', '') or ''
+end
+
 local function on_start_file()
+	fallback_title = nil
 	if not opts.enabled then return end
-	local path = mp.get_property('path')
-	local title = title_for(path)
+	local title, source = title_for(mp.get_property('path'))
 	if not title then return end
 	local current = mp.get_property('force-media-title', '')
 	if current ~= nil and current ~= '' then
 		msg.verbose('force-media-title already set, leaving it alone')
 		return
 	end
+	if playlist_entry_title() ~= '' then
+		msg.verbose('playlist entry has its own title, leaving it alone')
+		return
+	end
 	mp.set_property('file-local-options/force-media-title', title)
+	if source == 'fallback' then fallback_title = title end
+end
+
+-- A container title beats our fallback. The file-local backup is already taken,
+-- so mpv still restores the original value when the file ends.
+local function on_file_loaded()
+	if not fallback_title then return end
+	local tag = mp.get_property('metadata/by-key/title', '')
+	if tag ~= nil and tag ~= '' and mp.get_property('force-media-title', '') == fallback_title then
+		mp.set_property('file-local-options/force-media-title', '')
+	end
+	fallback_title = nil
 end
 
 mp.register_event('start-file', on_start_file)
+mp.register_event('file-loaded', on_file_loaded)
 
 if SOSC_TITLE_TEST then
 	return {
 		title_for = title_for, url_decode = url_decode, sanitize = sanitize,
 		truncate = truncate, strip_extension = strip_extension,
-		on_start_file = on_start_file, MAX_CHARS = MAX_CHARS, opts = opts,
+		on_start_file = on_start_file, on_file_loaded = on_file_loaded,
+		MAX_CHARS = MAX_CHARS, MAX_RAW = MAX_RAW, opts = opts,
 	}
 end

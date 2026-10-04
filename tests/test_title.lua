@@ -132,6 +132,77 @@ test('enabled=no disables the script', function()
 	eq(start(SEANIME), nil)
 end)
 
+test('a playlist entry with its own title (#EXTINF) is respected', function()
+	load()
+	mock.props['playlist-playing-pos'] = 0
+	mock.props['playlist/0/title'] = 'Canal 1'
+	eq(start(SEANIME), nil, 'nothing set')
+	mock.props['playlist/0/title'] = ''
+	eq(start(SEANIME):sub(1, 8), 'Even.the', 'empty entry title: set')
+end)
+
+test('fallback title gives way to the container title tag', function()
+	load()
+	eq(start('https://jf.example/Videos/abc/stream?api_key=SECRET'), 'stream', 'fallback at start')
+	mock.props['metadata/by-key/title'] = 'Episode 1 - Pilot'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], '', 'cleared so the tag shows')
+	mock.end_file()
+	eq(mock.props['force-media-title'], '', 'restored at the end')
+end)
+
+test('fallback title stays when the file has no title tag', function()
+	load()
+	start('https://h/live/master.m3u8?token=abc')
+	mock.props['metadata/by-key/title'] = nil
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], 'master.m3u8')
+end)
+
+test('fallback title is not withdrawn if something else replaced it', function()
+	load()
+	start('https://www.youtube.com/watch?v=abc')
+	mock.props['force-media-title'] = 'Real video title' -- e.g. ytdl_hook
+	mock.props['metadata/by-key/title'] = 'Tag'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], 'Real video title')
+end)
+
+test('a title from filename= is kept even if the file has a title tag', function()
+	load()
+	start(SEANIME)
+	mock.props['metadata/by-key/title'] = 'ToonsHub'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title']:sub(1, 8), 'Even.the')
+end)
+
+test('huge inputs are cut before decoding and finish quickly', function()
+	local t = load()
+	local huge = string.rep('%E2%80%8B', 200000) .. string.rep('a', 100000)
+	local clock = os.clock()
+	local title = t.title_for('https://h/seg?filename=' .. huge .. '&x=1')
+	local seg = t.title_for('https://h/' .. string.rep('b', 1000000) .. '?token=1')
+	assert(os.clock() - clock < 2, 'too slow: ' .. (os.clock() - clock))
+	eq(title, 'seg', 'only zero-width chars survive the cut: fallback')
+	eq(utf8_len(seg), t.MAX_CHARS + 1, 'segment truncated')
+	local long = t.title_for('https://h/x?filename=' .. string.rep('c', 1000000))
+	eq(utf8_len(long), t.MAX_CHARS + 1, 'filename truncated')
+end)
+
+test('invisible characters are removed; empty result falls back', function()
+	local t = load()
+	eq(t.title_for('https://h/x?filename=A%E2%80%8BB%E2%80%8FC%D8%9CD%EF%BB%BFE.mkv'), 'ABCDE')
+	eq(t.title_for('https://h/seg?filename=%E2%80%8B%EF%BB%BF'), 'seg', 'only invisible: fallback')
+end)
+
+test('credentials without a path or query: bare host', function()
+	local t = load()
+	eq(t.title_for('https://user:pass@host.example'), 'host.example')
+	eq(t.title_for('https://user:pass@host.example/'), 'host.example')
+	eq(t.title_for('https://user:pass@host.example/video.mkv'), nil, 'with a path: untouched')
+	eq(t.title_for('https://host.example/'), nil, 'no credentials: untouched')
+end)
+
 test('the script avoids os.execute, io.popen and load*', function()
 	local f = assert(io.open(SCRIPT, 'rb')); local src = f:read('*a'); f:close()
 	for _, bad in ipairs({'os.execute', 'io.popen', 'loadstring', 'loadfile', 'dofile', 'load('}) do
