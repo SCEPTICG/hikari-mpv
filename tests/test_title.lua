@@ -42,11 +42,13 @@ local function utf8_len(s) return select(2, s:gsub('[^\128-\191]', '')) end
 
 local SEANIME = 'https://media.example.net/3f1c2a9e-7b4d-4e2a-9c1f-0a1b2c3d4e5f?token=s3cr3tT0k3n'
 	.. '&filename=Even.the.Student.Council.Has.Its.Holes.S01E01.1080p.UNCENSORED.ADN.WEB-DL.JPN.AAC2.0.H.264.MSubs-ToonsHub.mkv'
+local SEANIME_RAW = 'Even.the.Student.Council.Has.Its.Holes.S01E01.1080p.UNCENSORED.ADN.WEB-DL.JPN.AAC2.0.H.264.MSubs-ToonsHub'
+local SEANIME_TITLE = 'Even the Student Council Has Its Holes · T1 E01'
 
-test('Seanime URL: title is the filename without extension or token', function()
+test('Seanime URL: title is the tidied filename, no extension or token', function()
 	load()
 	local title = start(SEANIME)
-	eq(title, 'Even.the.Student.Council.Has.Its.Holes.S01E01.1080p.UNCENSORED.ADN.WEB-DL.JPN.AAC2.0.H.264.MSubs-ToonsHub')
+	eq(title, SEANIME_TITLE)
 	assert(not title:find('token', 1, true) and not title:find('s3cr3t', 1, true), 'token leaked')
 end)
 
@@ -64,7 +66,7 @@ test('invalid %-sequences do not fail and are kept literally', function()
 end)
 
 test('unknown extensions are kept', function()
-	local t = load()
+	local t = load({['sosc-title-pretty'] = 'no'})
 	eq(t.title_for('https://h/x?filename=Show.S01E01.part2'), 'Show.S01E01.part2')
 end)
 
@@ -138,7 +140,7 @@ test('a playlist entry with its own title (#EXTINF) is respected', function()
 	mock.props['playlist/0/title'] = 'Canal 1'
 	eq(start(SEANIME), nil, 'nothing set')
 	mock.props['playlist/0/title'] = ''
-	eq(start(SEANIME):sub(1, 8), 'Even.the', 'empty entry title: set')
+	eq(start(SEANIME), SEANIME_TITLE, 'empty entry title: set')
 end)
 
 test('fallback title gives way to the container title tag', function()
@@ -173,7 +175,7 @@ test('a title from filename= is kept even if the file has a title tag', function
 	start(SEANIME)
 	mock.props['metadata/by-key/title'] = 'ToonsHub'
 	mock.events['file-loaded']()
-	eq(mock.props['force-media-title']:sub(1, 8), 'Even.the')
+	eq(mock.props['force-media-title'], SEANIME_TITLE)
 end)
 
 test('huge inputs are cut before decoding and finish quickly', function()
@@ -203,6 +205,87 @@ test('credentials without a path or query: bare host', function()
 	eq(t.title_for('https://user:pass@host.example/'), 'host.example')
 	eq(t.title_for('https://user:pass@host.example/video.mkv'), nil, 'with a path: untouched')
 	eq(t.title_for('https://host.example/'), nil, 'no credentials: untouched')
+end)
+
+test('pretty: the two real Seanime releases', function()
+	local t = load()
+	eq(t.title_for('https://h/x?token=1&filename=Reborn.as.a.Space.Mercenary.I.Woke.Up.Piloting.the.Strongest.Starship'
+		.. '.S01E01.1080p.CR.WEB-DL.DUAL.AAC2.0.H.264.MSubs-ToonsHub.mkv'),
+		'Reborn as a Space Mercenary I Woke Up Piloting the Strongest Starship · T1 E01')
+	eq(t.pretty_title(SEANIME_RAW), SEANIME_TITLE)
+end)
+
+test('pretty: season and episode markers', function()
+	local p = load().pretty_title
+	eq(p('Show.Name.S02E10.720p.WEB-DL'), 'Show Name · T2 E10')
+	eq(p('show_name_s1e1'), 'show name · T1 E01', 's1e1 and underscores')
+	eq(p('Show.S01E01v2.1080p'), 'Show · T1 E01', 'version dropped')
+	eq(p('Show.S01E01-E02.1080p'), 'Show · T1 E01-E02', 'range')
+	eq(p('Show.S01E01E02'), 'Show · T1 E01-E02', 'range without dash')
+	eq(p('Show.S10E105'), 'Show · T10 E105', 'three-digit episode')
+	eq(p('Show.S00E03.1080p'), 'Show · Especial E03', 'season 0: special')
+	eq(p('Show EP01 1080p'), 'Show · E01')
+	eq(p('Show.E7.1080p'), 'Show · E07')
+	eq(p('Show - Episode 7 [1080p]'), 'Show · E07')
+	eq(p('Dr. Stone - 03 [720p]'), 'Dr. Stone · E03', 'dots kept in spaced names')
+end)
+
+test('pretty: anime releases with [Group] and technical brackets', function()
+	local p = load().pretty_title
+	eq(p('[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234]'), 'Sousou no Frieren · E05')
+	eq(p('[Erai-raws] Show Name 2nd Season - 12v2 [1080p][Multiple Subtitle]'), 'Show Name 2nd Season · E12')
+	eq(p('[SubsPlease] [Oshi no Ko] - 05 (1080p) [ABCD1234]'), '[Oshi no Ko] · E05', 'bracketed title kept')
+	eq(p('Show - 2049'), 'Show - 2049', 'a year is not an episode')
+end)
+
+test('pretty: films and names without a marker', function()
+	local p = load().pretty_title
+	eq(p('Blade.Runner.2049.2017.1080p.BluRay.x264-GRP'), 'Blade Runner 2049 (2017)')
+	eq(p('Movie.Name.2023.NF.WEB-DL.DDP5.1.H.264'), 'Movie Name (2023)', 'weak tags before the cut go too')
+	eq(p('Movie (2023) (1080p BD HEVC)'), 'Movie (2023)')
+	eq(p('Charlottes.Web.1973.1080p'), 'Charlottes Web (1973)', 'Web alone is a word')
+	eq(p('Blade Runner 2049'), 'Blade Runner 2049', 'nothing technical: untouched')
+	eq(p('Ace Attorney Dual Destinies'), 'Ace Attorney Dual Destinies', 'weak tag alone is not cut')
+	eq(p('Mi serie - 01ñ'), 'Mi serie - 01ñ')
+	eq(p('2012.1080p'), '2012', 'first word never cut')
+end)
+
+test('pretty: nothing sensible left gives the original name', function()
+	local p = load().pretty_title
+	eq(p(''), '')
+	eq(p('S01E01.1080p'), 'S01E01.1080p', 'no series name')
+	eq(p('[Group] [1080p]'), '[Group] [1080p]')
+	eq(p('((('), '(((')
+	eq(p('- 01'), '- 01')
+end)
+
+test('pretty: only filename= titles; pretty=no keeps the name', function()
+	local t = load()
+	eq(t.title_for('https://h/Show.S01E01.1080p?token=1'), 'Show.S01E01.1080p', 'path fallback untouched')
+	eq(t.title_for('https://h/x?filename='), 'x', 'empty filename: fallback')
+	load()
+	mock.props['playlist-playing-pos'] = 0
+	mock.props['playlist/0/title'] = 'Show.S01E01.1080p'
+	eq(start(SEANIME), nil, 'playlist title left alone')
+	load({['sosc-title-pretty'] = 'no'})
+	eq(start(SEANIME), SEANIME_RAW)
+end)
+
+test('pretty: long and hostile names stay fast', function()
+	local t = load()
+	local clock = os.clock()
+	local inputs = {
+		-- Far beyond MAX_RAW (the real input): a quadratic step would take minutes.
+		string.rep('Word.', 20000) .. 'S01E01.1080p',
+		string.rep('[(', 20000), string.rep('(', 40000) .. ')', string.rep('- ', 20000),
+		string.rep('S1E1-', 20000), string.rep('a.1080p.', 10000),
+	}
+	for _, s in ipairs(inputs) do
+		local title = t.title_for('https://h/x?filename=' .. s)
+		assert(title and t.sanitize(title) == title, 'valid title')
+		t.pretty_title(s)
+	end
+	assert(os.clock() - clock < 2, 'too slow: ' .. (os.clock() - clock))
 end)
 
 test('the script avoids os.execute, io.popen and load*', function()

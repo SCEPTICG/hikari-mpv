@@ -26,7 +26,19 @@ It also leaves alone playlist entries that carry their own title (M3U `#EXTINF`)
 
 Scope: this covers uosc's top bar and the window title. The full URL is still visible in uosc's playlist menu, in mpv's stats overlay, and in mpv's logs and `watch_later` files.
 
-Disable it with `enabled=no` in `script-opts/sosc-title.conf`.
+With `pretty=yes` (the default) a title taken from `filename` is tidied up: dots and underscores become spaces, release groups, hashes and technical tags go, and the episode marker is shown as `T<season> E<episode>` (T for *temporada*, season):
+
+| `filename` | Title |
+| --- | --- |
+| `Reborn.as.a.Space.Mercenary.I.Woke.Up.Piloting.the.Strongest.Starship.S01E01.1080p.CR.WEB-DL.DUAL.AAC2.0.H.264.MSubs-ToonsHub.mkv` | `Reborn as a Space Mercenary I Woke Up Piloting the Strongest Starship · T1 E01` |
+| `[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv` | `Sousou no Frieren · E05` |
+| `Show.S01E01-E02.mkv` | `Show · T1 E01-E02` |
+| `Show.S00E03.mkv` | `Show · Especial E03` (season 0 holds the specials) |
+| `Movie.Name.2023.1080p.BluRay.x264.mkv` | `Movie Name (2023)` |
+
+Recognised markers: `S01E01`, `s1e1`, `S01E01v2`, `S01E01-E02`, `E01`, `EP01`, `Episode 01` and anime-style ` - 01` / ` - 01v2`. A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...); if nothing sensible is left, the name is shown as it comes. The path-segment fallback and playlist titles are never changed. Set `pretty=no` to get the filename as it comes, without its video extension.
+
+Disable the whole script with `enabled=no` in `script-opts/sosc-title.conf`.
 
 ## Speed menu
 
