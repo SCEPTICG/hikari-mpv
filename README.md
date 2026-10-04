@@ -18,7 +18,29 @@ sosc owns uosc's `color` and `opacity` options: values set in `script-opts/uosc.
 
 The choice is saved to `~~/sosc-palette.conf` (the mpv config folder, `portable_config/` in a portable install), which `mpv.conf` includes on start-up. To bind another key, use `script-binding sosc_palettes/open-menu` in `input.conf`.
 
-Tests: `lua tests/test_palettes.lua` from the repository root.
+## Stream titles
+
+When mpv plays an http(s) URL with a query string, such as the links Seanime hands out (`https://host/<id>?token=...&filename=Show.S01E01.mkv`), `sosc-title.lua` sets the title to the decoded `filename` parameter without its video extension, or to the last path segment when there is no `filename`. The token never reaches the top bar. Local files and URLs without a query keep mpv's own title, and a `force-media-title` you set yourself is left alone. The title only lasts for that file.
+
+Disable it with `enabled=no` in `script-opts/sosc-title.conf`.
+
+## Speed menu
+
+The speed button in the controls bar opens a menu with 0.5×, 0.75×, 1×, 1.25×, 1.5× and 2×; the current speed is marked. mpv's own `[`, `]` and `Backspace` keep working. To open the menu from the keyboard, add a line like this to `input.conf`:
+
+```
+Alt+s  script-binding sosc_speed/open-menu
+```
+
+## Tests
+
+From the repository root:
+
+```
+lua tests/test_palettes.lua
+lua tests/test_title.lua
+lua tests/test_speed.lua
+```
 
 ## License
 
