@@ -154,7 +154,8 @@ local function title_for(path)
 	end
 
 	-- No usable filename: last path segment, or the host if the path is empty.
-	local segment = route:match('([^/]+)/*$')
+	-- Anchored so the match stays linear on long routes.
+	local segment = route:match('^.*/([^/]+)/*$')
 	if segment then
 		local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
 		if title then return title, 'fallback' end
