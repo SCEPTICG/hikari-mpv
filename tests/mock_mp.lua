@@ -1,4 +1,4 @@
--- Minimal stand-in for mpv's Lua API, enough to load sosc-palettes.lua outside mpv.
+-- Minimal stand-in for mpv's Lua API, enough to load the sosc scripts outside mpv.
 local M = {}
 
 M.commands = {}      -- every mp.commandv call, as an array of arguments
@@ -8,6 +8,9 @@ M.bindings = {}      -- name -> function
 M.messages = {}      -- script-message name -> function
 M.script_opts = {}   -- what mp.options.read_options will see
 M.expand = {}        -- path -> expanded path
+M.props = {}         -- property name -> value
+M.events = {}        -- event name -> function
+M.backups = {}       -- option name -> value saved by file-local-options/<name>
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -41,6 +44,7 @@ function M.install(script_name)
 	M.commands, M.osd = {}, {}
 	M.logs = {warn = {}, error = {}, info = {}}
 	M.bindings, M.messages = {}, {}
+	M.props, M.events, M.backups = {}, {}, {}
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
@@ -53,6 +57,28 @@ function M.install(script_name)
 		osd_message = function(text) table.insert(M.osd, text) end,
 		add_key_binding = function(key, name, fn) M.bindings[name] = fn end,
 		register_script_message = function(name, fn) M.messages[name] = fn end,
+		register_event = function(name, fn) M.events[name] = fn end,
+		get_property = function(name, def)
+			local v = M.props[name]
+			if v == nil then return def end
+			return tostring(v)
+		end,
+		get_property_number = function(name, def)
+			local v = tonumber(M.props[name])
+			if v == nil then return def end
+			return v
+		end,
+		-- Like mpv: file-local-options/<name> sets <name> and remembers the old
+		-- value, which end_file() puts back.
+		set_property = function(name, value)
+			local option = name:match('^file%-local%-options/(.+)$')
+			if option then
+				if M.backups[option] == nil then M.backups[option] = M.props[option] or '' end
+				name = option
+			end
+			M.props[name] = value
+			return true
+		end,
 	}
 	package.loaded['mp'] = mp
 	package.loaded['mp.msg'] = {warn = logger('warn'), error = logger('error'), info = logger('info'),
@@ -60,12 +86,19 @@ function M.install(script_name)
 	package.loaded['mp.utils'] = {format_json = function(v) return format_json(v) end}
 	package.loaded['mp.options'] = {
 		read_options = function(tbl, identifier)
-			for k in pairs(tbl) do
+			for k, default in pairs(tbl) do
 				local v = M.script_opts[identifier .. '-' .. k]
+				if v ~= nil and type(default) == 'boolean' then v = v == 'yes' end
 				if v ~= nil then tbl[k] = v end
 			end
 		end,
 	}
+end
+
+-- Simulates the end of the current file: file-local options go back.
+function M.end_file()
+	for option, value in pairs(M.backups) do M.props[option] = value end
+	M.backups = {}
 end
 
 M.format_json = format_json

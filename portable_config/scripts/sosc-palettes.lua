@@ -165,7 +165,7 @@ local PALETTES = {
 		background = '0b0d12', background_text = 'e6edf3',
 		curtain = '05070a', success = '7ee787', error = 'ff6b7a',
 		match = 'b48cff', heatmap = '5ad4e6', window_border = '0b0d12',
-		opacity = {menu = 0.75, title = 0.75, tooltip = 0.75, timeline = 0.6, curtain = 0.5},
+		opacity = {menu = 0.75, title = 0.75, tooltip = 0.75, timeline = 0.6, position = 0.5, curtain = 0.5},
 	},
 }
 
