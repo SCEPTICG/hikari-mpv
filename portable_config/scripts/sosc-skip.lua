@@ -23,16 +23,21 @@
 --   leaves, so every other click reaches uosc and mpv untouched. It is the
 --   mechanism uosc itself uses (mp.set_key_bindings / enable_key_bindings):
 --   unlike mp.add_forced_key_binding it lets us enable the section without
---   `allow-vo-dragging`, so pressing the button never starts a window drag, and
---   it also swallows MBTN_LEFT_DBL so a fast double click does not toggle
---   fullscreen. The skip fires on button release, like a normal button, and the
---   section stays enabled until that release so the up event never leaks to an
---   input.conf MBTN_LEFT binding.
+--   `allow-vo-dragging`, so pressing the button never starts a window drag.
+--   The skip fires on button release, like a normal button, and the section
+--   stays enabled until that release so the up event never leaks to an
+--   input.conf MBTN_LEFT binding. After a skip done with the mouse the button
+--   is gone, but the section stays enabled for one `input-doubleclick-time`
+--   (the guard): the second click of a double click is swallowed there, along
+--   with MBTN_LEFT_DBL, so it neither toggles fullscreen nor drags the window.
 -- - The skip seeks `absolute+exact` to the next chapter's start, and the range
 --   is "dismissed" so the button goes away at once even if the seek lands a
---   frame short. For a last-chapter ending: `playlist-next` when the playlist
---   has another entry, otherwise a seek to one second before the end, so mpv
---   finishes the file the way it normally would (keep-open, idle...).
+--   frame short. A dismissed range shows again when playback leaves it, goes
+--   before its start, or is moved by a seek far from where the skip went. For
+--   a last-chapter ending: `playlist-next` when the playlist has another
+--   entry, otherwise a seek to one second before the end, so mpv finishes the
+--   file the way it normally would (keep-open, idle...). With neither (no next
+--   entry and no known duration) the skip does nothing.
 -- - Chapter titles come from the file: they are only cut to MAX_TITLE bytes and
 --   compared with patterns, never shown.
 --
@@ -70,17 +75,19 @@ local opts = {
 }
 options.read_options(opts, OPTIONS_ID)
 
-local function positive(value, default)
+-- Number within [min, max]; `default` when it is not a number (or NaN).
+-- Infinities end up at the bounds, so every option stays finite.
+local function clamp(value, min, max, default)
 	value = tonumber(value)
-	if not value or value ~= value or value <= 0 or value == math.huge then return default end
-	return value
+	if not value or value ~= value then return default end
+	return math.min(max, math.max(min, value))
 end
-opts.margin_bottom = math.max(0, tonumber(opts.margin_bottom) or 96)
-opts.margin_right = math.max(0, tonumber(opts.margin_right) or 16)
-opts.font_size = positive(opts.font_size, 18)
-opts.scale = positive(opts.scale, 1)
-opts.scale_fullscreen = positive(opts.scale_fullscreen, 1.3)
-opts.opacity = math.min(1, math.max(0, tonumber(opts.opacity) or 0.85))
+opts.margin_bottom = clamp(opts.margin_bottom, 0, 10000, 96)
+opts.margin_right = clamp(opts.margin_right, 0, 10000, 16)
+opts.font_size = clamp(opts.font_size, 1, 200, 18)
+opts.scale = clamp(opts.scale, 0.1, 10, 1)
+opts.scale_fullscreen = clamp(opts.scale_fullscreen, 0.1, 10, 1.3)
+opts.opacity = clamp(opts.opacity, 0, 1, 0.85)
 
 -- Order matters: the first kind whose patterns match wins.
 local KINDS = {
@@ -145,7 +152,8 @@ local function build_ranges(chapters, duration)
 	local list = {}
 	if type(chapters) == 'table' then
 		for _, chapter in ipairs(chapters) do
-			if type(chapter) == 'table' and type(chapter.time) == 'number' and chapter.time == chapter.time then
+			if type(chapter) == 'table' and type(chapter.time) == 'number'
+				and chapter.time > -math.huge and chapter.time < math.huge then -- also rejects NaN
 				list[#list + 1] = {time = chapter.time, title = chapter.title, order = #list}
 			end
 		end
@@ -245,7 +253,10 @@ end
 
 local state = {
 	chapters = nil, duration = nil, ranges = {},
+	-- dismissed: {start, target} of the range skipped last; `target` is where
+	-- the skip seeked to (nil for playlist-next).
 	time = nil, current = nil, dismissed = nil,
+	guard_until = nil, guard_timer = nil, -- double-click guard after a mouse skip
 	idle = false, menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
 	fullscreen = false, maximized = false, hidpi = 1,
@@ -256,8 +267,13 @@ local state = {
 
 local overlay = mp.create_osd_overlay('ass-events')
 
+local function is_dismissed(index)
+	local range = index and state.ranges[index]
+	return range ~= nil and state.dismissed ~= nil and state.dismissed.start == range.start
+end
+
 local function is_visible()
-	return state.current ~= nil and state.current ~= state.dismissed
+	return state.current ~= nil and not is_dismissed(state.current)
 		and not state.idle and not state.menu_open and not state.console_open and not state.context_menu_open
 		and state.osd_w > 0 and state.osd_h > 0
 end
@@ -309,10 +325,15 @@ local function inside(rect, mouse)
 end
 
 -- Enables the click section while it is wanted (pointer over the visible
--- button, or a press on it not yet released) and disables it otherwise.
+-- button, a press on it not yet released, or the double-click guard) and
+-- disables it otherwise.
 -- Re-enabling moves it back to the top of mpv's section stack, above uosc's.
+local function guard_active()
+	return state.guard_until ~= nil and mp.get_time() < state.guard_until
+end
+
 local function update_section()
-	local want = state.hovered or state.pressed
+	local want = state.hovered or state.pressed or guard_active()
 	if want then
 		mp.enable_key_bindings(MOUSE_SECTION, '')
 		state.section_enabled = true
@@ -366,9 +387,13 @@ end
 -- Recomputes which range we are in; redraws only when that changes.
 local function update_current()
 	local index = range_at(state.ranges, state.time)
-	if index == state.current then return end
+	local dismissed = state.dismissed
+	-- Back before the skipped range's start (or out of it): it shows again.
+	if dismissed and (not is_dismissed(index) or (state.time and state.time < dismissed.start)) then
+		state.dismissed = nil
+	end
+	if index == state.current and state.dismissed == dismissed then return end
 	state.current = index
-	if index ~= state.dismissed then state.dismissed = nil end
 	refresh()
 end
 
@@ -381,7 +406,16 @@ local time_watched = false
 
 local function rebuild()
 	state.ranges = build_ranges(state.chapters, state.duration)
-	state.current, state.dismissed = nil, nil
+	state.current = nil
+	-- Keep a dismissal while its range still exists (a stream's duration
+	-- grows and rebuilds the ranges without anything really changing).
+	if state.dismissed then
+		local found = false
+		for _, range in ipairs(state.ranges) do
+			if range.start == state.dismissed.start then found = true break end
+		end
+		if not found then state.dismissed = nil end
+	end
 	-- No skippable chapters: do not even listen to time-pos.
 	if #state.ranges > 0 and not time_watched then
 		mp.observe_property('time-pos', 'number', on_time)
@@ -406,36 +440,61 @@ end
 local function skip()
 	if not is_visible() then return false end
 	local range = state.ranges[state.current]
-	state.dismissed = state.current
+	local target
 	if range.next_time then
-		mp.commandv('seek', format_time(range.next_time), 'absolute+exact')
+		target = range.next_time
 	else
 		local pos = mp.get_property_number('playlist-pos', -1)
 		local count = mp.get_property_number('playlist-count', 0)
 		local duration = mp.get_property_number('duration')
 		if pos and count and pos >= 0 and pos + 1 < count then
+			state.dismissed = {start = range.start}
 			mp.commandv('playlist-next')
-		elseif duration then
-			mp.commandv('seek', format_time(math.max(range.start, duration - 1)), 'absolute+exact')
+			refresh()
+			return true
+		elseif not duration then
+			-- Nowhere to go: leave the button where it is.
+			return false
 		end
+		target = math.max(range.start, duration - 1)
 	end
+	state.dismissed = {start = range.start, target = target}
+	mp.commandv('seek', format_time(target), 'absolute+exact')
 	refresh()
 	return true
+end
+
+local function stop_guard()
+	if state.guard_timer then state.guard_timer:kill() end
+	state.guard_until, state.guard_timer = nil, nil
+end
+
+-- Keeps the click section for one double-click time after a mouse skip.
+local function start_guard()
+	stop_guard()
+	local delay = (mp.get_property_number('input-doubleclick-time', 300) or 300) / 1000
+	delay = math.min(2, math.max(0.05, delay))
+	state.guard_until = mp.get_time() + delay
+	state.guard_timer = mp.add_timeout(delay, function()
+		state.guard_until, state.guard_timer = nil, nil
+		refresh()
+	end)
 end
 
 -- Mouse button handlers of the click section.
 local function on_down()
 	state.mouse = mp.get_property_native('mouse-pos') or state.mouse
 	state.hovered = inside(layout(), state.mouse)
-	if state.hovered then state.pressed = true end
+	-- During the guard the button is gone: the press is just swallowed.
+	if state.hovered or guard_active() then state.pressed = true end
 end
 
 local function on_up()
 	local was_pressed = state.pressed
 	state.pressed = false
 	state.mouse = mp.get_property_native('mouse-pos') or state.mouse
-	if was_pressed and inside(layout(), state.mouse) then
-		skip()
+	if was_pressed and inside(layout(), state.mouse) and skip() then
+		start_guard()
 	end
 	refresh()
 end
@@ -448,7 +507,8 @@ mp.set_key_bindings({
 -- Forgets everything about the file that just ended, and lets go of the mouse.
 local function reset()
 	state.chapters, state.duration, state.time = nil, nil, nil
-	state.pressed = false
+	state.pressed, state.dismissed = false, nil
+	stop_guard()
 	rebuild()
 end
 
@@ -485,6 +545,19 @@ end))
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
+-- A seek that leaves playback far from where the skip went (the user going
+-- back into a last-chapter ending with keep-open, say) brings the button back.
+mp.register_event('playback-restart', function()
+	local dismissed = state.dismissed
+	if not dismissed or not dismissed.target then return end
+	local time = mp.get_property_number('time-pos')
+	if time and math.abs(time - dismissed.target) > 1.5 then
+		state.dismissed = nil
+		state.time = time
+		state.current = nil
+		update_current()
+	end
+end)
 
 mp.add_key_binding(nil, 'skip', skip)
 
@@ -494,6 +567,6 @@ if SOSC_SKIP_TEST then
 		classify = classify, build_ranges = build_ranges, range_at = range_at,
 		parse_colors = parse_colors, to_bgr = to_bgr, to_alpha = to_alpha, ass_escape = ass_escape,
 		layout = layout, is_visible = is_visible, skip = skip, format_time = format_time,
-		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN,
+		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN, guard_active = guard_active,
 	}
 end

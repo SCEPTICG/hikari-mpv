@@ -328,7 +328,46 @@ test('mouse bindings: release on the button skips, double click is swallowed', f
 	local c = mock.commands[1]
 	eq(c[1], 'seek'); eq(c[2], '180.000'); eq(c[3], 'absolute+exact')
 	eq(s.is_visible(), false, 'hidden right after skipping')
-	eq(sec.enabled, false, 'section released')
+	-- Second click of a double click, inside input-doubleclick-time (300 ms).
+	mock.advance(0.15)
+	mock.set('time-pos', 180.05)
+	eq(sec.enabled, true, 'guard keeps the section')
+	on_down()
+	on_up()
+	eq(#mock.commands, 1, 'second click swallowed, one skip only')
+	eq(sec.enabled, true, 'still guarded: MBTN_LEFT_DBL lands in our section (ignore)')
+	mock.advance(0.2)
+	eq(s.guard_active(), false)
+	eq(sec.enabled, false, 'section released when the guard runs out')
+end)
+
+test('the guard follows input-doubleclick-time and is not used by the key', function()
+	local s = play(95)
+	mock.props['input-doubleclick-time'] = 500
+	local sec = section(s)
+	mock.set('mouse-pos', center(s.layout()))
+	sec.bindings[1][3](); sec.bindings[1][2]()
+	mock.advance(0.4)
+	eq(sec.enabled, true, 'still within 500 ms')
+	mock.advance(0.2)
+	eq(sec.enabled, false, 'after 500 ms')
+	mock.set('time-pos', 1310)
+	mock.set('mouse-pos', {x = 1, y = 1, hover = true})
+	mock.bindings.skip()
+	eq(sec.enabled, false, 'keyboard skip: no guard')
+	eq(s.guard_active(), false)
+end)
+
+test('end of file clears the guard', function()
+	local s = play(95)
+	local sec = section(s)
+	mock.set('mouse-pos', center(s.layout()))
+	sec.bindings[1][3](); sec.bindings[1][2]()
+	eq(sec.enabled, true)
+	mock.events['end-file']()
+	eq(s.guard_active(), false); eq(sec.enabled, false)
+	mock.advance(1) -- the killed timer must not fire
+	eq(sec.enabled, false)
 end)
 
 test('press on the button and release outside does not skip', function()
@@ -401,6 +440,81 @@ test('ending as last chapter with nothing next: seek near the end', function()
 	local c = mock.commands[1]
 	eq(c[1], 'seek'); eq(c[2], '1419.000'); eq(c[3], 'absolute+exact')
 	eq(s.is_visible(), false, 'button gone while the last second plays')
+end)
+
+test('a skipped last ending shows again after seeking back into it (keep-open)', function()
+	local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+	local s = play(1350, list)
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 1
+	mock.bindings.skip()
+	mock.props['time-pos'] = 1419.02
+	mock.events['playback-restart']()
+	eq(s.is_visible(), false, 'landed where the skip went')
+	mock.set('time-pos', 1419.5)
+	eq(s.is_visible(), false, 'still dismissed while the end plays')
+	mock.props['time-pos'] = 1320
+	mock.events['playback-restart']()
+	eq(s.is_visible(), true, 'user went back into the ending')
+end)
+
+test('a dismissed range shows again when time goes before its start', function()
+	local s = play(95)
+	mock.bindings.skip()
+	mock.set('time-pos', 170)
+	eq(s.is_visible(), false)
+	mock.set('time-pos', 89)
+	mock.set('time-pos', 92)
+	eq(s.is_visible(), true)
+end)
+
+test('a duration change keeps the dismissal of a range that still exists', function()
+	local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+	local s = play(1350, list)
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 1
+	mock.bindings.skip()
+	mock.set('duration', 1500) -- a stream growing
+	mock.set('time-pos', 1419.5)
+	eq(s.is_visible(), false, 'still dismissed')
+	mock.set('chapter-list', chapters({{0, 'Part A'}, {1200, 'ED'}}))
+	mock.set('time-pos', 1250)
+	eq(s.is_visible(), true, 'different range: shown')
+end)
+
+test('last ending with no next entry and unknown duration: no skip', function()
+	local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+	local s = load()
+	mock.set('osd-dimensions', {w = 1280, h = 720})
+	mock.set('chapter-list', list)
+	mock.set('time-pos', 1350)
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 1
+	eq(s.is_visible(), true)
+	eq(s.skip(), false, 'nothing to do')
+	eq(#mock.commands, 0)
+	eq(s.is_visible(), true, 'button stays')
+end)
+
+test('size options are clamped to finite ranges', function()
+	local s = load({['sosc-skip-margin_bottom'] = '1e999', ['sosc-skip-margin_right'] = '-5',
+		['sosc-skip-scale'] = '1e999', ['sosc-skip-scale_fullscreen'] = '0', ['sosc-skip-font_size'] = 'nan',
+		['sosc-skip-opacity'] = '7'})
+	eq(s.opts.margin_bottom, 10000); eq(s.opts.margin_right, 0)
+	eq(s.opts.scale, 10); eq(s.opts.scale_fullscreen, 0.1)
+	eq(s.opts.font_size, 18); eq(s.opts.opacity, 1)
+	s = load({['sosc-skip-margin_bottom'] = 'abc', ['sosc-skip-scale'] = '0/0'})
+	eq(s.opts.margin_bottom, 96); eq(s.opts.scale, 1)
+end)
+
+test('chapters with infinite times are ignored', function()
+	local s = load()
+	local list = {{time = 0, title = 'A'}, {time = 90, title = 'OP'}, {time = math.huge, title = 'B'},
+		{time = -math.huge, title = 'OP'}}
+	eq(#s.build_ranges(list, 1000), 0, 'OP followed only by an infinite chapter: dropped')
+	list[#list + 1] = {time = 180, title = 'Part A'}
+	local ranges = s.build_ranges(list, 1000)
+	eq(#ranges, 1); eq(ranges[1].start, 90); eq(ranges[1].finish, 180)
 end)
 
 test('times are formatted with a dot whatever the locale', function()
