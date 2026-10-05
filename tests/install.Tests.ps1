@@ -1,4 +1,4 @@
-# Tests for install/install.ps1, without Pester. Run from anywhere:
+# Tests for install/sosc.ps1, without Pester. Run from anywhere:
 #   pwsh -NoProfile -File tests/install.Tests.ps1
 # Exit code 0 when everything passes. Windows paths are simulated with temporary
 # folders and an injected environment; nothing is downloaded.
@@ -9,8 +9,30 @@ Set-StrictMode -Version 2
 $env:SOSC_INSTALL_TEST = '1'
 $env:SOSC_LANG = 'en'
 $RepoRoot = Split-Path -Path $PSScriptRoot -Parent
-$InstallScript = [System.IO.Path]::Combine($RepoRoot, 'install', 'install.ps1')
-. $InstallScript
+$InstallScript = [System.IO.Path]::Combine($RepoRoot, 'install', 'sosc.ps1')
+$IexHarness = [System.IO.Path]::Combine($PSScriptRoot, 'iex-harness.ps1')
+
+# The installer keeps everything inside one script block run in a scope of its
+# own (so that iex leaves nothing behind). The tests need its functions and
+# $script: variables here, so they take that script block from the file and
+# dot-source it; with SOSC_INSTALL_TEST set it stops before running anything.
+function Get-InstallerBody {
+    param([string]$Path)
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$parseErrors)
+    if (@($parseErrors).Count -gt 0) { throw ('parse errors in ' + $Path) }
+    $found = $ast.Find({
+            param($n)
+            $n -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -and
+            $n.Parent -is [System.Management.Automation.Language.CommandAst] -and
+            $n.Parent.CommandElements.Count -ge 2 -and
+            $n.Parent.CommandElements[0] -is [System.Management.Automation.Language.ParenExpressionAst] -and
+            [object]::ReferenceEquals($n.Parent.CommandElements[1], $n)
+        }, $true)
+    if ($null -eq $found) { throw ('installer body not found in ' + $Path) }
+    return $found.ScriptBlock.GetScriptBlock()
+}
+. (Get-InstallerBody $InstallScript)
 $script:SoscQuiet = $true
 # The tests that drive the old number questions run as if there were no
 # interactive console; the keyboard menu tests below switch it on themselves.
@@ -170,13 +192,13 @@ $Source = Get-SoscSource -TempDir $TestRoot
 # Script hygiene
 # ---------------------------------------------------------------------------
 
-Test-Case 'install.ps1 is pure ASCII (Windows PowerShell 5.1 reads it as ANSI)' {
+Test-Case 'sosc.ps1 is pure ASCII (Windows PowerShell 5.1 reads it as ANSI)' {
     $bytes = Get-TestBytes $InstallScript
     $bad = @($bytes | Where-Object { $_ -gt 127 })
     Assert-Equal $bad.Count 0 'non-ASCII bytes'
 }
 
-Test-Case 'install.ps1 avoids PowerShell 7-only syntax' {
+Test-Case 'sosc.ps1 avoids PowerShell 7-only syntax' {
     $text = Get-TestText $InstallScript
     $tokens = $null; $errors = $null
     [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$tokens, [ref]$errors)
@@ -201,12 +223,12 @@ Test-Case 'Spanish messages decode their \u escapes' {
     try {
         Assert-Equal (T 'invalid') ('Opci' + [char]0x00F3 + 'n no v' + [char]0x00E1 + 'lida.') 'es invalid'
         Assert-True ((T 'menu').Contains("`n")) 'menu has line breaks'
-        Assert-True ((T 'release_unpublished').Contains('install\install.ps1')) 'single backslash'
+        Assert-True ((T 'release_unpublished').Contains('install\sosc.ps1')) 'single backslash'
         foreach ($k in $script:SoscStringsEn.Keys) { Assert-True ($script:SoscStringsEs.ContainsKey($k)) ('es key ' + $k) }
         foreach ($k in $script:SoscStringsEs.Keys) { Assert-True ($script:SoscStringsEn.ContainsKey($k)) ('en key ' + $k) }
     }
     finally { Set-SoscLanguage 'en' }
-    Assert-True ((T 'release_unpublished').Contains('install\install.ps1')) 'en single backslash'
+    Assert-True ((T 'release_unpublished').Contains('install\sosc.ps1')) 'en single backslash'
 }
 
 # ---------------------------------------------------------------------------
@@ -715,8 +737,98 @@ Test-Case 'run on its own without a published release: clear message' {
     try {
         $script:SoscScriptRoot = ''
         Assert-Throws { Get-SoscSource -TempDir $TestRoot } '*no published release*' 'iex mode'
+        # A script root with no repository around it: same message.
+        $script:SoscScriptRoot = New-TestDir 'lonely-script'
+        Assert-Throws { Get-SoscSource -TempDir $TestRoot } '*no published release*' 'downloaded file'
     }
     finally { $script:SoscScriptRoot = $saved }
+}
+
+# A sosc.zip like the one tools/make-release.sh builds: portable_config, LICENSE
+# and README.md at its root.
+function New-TestReleaseZip {
+    param([string]$Dir, [switch]$NoConfig)
+    $src = P @($Dir, 'zip-src')
+    New-Item -ItemType Directory -Path $src -Force | Out-Null
+    if (-not $NoConfig) { Copy-Item -LiteralPath (P @($RepoRoot, 'portable_config')) -Destination (P @($src, 'portable_config')) -Recurse }
+    Copy-Item -LiteralPath (P @($RepoRoot, 'LICENSE')) -Destination (P @($src, 'LICENSE'))
+    Copy-Item -LiteralPath (P @($RepoRoot, 'README.md')) -Destination (P @($src, 'README.md'))
+    $zip = P @($Dir, 'sosc.zip')
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($src, $zip)
+    return $zip
+}
+
+$TestReleaseUrl = 'https://github.com/SCEPTICG/sosc/releases/download/v9.9.9/sosc.zip'
+
+Test-Case 'release build: sosc files come from its zip, checked by SHA256, never from a copy next to it' {
+    $d = New-TestDir 'release-src'
+    $zip = New-TestReleaseZip $d
+    $saved = @($script:SoscReleaseUrl, $script:SoscReleaseSha256, $script:SoscVersion)
+    try {
+        $script:SoscReleaseUrl = $TestReleaseUrl
+        $script:SoscReleaseSha256 = (Get-SoscFileSha256 $zip).ToUpperInvariant()
+        $script:SoscVersion = '9.9.9'
+        $script:FakeDownloads = @{ $TestReleaseUrl = $zip }
+        # The script root still points at this repository, which has a
+        # portable_config: a release build must not use it.
+        $work = New-TestDir 'release-src-work'
+        $src = Get-SoscSource -TempDir $work
+        Assert-True (Test-SoscInside -Path $src.ConfigDir -Root $work) ('from the zip: ' + $src.ConfigDir)
+        Assert-Equal $src.Version '9.9.9' 'version'
+        Assert-Equal $src.Commit '' 'no commit'
+        foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
+            Assert-Equal (Get-TestText (P @($src.ConfigDir, 'scripts', $f.Name))) (Get-TestText $f.FullName) $f.Name
+        }
+
+        $script:SoscReleaseSha256 = 'a' * 64
+        $bad = New-TestDir 'release-src-bad'
+        Assert-Throws { Get-SoscSource -TempDir $bad } '*SHA256*' 'wrong hash'
+        Assert-True (-not (Test-Path -LiteralPath (P @($bad, 'sosc')))) 'not extracted'
+        Assert-True (-not (Test-Path -LiteralPath (P @($bad, 'sosc.zip')))) 'download deleted'
+
+        $script:SoscReleaseSha256 = ''
+        Assert-Throws { Get-SoscSource -TempDir (New-TestDir 'release-src-nohash') } '*SHA256*' 'no hash, no use'
+
+        $empty = New-TestReleaseZip (New-TestDir 'release-src-noconfig') -NoConfig
+        $script:FakeDownloads = @{ $TestReleaseUrl = $empty }
+        $script:SoscReleaseSha256 = Get-SoscFileSha256 $empty
+        Assert-Throws { Get-SoscSource -TempDir (New-TestDir 'release-src-noconfig-work') } '*sosc files not found*' 'zip without portable_config'
+
+        foreach ($u in @('http://github.com/SCEPTICG/sosc/releases/download/v9.9.9/sosc.zip', 'https://example.com/sosc.zip', 'https://github.com.evil.example/sosc.zip')) {
+            $script:SoscReleaseUrl = $u
+            Assert-Throws { Get-SoscSource -TempDir (New-TestDir 'release-src-url') } '*only HTTPS from GitHub*' $u
+        }
+    }
+    finally {
+        $script:SoscReleaseUrl = $saved[0]
+        $script:SoscReleaseSha256 = $saved[1]
+        $script:SoscVersion = $saved[2]
+    }
+}
+
+Test-Case 'release markers: each line is there exactly once, empty in the repository' {
+    $lines = [System.IO.File]::ReadAllLines($InstallScript)
+    foreach ($m in @("`$script:SoscVersion = 'dev'", "`$script:SoscReleaseUrl = ''", "`$script:SoscReleaseSha256 = ''")) {
+        Assert-Equal @($lines | Where-Object { $_ -ceq $m }).Count 1 $m
+    }
+    Assert-Equal $script:SoscReleaseUrl '' 'no URL in the repository'
+}
+
+Test-Case 'the installer does not need the repository mpv.conf or input.conf' {
+    $d = New-TestDir 'no-repo-conf'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $srcDir = P @($d, 'src', 'portable_config')
+    Copy-Item -LiteralPath (P @($RepoRoot, 'portable_config')) -Destination $srcDir -Recurse
+    Remove-Item -LiteralPath (P @($srcDir, 'mpv.conf'))
+    Remove-Item -LiteralPath (P @($srcDir, 'input.conf'))
+    $src = [pscustomobject]@{ ConfigDir = $srcDir; Version = 'x'; Commit = '' }
+    $cfg = P @($d, 'mpv')
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-SoscTarget -Candidate $cand -Source $src -Artifacts $art -Stamp '20261005-160000')
+    $conf = Get-TestText (P @($cfg, 'mpv.conf'))
+    Assert-Equal $conf ([string]::Join("`r`n", @($BlockB) + $script:MpvConfLines + @($BlockE)) + "`r`n") 'only the sosc block'
+    Assert-True ((Get-TestText (P @($cfg, 'input.conf'))).Contains('Alt+t  script-binding sosc_subs/open-menu')) 'input.conf block'
 }
 
 Test-Case 'repository source is found next to the script' {
@@ -1569,7 +1681,7 @@ Test-Case 'plan B: detection decides; -NoMenu and -Yes never open a menu' {
     }
     # A real process with its output redirected is not an interactive console.
     $exe = (Get-Process -Id $PID).Path
-    $cmd = '. ''' + $InstallScript.Replace("'", "''") + '''; Test-SoscInteractiveConsole'
+    $cmd = 'function Get-InstallerBody {' + ${function:Get-InstallerBody}.ToString() + '}; . (Get-InstallerBody ''' + $InstallScript.Replace("'", "''") + '''); Test-SoscInteractiveConsole'
     $out = & $exe -NoProfile -NonInteractive -Command $cmd
     Assert-Equal ([string]::Join('', @($out)).Trim()) 'False' 'redirected child process'
 }
@@ -1783,6 +1895,185 @@ Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {
     Assert-Equal (Format-SoscFit -Text 'abc' -Max 1) $e 'one column'
     Assert-Equal (Format-SoscFit -Text 'abc' -Max 0) '' 'no room'
     Assert-Equal (Get-SoscPlainLabel ' O) Other folder') 'Other folder' 'prefix removed'
+}
+
+# ---------------------------------------------------------------------------
+# Run without a file: irm | iex, and [scriptblock]::Create for options. Each of
+# these starts a real pwsh and dot-sources tests/iex-harness.ps1 from -Command,
+# so the installer runs in the global scope of a fresh session, as at a prompt.
+# ---------------------------------------------------------------------------
+
+$script:Pwsh = (Get-Process -Id $PID).Path
+
+# A copy of the installer with some marker lines replaced, the way
+# tools/make-release.sh does it: whole lines, each exactly once.
+function New-ReleaseScript {
+    param([string]$Path, [System.Collections.Specialized.OrderedDictionary]$Replace)
+    $lines = [System.Collections.Generic.List[string]]([System.IO.File]::ReadAllText($InstallScript) -split "`n")
+    foreach ($old in $Replace.Keys) {
+        $at = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -ceq $old) { $i } })
+        if ($at.Count -ne 1) { throw ('marker found ' + $at.Count + ' times: ' + $old) }
+        $lines[$at[0]] = $Replace[$old]
+    }
+    [System.IO.File]::WriteAllText($Path, [string]::Join("`n", $lines), (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# Release copy pointing at $Zip, plus fake uosc and thumbfast with their hashes.
+# Returns the script path and the URL -> file map for the fake downloader.
+function New-TestRelease {
+    param([string]$Dir, [string]$Zip, [string]$ZipSha256 = '')
+    if (-not $ZipSha256) { $ZipSha256 = Get-SoscFileSha256 $Zip }
+    $uosc = New-FakeUoscZip $Dir
+    $thumb = P @($Dir, 'thumbfast-src.lua')
+    Set-TestFile $thumb '-- fake thumbfast'
+    $scriptPath = P @($Dir, 'sosc.ps1')
+    $replace = [ordered]@{}
+    $replace["`$script:SoscVersion = 'dev'"] = "`$script:SoscVersion = '9.9.9'"
+    $replace["`$script:SoscReleaseUrl = ''"] = "`$script:SoscReleaseUrl = '" + $TestReleaseUrl + "'"
+    $replace["`$script:SoscReleaseSha256 = ''"] = "`$script:SoscReleaseSha256 = '" + $ZipSha256 + "'"
+    $replace["`$script:UoscSha256 = '" + $OriginalUoscSha + "'"] = "`$script:UoscSha256 = '" + (Get-SoscFileSha256 $uosc) + "'"
+    $replace["`$script:ThumbfastSha256 = '" + $OriginalThumbSha + "'"] = "`$script:ThumbfastSha256 = '" + (Get-SoscFileSha256 $thumb) + "'"
+    New-ReleaseScript -Path $scriptPath -Replace $replace
+    $map = @{}
+    $map[$TestReleaseUrl] = $Zip
+    $map[$script:UoscUrl] = $uosc
+    $map[$script:ThumbfastUrl] = $thumb
+    return [pscustomobject]@{ Script = $scriptPath; Downloads = $map }
+}
+
+# Runs the harness in a new pwsh. $Stdin: the typed answers. $TempDir: the
+# temporary folder of that process (TMPDIR, TEMP, TMP), to check it is left
+# clean. Returns the report (null when the process ended without writing it,
+# e.g. because the installer called exit) and everything the process printed.
+function Invoke-IexHarness {
+    param([string]$Script, [hashtable]$Downloads = @{}, [string]$Mode = 'iex', [string[]]$Stdin = @(),
+        [string]$Action = '', [string]$Target = '', [string]$YesValue = '', [switch]$StrictLatest, [string]$TempDir = '')
+    $id = [guid]::NewGuid().ToString('N')
+    $report = P @($TestRoot, ('harness-' + $id + '.json'))
+    $dl = P @($TestRoot, ('harness-' + $id + '-downloads.json'))
+    [System.IO.File]::WriteAllText($dl, ($Downloads | ConvertTo-Json))
+    $q = { param([string]$v) "'" + $v.Replace("'", "''") + "'" }
+    $cmd = '. ' + (& $q $IexHarness) + ' -Script ' + (& $q $Script) + ' -Report ' + (& $q $report) + ' -Downloads ' + (& $q $dl) + ' -Mode ' + $Mode
+    if ($Action) { $cmd += ' -Action ' + (& $q $Action) }
+    if ($Target) { $cmd += ' -Target ' + (& $q $Target) }
+    if ($YesValue) { $cmd += ' -YesValue ' + $YesValue }
+    if ($StrictLatest) { $cmd += ' -StrictLatest' }
+    $saved = @($env:TMPDIR, $env:TEMP, $env:TMP)
+    if ($TempDir) { $env:TMPDIR = $TempDir; $env:TEMP = $TempDir; $env:TMP = $TempDir }
+    try {
+        $stdinLines = @($Stdin) + @('')
+        $out = @($stdinLines | & $script:Pwsh -NoProfile -Command $cmd 2>&1 | ForEach-Object { [string]$_ })
+    }
+    finally { $env:TMPDIR = $saved[0]; $env:TEMP = $saved[1]; $env:TMP = $saved[2] }
+    $r = $null
+    if (Test-Path -LiteralPath $report) { $r = Get-Content -Raw -LiteralPath $report | ConvertFrom-Json }
+    return [pscustomobject]@{ Report = $r; Text = [string]::Join("`n", $out) }
+}
+
+function Assert-SessionClean {
+    param($Run, [int]$ExitCode)
+    $r = $Run.Report
+    Assert-True ($null -ne $r) ('the session survived (no exit); output: ' + $Run.Text)
+    Assert-True $r.Alive 'alive'
+    Assert-Equal ([int]$r.ExitCode) $ExitCode ('$LASTEXITCODE; output: ' + $Run.Text)
+    Assert-Equal @($r.NewVariables).Count 0 ('variables left: ' + [string]::Join(',', @($r.NewVariables)))
+    Assert-Equal @($r.NewFunctions).Count 0 ('functions left: ' + [string]::Join(',', @($r.NewFunctions)))
+    Assert-Equal @($r.NewModules).Count 0 ('modules left: ' + [string]::Join(',', @($r.NewModules)))
+    Assert-Equal @($r.Output).Count 0 ('pipeline output: ' + [string]::Join(',', @($r.Output)))
+    Assert-True $r.TlsSame 'SecurityProtocol put back'
+    Assert-True $r.CtrlCSame 'TreatControlCAsInput untouched'
+}
+
+function Get-SoscTempLeftovers {
+    param([string]$Dir)
+    return @(Get-ChildItem -LiteralPath $Dir -Force -Filter 'sosc-install-*')
+}
+
+Test-Case 'iex at a prompt, no options: no exit, nothing left in the session' {
+    $run = Invoke-IexHarness -Script $InstallScript -Stdin @('0')
+    Assert-SessionClean $run 0
+    Assert-Equal $run.Report.Eap 'Continue' 'ErrorActionPreference kept'
+    Assert-Equal $run.Report.Strict 'off' 'StrictMode stays off'
+    Assert-True ($run.Text.Contains('Cancelled.')) 'menu answered'
+}
+
+Test-Case 'iex in a session with StrictMode Latest and ErrorActionPreference Stop: runs, both kept' {
+    $run = Invoke-IexHarness -Script $InstallScript -Stdin @('0') -StrictLatest
+    Assert-SessionClean $run 0
+    Assert-Equal $run.Report.Eap 'Stop' 'ErrorActionPreference kept'
+    Assert-Equal $run.Report.Strict 'on' 'StrictMode Latest kept'
+}
+
+Test-Case 'iex of the repository version: no release yet, nothing downloaded' {
+    $d = New-TestDir 'iex-dev'
+    $tmp = New-TestDir 'iex-dev-tmp'
+    # Install, "type the folder myself" (no player on this machine), the folder.
+    $run = Invoke-IexHarness -Script $InstallScript -Stdin @('1', '2', (P @($d, 'mpv'))) -TempDir $tmp
+    Assert-SessionClean $run 1
+    Assert-True ($run.Text.Contains('no published release')) ('message; output: ' + $run.Text)
+    Assert-Equal @($run.Report.Downloads).Count 0 'no download'
+    Assert-Equal @(Get-SoscTempLeftovers $tmp).Count 0 'temp folder removed'
+    Assert-True (-not (Test-Path -LiteralPath (P @($d, 'mpv', 'scripts')))) 'nothing installed'
+}
+
+Test-Case 'release through iex: its zip comes from the downloader, is checked and installed; temp removed' {
+    $d = New-TestDir 'iex-release'
+    $tmp = New-TestDir 'iex-release-tmp'
+    $rel = New-TestRelease -Dir $d -Zip (New-TestReleaseZip $d)
+    $cfg = P @($d, 'mpv')
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('1', '2', $cfg) -TempDir $tmp
+    Assert-SessionClean $run 0
+    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
+    Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl))) 'downloads, release zip first'
+    foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
+        Assert-Equal (Get-TestText (P @($cfg, 'scripts', $f.Name))) (Get-TestText $f.FullName) $f.Name
+    }
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'main.lua'))) 'uosc'
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal $rec.Values['sosc_version'] '9.9.9' 'record version'
+    Assert-Equal @(Get-SoscTempLeftovers $tmp).Count 0 'temp folder removed'
+
+    # Options through [scriptblock]::Create: uninstall without questions.
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'uninstall' -Target $cfg -YesValue 'true' -TempDir $tmp
+    Assert-SessionClean $run 0
+    Assert-Equal @($run.Report.Downloads).Count 0 'uninstall downloads nothing'
+    Assert-Equal @(Get-ChildItem -LiteralPath $cfg -Recurse -Filter 'sosc-*.lua').Count 0 'uninstalled'
+}
+
+Test-Case 'release with a wrong hash: zip refused, nothing installed, temp removed' {
+    $d = New-TestDir 'iex-badhash'
+    $tmp = New-TestDir 'iex-badhash-tmp'
+    $rel = New-TestRelease -Dir $d -Zip (New-TestReleaseZip $d) -ZipSha256 ('b' * 64)
+    $cfg = P @($d, 'mpv')
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'install' -Target $cfg -YesValue 'true' -TempDir $tmp
+    Assert-SessionClean $run 1
+    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
+    Assert-True ($run.Text.Contains('does not match its expected SHA256')) ('message; output: ' + $run.Text)
+    Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) $TestReleaseUrl 'only the zip was fetched'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed'
+    Assert-Equal @(Get-SoscTempLeftovers $tmp).Count 0 'temp folder removed'
+}
+
+Test-Case 'options through [scriptblock]::Create: -Yes:$false is not -Yes' {
+    # -Yes without -Action is a usage error (2); -Yes:$false shows the menu (0 on Exit).
+    $run = Invoke-IexHarness -Script $InstallScript -Mode create -YesValue 'true'
+    Assert-SessionClean $run 2
+    $run = Invoke-IexHarness -Script $InstallScript -Mode create -YesValue 'false' -Stdin @('0')
+    Assert-SessionClean $run 0
+}
+
+Test-Case '-File: the exit code reaches the caller' {
+    $saved = $env:SOSC_INSTALL_TEST
+    $env:SOSC_INSTALL_TEST = ''
+    try {
+        $out = & $script:Pwsh -NoProfile -NonInteractive -File $InstallScript -Yes 2>&1
+        Assert-Equal $LASTEXITCODE 2 ('-Yes without -Action: ' + [string]::Join(' ', @($out)))
+        $out = & $script:Pwsh -NoProfile -NonInteractive -File $InstallScript -Action nonsense 2>&1
+        Assert-True ($LASTEXITCODE -ne 0) 'invalid -Action fails'
+        $out = '0' | & $script:Pwsh -NoProfile -File $InstallScript -NoMenu 2>&1
+        Assert-Equal $LASTEXITCODE 0 ('exit from the menu: ' + [string]::Join(' ', @($out)))
+    }
+    finally { $env:SOSC_INSTALL_TEST = $saved }
 }
 
 # ---------------------------------------------------------------------------

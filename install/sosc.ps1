@@ -6,8 +6,13 @@
     Installs, updates or removes sosc (https://github.com/SCEPTICG/sosc), together
     with uosc and thumbfast, in one or more mpv config folders.
 
-    Run it from a copy of the repository:
-        powershell -ExecutionPolicy Bypass -File install\install.ps1
+    From a published release (the release's sosc.ps1 downloads that release's
+    sosc.zip and checks its SHA256 before using it):
+        irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
+    With options (iex cannot pass them):
+        & ([scriptblock]::Create((irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1))) -Action uninstall
+    From a copy of the repository, or a downloaded sosc.ps1:
+        powershell -ExecutionPolicy Bypass -File install\sosc.ps1
 
     No administrator rights, no registry, no PATH changes. Before touching a
     folder it copies what it may change (mpv.conf, input.conf, scripts,
@@ -18,37 +23,68 @@
     purpose: Windows PowerShell 5.1 reads BOM-less scripts as ANSI, so the Spanish
     messages are written with \uXXXX escapes and decoded at start-up.
 
-.PARAMETER Action
-    install or uninstall. Without it a menu is shown.
+    Everything runs inside one script block, invoked in a scope of its own (a
+    throw-away dynamic module), so that run through iex it leaves nothing behind
+    in the session: no variables, functions, StrictMode or ErrorActionPreference
+    changes. It only calls exit when it runs from a file (-File, or .\sosc.ps1);
+    through iex it returns and leaves its exit code in $LASTEXITCODE.
 
-.PARAMETER Target
-    mpv config folder(s) to work on (the folder that holds mpv.conf, e.g.
-    ...\mpv-AnimeJaNai\portable_config or %APPDATA%\mpv). Several folders go
-    separated by ';' (with -File, PowerShell does not split "a,b" into a list).
-    Without it the detected players are listed.
+.PARAMETER SoscAction
+    Use it as -Action (alias). install or uninstall. Without it a menu is
+    shown.
 
-.PARAMETER Yes
-    Do not ask: take the default answer to every question. Needs -Action, and
-    -Target when more than one folder is found.
+.PARAMETER SoscTarget
+    Use it as -Target (alias). mpv config folder(s) to work on (the folder that
+    holds mpv.conf, e.g. ...\mpv-AnimeJaNai\portable_config or %APPDATA%\mpv).
+    Several folders go separated by ';' (with -File, PowerShell does not split
+    "a,b" into a list). Without it the detected players are listed.
 
-.PARAMETER NoMenu
-    Ask with numbers and typed answers instead of the keyboard menus (arrows,
-    Space, Enter, Esc). Numbers are also used on their own when there is no
-    interactive console (input or output redirected, -NonInteractive, ISE...).
+.PARAMETER SoscYes
+    Use it as -Yes (alias). Do not ask: take the default answer to every
+    question. Needs -Action, and -Target when more than one folder is found.
+
+.PARAMETER SoscNoMenu
+    Use it as -NoMenu (alias). Ask with numbers and typed answers instead of
+    the keyboard menus (arrows, Space, Enter, Esc). Numbers are also used on
+    their own when there is no interactive console (input or output
+    redirected, -NonInteractive, ISE...).
 
 .NOTES
     Exit codes: 0 done (or cancelled by the user), 1 at least one folder failed,
     2 wrong usage or nothing to work on.
 #>
+# The parameters are named Sosc* on purpose: run through iex, a param block
+# creates its variables in the caller's session, so they get names nobody else
+# uses and are removed again at the end (see the finally below). The aliases
+# keep the public names: -Action, -Target, -Yes, -NoMenu.
 [CmdletBinding()]
 param(
+    [Alias('Action')]
     [ValidateSet('', 'install', 'uninstall')]
+    [string]$SoscAction = '',
+    [Alias('Target')]
+    [string[]]$SoscTarget = @(),
+    [Alias('Yes')]
+    [switch]$SoscYes,
+    [Alias('NoMenu')]
+    [switch]$SoscNoMenu
+)
+
+try {
+# A dynamic module gives the script block its own script: scope, so the many
+# $script: variables below never land in the caller's session. New-Module with
+# an empty body exports nothing and is not added to the session's module list.
+# The parameters are passed by name (not with @args, which turns -Yes:$false
+# into -Yes).
+& (New-Module -ScriptBlock { }) {
+param(
     [string]$Action = '',
     [string[]]$Target = @(),
     [switch]$Yes,
     [switch]$NoMenu
 )
 
+# Both are local to this script block: the caller's session keeps its own.
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
@@ -56,11 +92,13 @@ $ErrorActionPreference = 'Stop'
 # Constants
 # ---------------------------------------------------------------------------
 
+# Release markers. tools/make-release.sh replaces these three lines, matched
+# whole and exactly once each, with the tag, the URL of that release's sosc.zip
+# and its SHA256. Keep them exactly as they are. In the repository they stay
+# empty: the sosc files then come from the repository copy the script sits in,
+# and run on its own (irm | iex) it explains that there is no release yet.
+# With a URL, the sosc files always come from that zip, checked against the hash.
 $script:SoscVersion = 'dev'
-
-# Release zip of sosc for the "run on its own" mode (irm .../install.ps1 | iex).
-# Empty until the publication phase: with no URL the installer explains that it
-# has to be run from a copy of the repository.
 $script:SoscReleaseUrl = ''
 $script:SoscReleaseSha256 = ''
 
@@ -132,6 +170,7 @@ $script:ConflictFontPatterns = @('modernx*', 'modernz*', 'mordenx*')
 # Leftovers of uosc 4, which would load next to scripts/uosc.
 $script:UoscLegacy = @('uosc.lua', 'uosc_shared')
 
+# Folder of this file; empty when run through iex or [scriptblock]::Create.
 $script:SoscScriptRoot = $PSScriptRoot
 $script:SoscQuiet = $false
 $script:NonInteractive = $false
@@ -202,7 +241,7 @@ $script:SoscStringsEn = @{
     downloading           = 'Downloading {0}...'
     hash_bad              = 'The download of {0} does not match its expected SHA256 (expected {1}, got {2}). Nothing was installed from it.'
     url_bad               = 'Refusing to download {0}: only HTTPS from GitHub is allowed.'
-    release_unpublished   = 'sosc has no published release yet, so this installer cannot run on its own. Download the repository and run install\install.ps1 from that copy.'
+    release_unpublished   = 'sosc has no published release yet, so this installer cannot run on its own. Download the repository and run install\sosc.ps1 from that copy.'
     source_missing        = 'sosc files not found in {0}.'
     installing_to         = 'Installing sosc into {0}'
     uosc_done             = 'uosc {0} installed.'
@@ -310,7 +349,7 @@ $script:SoscStringsEs = @{
     downloading           = 'Descargando {0}...'
     hash_bad              = 'La descarga de {0} no coincide con su SHA256 esperado (esperado {1}, obtenido {2}). No se ha instalado nada de ella.'
     url_bad               = 'No se descarga {0}: solo se admite HTTPS desde GitHub.'
-    release_unpublished   = 'sosc a\u00fan no tiene ninguna versi\u00f3n publicada, as\u00ed que este instalador no puede funcionar suelto. Descarga el repositorio y ejecuta install\\install.ps1 desde esa copia.'
+    release_unpublished   = 'sosc a\u00fan no tiene ninguna versi\u00f3n publicada, as\u00ed que este instalador no puede funcionar suelto. Descarga el repositorio y ejecuta install\\sosc.ps1 desde esa copia.'
     source_missing        = 'No se encuentran los ficheros de sosc en {0}.'
     installing_to         = 'Instalando sosc en {0}'
     uosc_done             = 'uosc {0} instalado.'
@@ -393,7 +432,7 @@ function Set-SoscLanguage {
     }
     else {
         # Only \uXXXX is decoded here: English strings hold real backslashes
-        # (install\install.ps1) that [regex]::Unescape would reject.
+        # (install\sosc.ps1) that [regex]::Unescape would reject.
         $evaluator = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) }
         foreach ($key in $script:SoscStringsEn.Keys) {
             $script:SoscStrings[$key] = [regex]::Replace($script:SoscStringsEn[$key], '\\u([0-9A-Fa-f]{4})', $evaluator)
@@ -1776,7 +1815,7 @@ function Write-SoscRecord {
     param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled)
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
-    [void]$sb.Append('# Written by the sosc installer (install/install.ps1). Used to update and uninstall; do not edit.' + $eol)
+    [void]$sb.Append('# Written by the sosc installer (install/sosc.ps1). Used to update and uninstall; do not edit.' + $eol)
     foreach ($key in $Values.Keys) { [void]$sb.Append($key + '=' + $Values[$key] + $eol) }
     foreach ($d in $Disabled) { [void]$sb.Append('disabled=' + $d + $eol) }
     foreach ($f in $Files) { [void]$sb.Append('file=' + $f + $eol) }
@@ -1864,10 +1903,15 @@ function New-SoscTempDir {
     return $dir
 }
 
-# Where the sosc files come from: the portable_config of the repository copy the
-# script sits in, or (once published) a verified release zip.
+# Where the sosc files come from. A release build (the markers filled in by
+# tools/make-release.sh) always uses its own sosc.zip, downloaded and checked
+# against its SHA256, wherever the script is: a stray portable_config next to a
+# downloaded sosc.ps1 is never picked up. The repository version uses the
+# portable_config of the repository copy it sits in; run on its own (iex, no
+# file) it has nothing to install from and says so.
 function Get-SoscSource {
     param([string]$TempDir)
+    if (-not [string]::IsNullOrEmpty($script:SoscReleaseUrl)) { return (Get-SoscReleaseSource -TempDir $TempDir) }
     if ($script:SoscScriptRoot) {
         $repo = Split-Path -Path $script:SoscScriptRoot -Parent
         $config = Join-SoscPath $repo 'portable_config'
@@ -1876,9 +1920,12 @@ function Get-SoscSource {
             return [pscustomobject]@{ ConfigDir = $config; Version = $script:SoscVersion; Commit = $commit }
         }
     }
-    return (Get-SoscReleaseSource -TempDir $TempDir)
+    throw (T 'release_unpublished')
 }
 
+# Downloads the release zip into $TempDir (a fresh folder of this run, deleted by
+# Invoke-SoscMain when it ends, also on failure), checks its SHA256 before
+# opening it and extracts it there.
 function Get-SoscReleaseSource {
     param([string]$TempDir)
     if ([string]::IsNullOrEmpty($script:SoscReleaseUrl)) { throw (T 'release_unpublished') }
@@ -2758,6 +2805,31 @@ function Invoke-SoscMain {
 # Tests load the functions above without running the installer.
 if ($env:SOSC_INSTALL_TEST) { return }
 
-$code = Invoke-SoscMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu)
-if ($PSCommandPath) { exit $code }
+# Windows PowerShell 5.1 may need TLS 1.2 switched on for GitHub (see
+# Invoke-SoscMain); that setting is process-wide, so it is put back afterwards.
+$savedTls = $null
+try { $savedTls = [System.Net.ServicePointManager]::SecurityProtocol } catch { }
+try {
+    $code = Invoke-SoscMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu)
+}
+finally {
+    if ($null -ne $savedTls) { try { [System.Net.ServicePointManager]::SecurityProtocol = $savedTls } catch { } }
+}
+# { }.File is the file this script block was read from: set with -File or
+# .\sosc.ps1, empty through iex or [scriptblock]::Create. Only a file run may
+# exit: through iex, exit would close the user's PowerShell window.
+if ({ }.File) { exit $code }
 $global:LASTEXITCODE = $code
+} -Action $SoscAction -Target $SoscTarget -Yes:$SoscYes -NoMenu:$SoscNoMenu
+}
+catch {
+    # An unexpected error that got this far. Same rule as above: exit only when
+    # running from a file. No new variables here: this runs in the caller's scope.
+    Write-Host ('sosc: ' + $_.Exception.Message) -ForegroundColor Red
+    if ({ }.File) { exit 1 }
+    $global:LASTEXITCODE = 1
+}
+finally {
+    # Through iex the parameters above are variables of the caller's session.
+    if (-not { }.File) { Remove-Variable -Name SoscAction, SoscTarget, SoscYes, SoscNoMenu -Scope 0 -ErrorAction SilentlyContinue }
+}
