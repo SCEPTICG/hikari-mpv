@@ -12,6 +12,9 @@ $RepoRoot = Split-Path -Path $PSScriptRoot -Parent
 $InstallScript = [System.IO.Path]::Combine($RepoRoot, 'install', 'install.ps1')
 . $InstallScript
 $script:SoscQuiet = $true
+# The tests that drive the old number questions run as if there were no
+# interactive console; the keyboard menu tests below switch it on themselves.
+$script:SoscConsoleProbe = { $false }
 
 $script:Passed = 0
 $script:Failed = 0
@@ -598,6 +601,7 @@ Test-Case 'backup copies only what the installer can change' {
     finally { Remove-Item Function:\Write-SoscInfo }
     Assert-Equal $b ((Get-SoscFullPath $cfg) + '-respaldo-sosc-20260101-000000') 'name'
     Assert-True (@($script:InfoLog | Where-Object { $_ -like '*MB*' }).Count -eq 1) 'size shown'
+    Assert-True (@($script:InfoLog | Where-Object { $_ -like 'Backing up the files sosc touches (*MB)...' }).Count -eq 1) 'says only some files are copied'
     foreach ($rel in @(@('mpv.conf'), @('input.conf'), @('scripts', 'a.lua'), @('scripts', 'uosc', 'main.lua'), @('script-opts', 'a.conf'),
             @('fonts', 'f.ttf'), @('sosc-palette.conf'), @('sosc-installed.txt'), @('scripts-desactivados', 'm.lua'),
             @('sosc-originales', 'script-opts', 'uosc.conf'))) {
@@ -1278,6 +1282,340 @@ Test-Case 'hostile sosc-installed.txt never touches anything outside the folder'
         $pair = $entry -split '\|'
         Assert-True (-not ((Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1]))) ('refused ' + $entry)
     }
+}
+
+# ---------------------------------------------------------------------------
+# Keyboard menus
+# ---------------------------------------------------------------------------
+
+$Ptr = [string][char]0x203A
+$script:Keys = New-Object System.Collections.Generic.Queue[string]
+$script:Frames = New-Object System.Collections.Generic.List[string]
+$script:ConsoleLog = New-Object System.Collections.Generic.List[string]
+$RealKeyReader = $script:SoscKeyReader
+$RealRenderer = $script:SoscMenuRenderer
+$RealConsoleEnter = $script:SoscConsoleEnter
+$RealConsoleExit = $script:SoscConsoleExit
+
+function ConvertTo-FrameText {
+    param([object[]]$Lines)
+    $out = @()
+    foreach ($line in $Lines) { $out += [string]::Join('', @(@($line) | ForEach-Object { $_.Text })) }
+    return [string]::Join("`n", $out)
+}
+
+# Keys come from a queue, frames are kept as text, the console is not touched.
+function Use-FakeConsole {
+    param([string[]]$Keys = @())
+    $script:Keys.Clear()
+    foreach ($k in $Keys) { $script:Keys.Enqueue($k) }
+    $script:Frames.Clear()
+    $script:ConsoleLog.Clear()
+    $script:SoscKeyReader = { if ($script:Keys.Count -eq 0) { throw 'no more keys' } return $script:Keys.Dequeue() }
+    $script:SoscMenuRenderer = { param([object[]]$Lines, [int]$Previous) $script:Frames.Add((ConvertTo-FrameText $Lines)); return @($Lines).Count }
+    $script:SoscConsoleEnter = { $script:ConsoleLog.Add('enter'); return @{ Fake = $true } }
+    $script:SoscConsoleExit = { param($State) $script:ConsoleLog.Add('exit') }
+    $script:SoscMenu = $true
+    $script:SoscMenuWidth = 80
+    $script:NonInteractive = $false
+}
+
+function Reset-FakeConsole {
+    $script:SoscKeyReader = $RealKeyReader
+    $script:SoscMenuRenderer = $RealRenderer
+    $script:SoscConsoleEnter = $RealConsoleEnter
+    $script:SoscConsoleExit = $RealConsoleExit
+    $script:SoscConsoleProbe = { $false }
+    $script:SoscMenu = $false
+    $script:SoscMenuWidth = 0
+    $script:NonInteractive = $true
+}
+
+function Get-LastFrame { return $script:Frames[$script:Frames.Count - 1] }
+
+function New-TestItems {
+    param([string[]]$Labels)
+    return @($Labels | ForEach-Object { New-SoscMenuItem -Label $_ })
+}
+
+Test-Case 'menu: single choice moves, wraps around at both ends and chooses with Enter' {
+    Use-FakeConsole @('DownArrow', 'DownArrow', 'DownArrow', 'UpArrow', 'Enter')
+    try {
+        $m = Invoke-SoscListMenu -Items (New-TestItems @('Alpha', 'Beta', 'Gamma'))
+        Assert-True (-not $m.Cancelled) 'not cancelled'
+        Assert-Equal $m.Index 2 'Down x3 wraps to Alpha, Up wraps to Gamma'
+        Assert-True ($script:Frames[0].StartsWith($Ptr + ' Alpha' + "`n" + '  Beta')) ('first frame: ' + $script:Frames[0])
+        Assert-True ($script:Frames[0].Contains('Enter to choose')) 'help line'
+        Assert-True ($script:Frames[3].Contains($Ptr + ' Alpha')) 'wrapped to the first entry'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' Gamma') 'only the choice is left on screen'
+        Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' 'console set up and restored'
+        Assert-Equal $script:Keys.Count 0 'all keys used'
+    }
+    finally { Reset-FakeConsole }
+}
+
+Test-Case 'menu: disabled entries are skipped, Home/End, Esc and Ctrl+C cancel and clear the menu' {
+    $items = @((New-SoscMenuItem -Label 'Alpha' -Disabled $true), (New-SoscMenuItem -Label 'Beta'), (New-SoscMenuItem -Label 'Gamma' -Disabled $true), (New-SoscMenuItem -Label 'Delta'))
+    Use-FakeConsole @('DownArrow', 'Enter')
+    try {
+        Assert-Equal (Invoke-SoscListMenu -Items $items).Index 3 'starts on Beta, Gamma skipped'
+        Use-FakeConsole @('End', 'Home', 'UpArrow', 'Enter')
+        Assert-Equal (Invoke-SoscListMenu -Items $items).Index 3 'End, Home, Up wraps to Delta'
+        Use-FakeConsole @('DownArrow', 'Escape')
+        $m = Invoke-SoscListMenu -Items $items
+        Assert-True $m.Cancelled 'Esc cancels'
+        Assert-Equal (Get-LastFrame) '' 'nothing left on screen'
+        Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' 'console restored'
+        Use-FakeConsole @('Ctrl+C')
+        Assert-True (Invoke-SoscListMenu -Items $items).Cancelled 'Ctrl+C cancels like Esc'
+    }
+    finally { Reset-FakeConsole }
+}
+
+Test-Case 'menu: multiple choice ticks, unticks and confirms; actions are not ticked' {
+    $items = @((New-TestItems @('One', 'Two', 'Three')) + @((New-SoscMenuItem -Label 'Other' -Action $true), (New-SoscMenuItem -Label 'Exit' -Action $true -Quit $true)))
+    Use-FakeConsole @('Spacebar', 'DownArrow', 'Spacebar', 'DownArrow', 'Spacebar', 'Spacebar', 'Enter')
+    try {
+        $m = Invoke-SoscListMenu -Items $items -Multi
+        Assert-Equal ([string]::Join(',', $m.Checked)) '0,1' 'One and Two ticked, Three ticked and unticked'
+        Assert-Equal $m.Index (-1) 'Enter on a tickable entry'
+        Assert-True ($script:Frames[1].Contains('[x] One')) ('ticked box drawn: ' + $script:Frames[1])
+        Assert-True ($script:Frames[1].Contains('[ ] Two')) 'empty box drawn'
+        Assert-True ($script:Frames[1].Contains("`n  Other")) 'action drawn without a box'
+        Assert-True ($script:Frames[1].Contains('Space to tick')) 'help line'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' One, Two') 'choice left on screen'
+        # Nothing ticked: Enter takes the highlighted entry. Space on an action does nothing.
+        Use-FakeConsole @('DownArrow', 'Enter')
+        Assert-Equal ([string]::Join(',', (Invoke-SoscListMenu -Items $items -Multi).Checked)) '1' 'highlighted one'
+        Use-FakeConsole @('UpArrow', 'UpArrow', 'Spacebar', 'Enter')
+        $m = Invoke-SoscListMenu -Items $items -Multi
+        Assert-Equal $m.Index 3 'Enter on Other'
+        Assert-Equal @($m.Checked).Count 0 'Space on an action ticks nothing'
+        # Ticked entries plus "Other": both come back.
+        Use-FakeConsole @('Spacebar', 'DownArrow', 'DownArrow', 'DownArrow', 'Enter')
+        $m = Invoke-SoscListMenu -Items $items -Multi
+        Assert-Equal $m.Index 3 'Other'
+        Assert-Equal ([string]::Join(',', $m.Checked)) '0' 'with One'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' One, Other') 'summary'
+        # Exit drops the ticks.
+        Use-FakeConsole @('Spacebar', 'UpArrow', 'Enter')
+        $m = Invoke-SoscListMenu -Items $items -Multi
+        Assert-True $items[$m.Index].Quit 'Exit chosen'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' Exit') 'summary only says Exit'
+    }
+    finally { Reset-FakeConsole }
+}
+
+Test-Case 'menu: target list maps ticks, Other and Esc; long paths are shortened' {
+    $base = New-TestDir 'menu-targets'
+    $e = New-FakeEnv $base
+    $long = P @($base, ('very long folder name ' * 4).Trim(), 'mpv-AnimeJaNai', 'portable_config')
+    $list = @(
+        (New-SoscCandidate -Env $e -Kind 'AnimeJaNai' -Exe '' -ConfigDir $long -Portable $true),
+        (New-SoscCandidate -Env $e -Kind 'mpv' -Exe '' -ConfigDir (P @($base, 'Roaming', 'mpv')) -Portable $false)
+    )
+    function Read-SoscLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        Use-FakeConsole @('DownArrow', 'Spacebar', 'UpArrow', 'Spacebar', 'Enter')
+        $sel = Read-SoscTargetChoice -List $list -Mode 'install'
+        Assert-Equal ([string]::Join(',', $sel.Indexes)) '0,1' 'both'
+        Assert-True (-not $sel.Other -and -not $sel.Quit) 'nothing else'
+        $first = $script:Frames[0] -split "`n"
+        Assert-True ($first[0] -like ($Ptr + ' `[ `] AnimeJaNai*')) ('player line: ' + $first[0])
+        Assert-True ($first[1].Contains([char]0x2026)) ('long path shortened: ' + $first[1])
+        Assert-True ($first[1].EndsWith('portable_config')) 'the end of the path is kept'
+        Assert-True ($first[1].Length -le 79) ('fits the width: ' + $first[1].Length)
+        Assert-True ($script:Frames[0].Contains('Other folder' + [char]0x2026)) 'Other folder entry'
+        Use-FakeConsole @('UpArrow', 'UpArrow', 'Enter')
+        $sel = Read-SoscTargetChoice -List $list -Mode 'install'
+        Assert-True $sel.Other 'Other folder'
+        Assert-Equal @($sel.Indexes).Count 0 'no folder ticked'
+        Use-FakeConsole @('Spacebar', 'Escape')
+        Assert-True (Read-SoscTargetChoice -List $list -Mode 'install').Quit 'Esc leaves'
+        Use-FakeConsole @('Enter')
+        Assert-True (Read-SoscTargetChoice -List @() -Mode 'uninstall').Other 'empty list: Other folder first'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Reset-FakeConsole }
+}
+
+Test-Case 'yes/no: starts on the default, arrows change it, S/Y/N answer, Esc is always No' {
+    function Read-SoscLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        $cases = @(
+            @(@('Enter'), $true, $true, 'Enter keeps the default (yes)'),
+            @(@('Enter'), $false, $false, 'Enter keeps the default (no)'),
+            @(@('LeftArrow', 'Enter'), $false, $true, 'Left is Yes'),
+            @(@('RightArrow', 'Enter'), $true, $false, 'Right is No'),
+            @(@('DownArrow', 'Enter'), $false, $true, 'Down toggles'),
+            @(@('UpArrow', 'UpArrow', 'Enter'), $true, $true, 'Up twice: back'),
+            @(@('S'), $false, $true, 'S answers yes at once'),
+            @(@('y'), $false, $true, 'Y answers yes at once'),
+            @(@('N'), $true, $false, 'N answers no at once'),
+            @(@('X', 'Enter'), $true, $true, 'other keys are ignored'),
+            @(@('Escape'), $true, $false, 'Esc is No even when the default is yes'),
+            @(@('LeftArrow', 'Escape'), $false, $false, 'Esc is No even when Yes is highlighted'),
+            @(@('Ctrl+C'), $true, $false, 'Ctrl+C is No')
+        )
+        foreach ($c in $cases) {
+            Use-FakeConsole $c[0]
+            Assert-Equal (Confirm-Sosc -Question 'Q?' -Default $c[1]) $c[2] $c[3]
+            Assert-Equal $script:Keys.Count 0 ('keys used: ' + $c[3])
+            Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' ('console restored: ' + $c[3])
+        }
+        Use-FakeConsole @('RightArrow', 'Enter')
+        [void](Confirm-Sosc -Question 'Q?' -Default $true)
+        Assert-True ($script:Frames[0].StartsWith('  ' + $Ptr + ' Yes      No')) ('first frame: ' + $script:Frames[0])
+        Assert-True ($script:Frames[1].StartsWith('    Yes    ' + $Ptr + ' No')) ('second frame: ' + $script:Frames[1])
+        Assert-True ($script:Frames[0].Contains('Esc = No')) 'help line'
+        Assert-Equal (Get-LastFrame) ('  ' + $Ptr + ' No') 'answer left on screen'
+        # With -Yes nothing is read, menus or not.
+        Use-FakeConsole @()
+        $script:NonInteractive = $true
+        Assert-True (Confirm-Sosc -Question 'Q?' -Default $true) 'default with -Yes'
+        Assert-Equal $script:ConsoleLog.Count 0 'no menu with -Yes'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Reset-FakeConsole }
+}
+
+Test-Case 'Spanish menus: S answers yes, labels and help decoded' {
+    Set-SoscLanguage 'es'
+    try {
+        Use-FakeConsole @('S')
+        Assert-True (Confirm-Sosc -Question 'P?' -Default $false) 'S = Si'
+        Assert-True ($script:Frames[0].Contains('S' + [char]0x00ED)) ('Si drawn: ' + $script:Frames[0])
+        Use-FakeConsole @('Escape')
+        [void](Read-SoscMainChoice)
+        Assert-True ($script:Frames[0].Contains('Instalar o actualizar')) 'label without its number'
+        Assert-True ($script:Frames[0].Contains([char]0x2191 + '/' + [char]0x2193 + ' para moverte')) 'arrows in the help'
+    }
+    finally { Set-SoscLanguage 'en'; Reset-FakeConsole }
+    Assert-True ((T 'menu_help').StartsWith([string][char]0x2191)) 'English help decodes \u too'
+}
+
+Test-Case 'plan B: a console that cannot read keys falls back to numbers and is restored' {
+    $script:Lines = New-Object System.Collections.Generic.Queue[string]
+    function Read-SoscLine { param([string]$Prompt) return $script:Lines.Dequeue() }
+    try {
+        Use-FakeConsole @()
+        $script:SoscKeyReader = { throw (New-Object System.InvalidOperationException 'Cannot read keys when either application does not have a console or when console input has been redirected.') }
+        $script:Lines.Enqueue('y')
+        Assert-True (Confirm-Sosc -Question 'Q?' -Default $false) 'answered with a typed y'
+        Assert-True (-not $script:SoscMenu) 'menus off for the rest of the run'
+        Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' 'console restored'
+        Assert-Equal (Get-LastFrame) '' 'menu cleared'
+        $script:Lines.Enqueue('2')
+        Assert-Equal (Read-SoscMainChoice) '2' 'main menu with numbers'
+        Assert-Equal $script:ConsoleLog.Count 2 'no other menu tried'
+        # A renderer that fails mid-menu: same.
+        Use-FakeConsole @('DownArrow', 'Enter')
+        $script:SoscMenuRenderer = { param([object[]]$Lines, [int]$Previous) if ($script:Frames.Count -ge 1) { throw 'cannot move the cursor' } $script:Frames.Add('x'); return 1 }
+        $script:Lines.Enqueue('0')
+        Assert-Equal (Read-SoscMainChoice) '0' 'numbers after the renderer failed'
+        Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' 'console restored'
+        Assert-Equal $script:Lines.Count 0 'all typed answers used'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Reset-FakeConsole }
+}
+
+Test-Case 'plan B: detection decides; -NoMenu and -Yes never open a menu' {
+    Reset-Fake
+    $d = New-TestDir 'menu-detect'
+    $script:FakeEnvBase = P @($d, 'machine')
+    function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    $script:Lines = New-Object System.Collections.Generic.Queue[string]
+    function Read-SoscLine { param([string]$Prompt) if ($script:Lines.Count -eq 0) { return $null } return $script:Lines.Dequeue() }
+    try {
+        # Not an interactive console: numbers, the keys are never read.
+        Use-FakeConsole @('Enter')
+        $script:SoscConsoleProbe = { $false }
+        $script:Lines.Enqueue('0')
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false) 0 'exit by number'
+        Assert-Equal $script:Keys.Count 1 'no key read'
+        Assert-Equal $script:Lines.Count 0 'typed answer used'
+        # Interactive console: the menu.
+        $script:SoscConsoleProbe = { $true }
+        Use-FakeConsole @('Escape')
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false) 0 'Esc in the main menu'
+        Assert-Equal $script:Keys.Count 0 'key read'
+        Assert-True ($script:Frames[0].Contains('Install or update')) 'main menu drawn'
+        # -NoMenu: numbers even on an interactive console.
+        Use-FakeConsole @('Enter')
+        $script:SoscConsoleProbe = { $true }
+        $script:Lines.Enqueue('0')
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false -NoMenu $true) 0 'exit by number'
+        Assert-Equal $script:Keys.Count 1 'no key read with -NoMenu'
+        # -Yes: the probe is not even asked.
+        Use-FakeConsole @()
+        $script:SoscConsoleProbe = { throw 'probe called' }
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $true) 2 '-Yes without -Action'
+        Assert-Equal $script:ConsoleLog.Count 0 'no menu with -Yes'
+    }
+    finally {
+        Remove-Item Function:\New-SoscEnvironment
+        Remove-Item Function:\Read-SoscLine
+        Reset-FakeConsole
+    }
+    # A real process with its output redirected is not an interactive console.
+    $exe = (Get-Process -Id $PID).Path
+    $cmd = '. ''' + $InstallScript.Replace("'", "''") + '''; Test-SoscInteractiveConsole'
+    $out = & $exe -NoProfile -NonInteractive -Command $cmd
+    Assert-Equal ([string]::Join('', @($out)).Trim()) 'False' 'redirected child process'
+}
+
+Test-Case 'menus end to end: install from the list, then uninstall answering with keys' {
+    Reset-Fake
+    $d = New-TestDir 'menu-e2e'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $script:FakeEnvBase = P @($d, 'machine')
+    $aj = P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv-AnimeJaNai')
+    Set-TestFile (P @($aj, 'mpvnet.exe'))
+    $cfg = P @($aj, 'portable_config')
+    Set-TestFile (P @($cfg, 'scripts', 'modernz.lua')) '-- modernz'
+    function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    function Read-SoscLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        # Install (first entry), the only player (Enter with nothing ticked), then
+        # "move the clashing interface?" with its default (yes).
+        Use-FakeConsole @('Enter', 'Enter', 'Enter')
+        $script:SoscConsoleProbe = { $true }
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false) 0 'install exit code'
+        Assert-Equal $script:Keys.Count 0 'all keys used'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-skip.lua'))) 'installed'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'modernz.lua'))) 'modernz set aside (default yes)'
+        # Uninstall: keep uosc (Right = No), remove thumbfast (Enter, yes by
+        # default), bring modernz back (S), keep the choices (Esc = No).
+        Use-FakeConsole @('DownArrow', 'Enter', 'Enter', 'RightArrow', 'Enter', 'Enter', 'S', 'Escape')
+        $script:SoscConsoleProbe = { $true }
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false) 0 'uninstall exit code'
+        Assert-Equal $script:Keys.Count 0 'all keys used'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-skip.lua')))) 'uninstalled'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'main.lua'))) 'uosc kept (No)'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'thumbfast.lua')))) 'thumbfast removed (Yes)'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'modernz.lua'))) 'modernz back (S)'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-palette.conf'))) 'choices kept (Esc)'
+        # No player at all: winget missing is skipped, so Enter is "type a folder".
+        Remove-Item -LiteralPath (P @($script:FakeEnvBase, 'Local')) -Recurse -Force
+        Use-FakeConsole @('Enter')
+        Assert-Equal (Read-SoscNoPlayerChoice -HasWinget $false -AppMpv 'C:\x') '2' 'winget entry skipped'
+        Assert-True ($script:Frames[0].Contains('winget is not available')) 'and says why'
+        Use-FakeConsole @('UpArrow', 'UpArrow', 'Enter')
+        Assert-Equal (Read-SoscNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') '3' 'wraps from winget to Exit, then prepare'
+    }
+    finally {
+        Remove-Item Function:\New-SoscEnvironment
+        Remove-Item Function:\Read-SoscLine
+        Reset-FakeConsole
+    }
+}
+
+Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {
+    $e = [string][char]0x2026
+    Assert-Equal (Format-SoscFit -Text 'short' -Max 10) 'short' 'fits'
+    Assert-Equal (Format-SoscFit -Text 'abcdefghij' -Max 5) ('abcd' + $e) 'end'
+    Assert-Equal (Format-SoscFit -Text 'C:\Users\Ana\portable_config' -Max 16 -Middle) ('C:\Us' + $e + 'ble_config') 'middle'
+    Assert-Equal (Format-SoscFit -Text 'abc' -Max 1) $e 'one column'
+    Assert-Equal (Format-SoscFit -Text 'abc' -Max 0) '' 'no room'
+    Assert-Equal (Get-SoscPlainLabel ' O) Other folder') 'Other folder' 'prefix removed'
 }
 
 # ---------------------------------------------------------------------------
