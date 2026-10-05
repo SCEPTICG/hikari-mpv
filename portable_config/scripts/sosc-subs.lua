@@ -28,17 +28,23 @@ local PERSIST_PATH = '~~/sosc-subs.conf'
 local MENU_TYPE = 'sosc-subs'
 
 -- Style keys, in the order they are applied and written. Each key maps to the
--- mpv options that can hold it, newest name first: mpv 0.38 renamed
--- sub-border-color/size to sub-outline-color/size and added sub-shadow-color
--- (before that, sub-back-color was the shadow colour). The first one this mpv
--- knows is used; keys with no known option are skipped (sub-border-style needs
--- mpv 0.37 or newer).
+-- mpv options that can hold it, newest name first. mpv 0.39 changed the model:
+--   - mpv <= 0.38: sub-border-color/size, sub-shadow-color is its own option
+--     (shadow colour), there is no sub-border-style, and a sub-back-color with
+--     any opacity turns on a background box in that colour (libass BorderStyle 4).
+--   - mpv >= 0.39: sub-outline-color/size (sub-border-color/size are aliases),
+--     sub-border-style exists, and sub-shadow-color is an ALIAS of sub-back-color,
+--     which is the shadow colour (or the box with background-box).
+-- The first name this mpv knows is used, resolved to its canonical name through
+-- option-info/<name>/name, so aliases collapse onto the real option (in 0.39+
+-- shadow_color and box_color are both sub-back-color). Keys with no known option
+-- are skipped.
 local STYLE_KEYS = {
 	{key = 'text_color', props = {'sub-color'}, kind = 'color'},
 	{key = 'outline_color', props = {'sub-outline-color', 'sub-border-color'}, kind = 'color'},
 	{key = 'outline_size', props = {'sub-outline-size', 'sub-border-size'}, kind = 'number'},
 	{key = 'shadow_offset', props = {'sub-shadow-offset'}, kind = 'number'},
-	{key = 'shadow_color', props = {'sub-shadow-color', 'sub-back-color'}, kind = 'color'},
+	{key = 'shadow_color', props = {'sub-shadow-color'}, kind = 'color'},
 	{key = 'box_color', props = {'sub-back-color'}, kind = 'color'},
 	{key = 'bold', props = {'sub-bold'}, kind = 'bool'},
 	{key = 'border_style', props = {'sub-border-style'}, kind = 'border_style'},
@@ -47,15 +53,17 @@ local STYLE_KEYS = {
 -- Values are strings, as `set` receives them, so the decimal separator never
 -- depends on the C locale. A key left out keeps what mpv had before sosc touched
 -- it (see `baseline`) and is not written to the .conf.
--- Styles must not set both shadow_color and box_color: on mpv older than 0.38 they
--- are the same option (sub-back-color). The tests check this.
+-- Styles must not set both shadow_color and box_color: on mpv 0.39+ they are the
+-- same option (sub-back-color). The tests check this. Only "Caja oscura" may give
+-- sub-back-color opacity: on mpv <= 0.38 that alone turns on the background box.
 local STYLES = {
 	-- Sets nothing: mpv's defaults or whatever mpv.conf says.
 	{id = 'original', name = 'Original'},
-	-- Netflix-like: white text on a translucent black box per line. opaque-box
-	-- (libass BorderStyle 3) is drawn with the outline colour and padded by the
-	-- outline size; the box colour also goes to sub-back-color in case this mpv
-	-- uses that one. No shadow.
+	-- Netflix-like: white text on a translucent black box, no shadow.
+	-- mpv 0.39+: opaque-box (libass BorderStyle 3), drawn with the outline colour
+	-- and padded by the outline size; sub-back-color only colours the shadow,
+	-- which is off. mpv <= 0.38: no sub-border-style; the translucent
+	-- sub-back-color itself turns on the background box (BorderStyle 4).
 	{
 		id = 'dark_box', name = 'Caja oscura',
 		text_color = '#FFFFFFFF', outline_color = '#C0000000', outline_size = '2.5',
@@ -76,16 +84,18 @@ local STYLES = {
 }
 
 -- `sub-scale`: font size factor (ASS too, with sub-ass-override=scale).
+-- "Normal" has no value: it sets nothing and keeps mpv.conf's (or mpv's) value.
 local SIZES = {
 	{id = 'small', name = 'Pequeño', value = '0.85'},
-	{id = 'normal', name = 'Normal', value = '1'},
+	{id = 'normal', name = 'Normal'},
 	{id = 'large', name = 'Grande', value = '1.2'},
 	{id = 'xlarge', name = 'Muy grande', value = '1.4'},
 }
 
 -- `sub-pos`: 100 is mpv's default (bottom), lower numbers move subtitles up.
+-- "Normal" has no value, like the size one.
 local HEIGHTS = {
-	{id = 'normal', name = 'Normal', value = '100'},
+	{id = 'normal', name = 'Normal'},
 	{id = 'raised', name = 'Un poco más arriba', value = '95'},
 	{id = 'high', name = 'Más arriba', value = '90'},
 }
@@ -101,7 +111,7 @@ end
 local style_by_id, size_by_id, height_by_id = index_by_id(STYLES), index_by_id(SIZES), index_by_id(HEIGHTS)
 
 local function is_valid_id(id) return type(id) == 'string' and id:match('^[a-z0-9_-]+$') ~= nil end
-local function is_number(v) return v:match('^%d+$') ~= nil or v:match('^%d+%.%d+$') ~= nil end
+local function is_number(v) return type(v) == 'string' and (v:match('^%d+$') ~= nil or v:match('^%d+%.%d+$') ~= nil) end
 
 -- Checks a value from the tables above against its kind, with anchored patterns.
 local VALIDATORS = {
@@ -115,24 +125,29 @@ local function is_valid_value(kind, value)
 	return type(value) == 'string' and check ~= nil and check(value)
 end
 
--- Values read back from mpv (only used to restore "Original", never written to
--- the .conf): a short token such as `#FFFFFFFF`, `3.000000`, `no`, `opaque-box`.
+-- Values read back from mpv (only used to restore "Original"/"Normal", never
+-- written to the .conf): a short token such as `#FFFFFFFF`, `3.000000`, `no`, `opaque-box`.
 local function is_safe_mpv_value(value)
 	return type(value) == 'string' and #value <= 32 and value:match('^[%w#%.%-]+$') ~= nil
 end
 
-local function option_exists(prop)
-	return mp.get_property('option-info/' .. prop .. '/name') ~= nil
+-- Canonical name of an option (aliases resolve to the real option), or nil if
+-- this mpv doesn't know it.
+local function canonical_name(prop)
+	local name = mp.get_property('option-info/' .. prop .. '/name')
+	if type(name) == 'string' and name:match('^sub%-[a-z-]+$') then return name end
+	return nil
 end
 
--- key -> mpv option for this mpv, and the list of distinct options sosc manages.
+-- key -> mpv option for this mpv, and the list of distinct style options sosc manages.
 local resolved, managed_props = {}, {}
 local function resolve_props()
 	resolved, managed_props = {}, {}
 	local seen = {}
 	for _, spec in ipairs(STYLE_KEYS) do
-		for _, prop in ipairs(spec.props) do
-			if option_exists(prop) then
+		for _, candidate in ipairs(spec.props) do
+			local prop = canonical_name(candidate)
+			if prop then
 				resolved[spec.key] = prop
 				if not seen[prop] then
 					seen[prop] = true
@@ -169,14 +184,14 @@ local function style_settings(style)
 	return list
 end
 
--- What "Original" restores, per managed option. If the saved style at start-up
--- is Original, the .conf set none of these, so the current values are mpv.conf's
--- or mpv's own. Otherwise the current values are the saved style's, and mpv's
--- defaults are used instead (until the next start, when mpv.conf applies again).
+-- What "Original" (style) and "Normal" (size, height) restore, per option. If
+-- the saved choice at start-up is that one, the .conf set none of its options,
+-- so the current values are mpv.conf's or mpv's own. Otherwise the current
+-- values are the saved choice's, and mpv's defaults are used instead (until the
+-- next start, when mpv.conf applies again).
 local baseline = {}
-local function capture_baseline(from_current)
-	baseline = {}
-	for _, prop in ipairs(managed_props) do
+local function capture_baseline(props, from_current)
+	for _, prop in ipairs(props) do
 		local value = from_current and mp.get_property(prop) or mp.get_property('option-info/' .. prop .. '/default-value')
 		if is_safe_mpv_value(value) then
 			baseline[prop] = value
@@ -189,14 +204,15 @@ end
 local function persist_content(style, size, height)
 	local settings = style_settings(style)
 	if not settings or not is_valid_id(script_name) or not is_valid_id(style.id) or not is_valid_id(size.id)
-		or not is_valid_id(height.id) or not is_number(size.value) or not is_number(height.value) then
+		or not is_valid_id(height.id) or (size.value ~= nil and not is_number(size.value))
+		or (height.value ~= nil and not is_number(height.value)) then
 		return nil
 	end
 	local lines = {'# Generated by sosc-subs.lua. Style: ' .. style.id .. ', size: ' .. size.id .. ', height: ' .. height.id}
 	-- Quoted: mpv cuts unquoted config values at `#`.
 	for _, setting in ipairs(settings) do lines[#lines + 1] = setting[1] .. '="' .. setting[2] .. '"' end
-	lines[#lines + 1] = 'sub-scale="' .. size.value .. '"'
-	lines[#lines + 1] = 'sub-pos="' .. height.value .. '"'
+	if size.value then lines[#lines + 1] = 'sub-scale="' .. size.value .. '"' end
+	if height.value then lines[#lines + 1] = 'sub-pos="' .. height.value .. '"' end
 	lines[#lines + 1] = 'script-opts-append=' .. script_name .. '-style=' .. style.id
 	lines[#lines + 1] = 'script-opts-append=' .. script_name .. '-size=' .. size.id
 	lines[#lines + 1] = 'script-opts-append=' .. script_name .. '-height=' .. height.id
@@ -256,16 +272,22 @@ local function apply_style(style)
 	return true
 end
 
+-- Sets `prop` to the entry's value, or back to the baseline for "Normal".
+local function apply_value(prop, entry)
+	if entry.value ~= nil and not is_number(entry.value) then return false end
+	local value = entry.value or baseline[prop]
+	if value then mp.commandv('set', prop, value) end
+	return true
+end
+
 local function apply_size(size)
-	if not is_number(size.value) then return false end
-	mp.commandv('set', 'sub-scale', size.value)
+	if not apply_value('sub-scale', size) then return false end
 	active.size = size
 	return true
 end
 
 local function apply_height(height)
-	if not is_number(height.value) then return false end
-	mp.commandv('set', 'sub-pos', height.value)
+	if not apply_value('sub-pos', height) then return false end
 	active.height = height
 	return true
 end
@@ -347,11 +369,15 @@ mp.add_key_binding(nil, 'open-menu', open_menu)
 
 -- Start-up: the included .conf already set everything, but applying again from
 -- the tables means edits to a style take effect without picking it again.
+-- Choices that set nothing (Original, Normal) are not applied, so mpv.conf's
+-- values stay untouched.
 resolve_props()
-capture_baseline(active.style.id == 'original')
-if active.style.id ~= 'original' then apply_style(active.style) end
-apply_size(active.size)
-apply_height(active.height)
+capture_baseline(managed_props, active.style.id == DEFAULTS.style)
+capture_baseline({'sub-scale'}, active.size.id == DEFAULTS.size)
+capture_baseline({'sub-pos'}, active.height.id == DEFAULTS.height)
+if active.style.id ~= DEFAULTS.style then apply_style(active.style) end
+if active.size.id ~= DEFAULTS.size then apply_size(active.size) end
+if active.height.id ~= DEFAULTS.height then apply_height(active.height) end
 
 if SOSC_SUBS_TEST then
 	return {
