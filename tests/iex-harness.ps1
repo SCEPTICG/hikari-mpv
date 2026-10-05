@@ -11,6 +11,10 @@
 # -Downloads    : JSON file with an object { url: local file }. Invoke-WebRequest
 #                 is replaced by a global function that serves those files (the
 #                 installer finds a function before the cmdlet) and logs the URLs.
+#                 It also changes [Net.ServicePointManager]::SecurityProtocol,
+#                 as a download on Windows PowerShell 5.1 may need (pwsh 7 never
+#                 touches it), so that the check that the installer puts it back
+#                 tests something; TlsTouched in the report says it happened.
 # -StrictLatest : the session runs with Set-StrictMode -Version Latest and
 #                 $ErrorActionPreference = 'Stop' before the installer starts.
 #
@@ -36,15 +40,20 @@ if ($Downloads) {
     foreach ($__hProp in $__hJson.PSObject.Properties) { $global:__hMap[$__hProp.Name] = [string]$__hProp.Value }
 }
 $global:__hLog = New-Object System.Collections.Generic.List[string]
+$global:__hTls = [System.Net.ServicePointManager]::SecurityProtocol
+$global:__hTlsTouched = $false
 function global:Invoke-WebRequest {
     param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing)
     $global:__hLog.Add($Uri)
+    $__hOther = [System.Net.SecurityProtocolType]::Tls12
+    if ($global:__hTls -eq $__hOther) { $__hOther = [System.Net.SecurityProtocolType]::Tls13 }
+    [System.Net.ServicePointManager]::SecurityProtocol = $__hOther
+    if ([System.Net.ServicePointManager]::SecurityProtocol -ne $global:__hTls) { $global:__hTlsTouched = $true }
     if (-not $global:__hMap.ContainsKey($Uri)) { throw ('unexpected download ' + $Uri) }
     Copy-Item -LiteralPath $global:__hMap[$Uri] -Destination $OutFile -Force
 }
 
 $__hCode = Get-Content -Raw -LiteralPath $Script
-$__hTls = [System.Net.ServicePointManager]::SecurityProtocol
 $__hCtrlC = $null
 try { $__hCtrlC = [Console]::TreatControlCAsInput } catch { }
 
@@ -101,6 +110,7 @@ $__hNewMods = @(Get-Module | ForEach-Object { $_.Name } | Where-Object { $__hMod
     NewModules   = @($__hNewMods)
     Output       = @($__hOut | ForEach-Object { [string]$_ })
     Downloads    = @($global:__hLog)
-    TlsSame      = ([System.Net.ServicePointManager]::SecurityProtocol -eq $__hTls)
+    TlsSame      = ([System.Net.ServicePointManager]::SecurityProtocol -eq $global:__hTls)
+    TlsTouched   = [bool]$global:__hTlsTouched
     CtrlCSame    = ($__hCtrlCAfter -eq $__hCtrlC)
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Report -Encoding utf8

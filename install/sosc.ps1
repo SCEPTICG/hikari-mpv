@@ -29,23 +29,25 @@
     changes. It only calls exit when it runs from a file (-File, or .\sosc.ps1);
     through iex it returns and leaves its exit code in $LASTEXITCODE.
 
-.PARAMETER Action
-    install or uninstall. Without it a menu is shown.
+.PARAMETER SoscAction
+    Use it as -Action (alias). install or uninstall. Without it a menu is
+    shown.
 
-.PARAMETER Target
-    mpv config folder(s) to work on (the folder that holds mpv.conf, e.g.
-    ...\mpv-AnimeJaNai\portable_config or %APPDATA%\mpv). Several folders go
-    separated by ';' (with -File, PowerShell does not split "a,b" into a list).
-    Without it the detected players are listed.
+.PARAMETER SoscTarget
+    Use it as -Target (alias). mpv config folder(s) to work on (the folder that
+    holds mpv.conf, e.g. ...\mpv-AnimeJaNai\portable_config or %APPDATA%\mpv).
+    Several folders go separated by ';' (with -File, PowerShell does not split
+    "a,b" into a list). Without it the detected players are listed.
 
-.PARAMETER Yes
-    Do not ask: take the default answer to every question. Needs -Action, and
-    -Target when more than one folder is found.
+.PARAMETER SoscYes
+    Use it as -Yes (alias). Do not ask: take the default answer to every
+    question. Needs -Action, and -Target when more than one folder is found.
 
-.PARAMETER NoMenu
-    Ask with numbers and typed answers instead of the keyboard menus (arrows,
-    Space, Enter, Esc). Numbers are also used on their own when there is no
-    interactive console (input or output redirected, -NonInteractive, ISE...).
+.PARAMETER SoscNoMenu
+    Use it as -NoMenu (alias). Ask with numbers and typed answers instead of
+    the keyboard menus (arrows, Space, Enter, Esc). Numbers are also used on
+    their own when there is no interactive console (input or output
+    redirected, -NonInteractive, ISE...).
 
 .NOTES
     Exit codes: 0 done (or cancelled by the user), 1 at least one folder failed,

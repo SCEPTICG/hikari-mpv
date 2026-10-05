@@ -60,23 +60,31 @@ touch stray.txt
 fails 'refuses an untracked file' 'not clean' tools/make-release.sh v1.2.3
 rm -f stray.txt
 
+fails 'refuses a tag that does not exist' 'does not exist' tools/make-release.sh v1.2.3
+check 'nothing built without a tag' test ! -e dist/sosc.ps1
+
 git tag v0.0.1 "$base"
 echo '# next' >>README.md
 commit_as 'next commit'
-fails 'refuses a tag that points elsewhere' 'already exists' tools/make-release.sh v0.0.1
+fails 'refuses a tag that points elsewhere' 'not to HEAD' tools/make-release.sh v0.0.1
 git reset -q --hard "$base"
 git tag -d v0.0.1 >/dev/null
+git tag v1.2.3 "$base"
 
 sed -i "s/^\$script:SoscReleaseUrl = ''\$/\$script:SoscReleaseUrl = '' # changed/" install/sosc.ps1
 commit_as 'marker changed'
+git tag -f v1.2.3 >/dev/null
 fails 'refuses a missing marker' 'found 1, 0 and 1 times' tools/make-release.sh v1.2.3
 check 'no dist/sosc.ps1 when a marker is missing' test ! -e dist/sosc.ps1
 git reset -q --hard "$base"
+git tag -f v1.2.3 "$base" >/dev/null
 
 printf "\n\$script:SoscReleaseSha256 = ''\n" >>install/sosc.ps1
 commit_as 'marker twice'
+git tag -f v1.2.3 >/dev/null
 fails 'refuses a repeated marker' 'found 1, 1 and 2 times' tools/make-release.sh v1.2.3
 git reset -q --hard "$base"
+git tag -f v1.2.3 "$base" >/dev/null
 
 # --- a good release ----------------------------------------------------------
 if tools/make-release.sh v1.2.3 >"$tmp/out.txt" 2>&1; then ok 'builds v1.2.3'; else fail 'builds v1.2.3'; cat "$tmp/out.txt"; fi

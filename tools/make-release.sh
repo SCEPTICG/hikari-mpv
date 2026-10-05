@@ -10,9 +10,11 @@
 #                     sosc.zip and that zip's SHA256
 #   dist/SHA256SUMS   SHA256 of both files
 #
-# Then attach dist/sosc.ps1 and dist/sosc.zip (and SHA256SUMS) to the GitHub
-# release vX.Y.Z of SCEPTICG/sosc. dist/sosc.ps1 only installs the sosc.zip
-# published under that same tag, and only if its SHA256 matches.
+# The tag vX.Y.Z must already exist and point to the current commit. Then push
+# the tag, create the GitHub release of SCEPTICG/sosc from it, attach
+# dist/sosc.ps1, dist/sosc.zip and dist/SHA256SUMS with those names and publish
+# it as Latest (see README, "Making a release"). dist/sosc.ps1 only installs the
+# sosc.zip published under that same tag, and only if its SHA256 matches.
 #
 # Needs: git, a SHA256 tool (sha256sum or shasum), awk and PowerShell 7 (pwsh in
 # PATH, $PWSH, or ~/.local/opt/powershell/pwsh) to check that the result parses.
@@ -35,10 +37,12 @@ cd "$root"
 [[ -z "$(git status --porcelain --untracked-files=normal)" ]] ||
     die "the work tree is not clean (commit or remove the changes first): the release must be exactly a commit"
 commit="$(git rev-parse --verify HEAD)"
-if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-    tagged="$(git rev-parse "$tag^{commit}")"
-    [[ "$tagged" == "$commit" ]] || die "tag $tag already exists and points to $tagged, not to HEAD ($commit)"
-fi
+# The release must be built from the very commit its tag names: the GitHub
+# release is created from that tag, and sosc.ps1 points at its sosc.zip.
+git rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
+    die "tag $tag does not exist: create it on this commit first (git tag $tag), build, then push it (git push origin $tag)"
+tagged="$(git rev-parse "$tag^{commit}")"
+[[ "$tagged" == "$commit" ]] || die "tag $tag points to $tagged, not to HEAD ($commit)"
 
 if command -v sha256sum >/dev/null 2>&1; then
     sha256() { sha256sum "$1" | cut -d' ' -f1; }
@@ -113,5 +117,6 @@ sosc $tag built from commit $commit:
   dist/sosc.zip   $zip_sha
   dist/SHA256SUMS
 sosc.ps1 installs from $url
-Nothing was uploaded. Attach the three files to the GitHub release $tag.
+Nothing was uploaded. Next: git push origin $tag, create the GitHub release
+from that tag, attach the three files with these names, publish it as Latest.
 EOF

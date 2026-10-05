@@ -36,6 +36,12 @@ irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
 
 It only touches that config folder and the backup next to it, plus a temporary folder that it deletes when it ends (and, only if you choose it when no player is found, installs mpv.net with `winget`). No administrator rights, no registry, no `PATH` changes. Through `iex` it does not close or change your PowerShell window: it only leaves its result in `$LASTEXITCODE`. Messages are in Spanish when Windows is set to Spanish, in English otherwise. Restart the player afterwards.
 
+If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windows PowerShell 5.1 does not use TLS 1.2 by default (older Windows 10 builds). Switch it on for that window and run the line again:
+
+```
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
+```
+
 - **Update**: run the same line again and choose *Install or update*. Your saved palette and subtitle choices are kept.
 - **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes sosc and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
 
@@ -72,6 +78,8 @@ powershell -ExecutionPolicy Bypass -File .\sosc.ps1
 
 The first line must print the hash `SHA256SUMS` lists for `sosc.ps1`. The options above work after the file name too (`-File .\sosc.ps1 -Action uninstall`). Each release's `sosc.ps1` only installs the `sosc.zip` of that same release, and only if its SHA256 matches the one written inside the script.
 
+Be aware of what this check proves: `SHA256SUMS` comes from the same release, published by the same GitHub account, as `sosc.ps1`. It catches a file that was corrupted or changed on the way to you, but not a compromised account: whoever could replace `sosc.ps1` there could replace `SHA256SUMS` too. Reading `sosc.ps1` before running it is the only check that does not depend on the account.
+
 From a copy of this repository (clone it, or download it as a zip and extract it), open PowerShell in that folder and run `powershell -ExecutionPolicy Bypass -File install\sosc.ps1`: the sosc files then come from that copy.
 
 ### How the installer works
@@ -97,8 +105,6 @@ For each folder it:
 7. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
 Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside and whether to delete your saved choices.
-
-Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
 Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
@@ -239,11 +245,34 @@ The installer tests need PowerShell 7 (on any system, no Pester) and simulate Wi
 
 ## Making a release
 
+The one-line install downloads `https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1`, which only works when every step below is done. For a release `v0.1.0`:
+
+1. Commit everything and tag that commit. The tag must exist before building and point to the current commit, or the script refuses:
+
+   ```
+   git tag v0.1.0
+   tools/make-release.sh v0.1.0
+   ```
+
+   It needs a clean work tree and builds, from that commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.zip` and that zip's SHA256 filled in) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
+
+2. Push the tag to the original repository: `git push origin v0.1.0`. The GitHub repository is a mirror of a Forgejo one (see [Contributing](#contributing)), so the tag reaches GitHub through the mirror: wait until `v0.1.0` shows up in GitHub's tag list (or sync the mirror by hand) before the next step.
+
+3. On GitHub, create the release **from that existing tag** (choose `v0.1.0` in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).
+
+4. Attach `dist/sosc.ps1`, `dist/sosc.zip` and `dist/SHA256SUMS` with exactly those names: `sosc.ps1` looks for `sosc.zip` under that tag, and the install line looks for `sosc.ps1`.
+
+5. Publish it as the **Latest** release: not a draft and not a pre-release. `releases/latest/download/...` only sees the release marked Latest.
+
+To try it before it becomes the Latest release, publish it first as a pre-release (a draft cannot be downloaded) and use the fixed address of its files, which works for any published release; then mark it Latest:
+
 ```
-tools/make-release.sh v0.1.0
+irm https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.ps1 | iex
 ```
 
-It needs a clean work tree and builds, from the current commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the release URL of that zip, its SHA256 and the version filled in) and `dist/SHA256SUMS`. It uploads nothing: create the GitHub release `v0.1.0` and attach the three files. `dist/` is not tracked.
+## Contributing
+
+The GitHub repository is a read-only mirror of a self-hosted Forgejo repository, where the work happens. Issues are welcome on GitHub. Pull requests are not merged on GitHub, because the next sync of the mirror would overwrite them: a good one is applied by hand in the original repository, crediting its author, and reaches GitHub with the next sync.
 
 ## Credits
 

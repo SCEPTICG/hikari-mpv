@@ -2023,6 +2023,7 @@ Test-Case 'release through iex: its zip comes from the downloader, is checked an
     $cfg = P @($d, 'mpv')
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('1', '2', $cfg) -TempDir $tmp
     Assert-SessionClean $run 0
+    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
     Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl))) 'downloads, release zip first'
     foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
         Assert-Equal (Get-TestText (P @($cfg, 'scripts', $f.Name))) (Get-TestText $f.FullName) $f.Name
@@ -2046,6 +2047,7 @@ Test-Case 'release with a wrong hash: zip refused, nothing installed, temp remov
     $cfg = P @($d, 'mpv')
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'install' -Target $cfg -YesValue 'true' -TempDir $tmp
     Assert-SessionClean $run 1
+    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
     Assert-True ($run.Text.Contains('does not match its expected SHA256')) ('message; output: ' + $run.Text)
     Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) $TestReleaseUrl 'only the zip was fetched'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed'
