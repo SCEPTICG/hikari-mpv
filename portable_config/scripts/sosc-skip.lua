@@ -261,7 +261,7 @@ local state = {
 	osd_w = 0, osd_h = 0,
 	fullscreen = false, maximized = false, hidpi = 1,
 	colors = parse_colors(nil),
-	mouse = nil, hovered = false, pressed = false, section_enabled = false,
+	mouse = nil, hovered = false, pressed = false, guard_press = false, section_enabled = false,
 	drawn = nil, -- last data sent to the overlay, nil when nothing is drawn
 }
 
@@ -452,7 +452,7 @@ local function skip()
 			mp.commandv('playlist-next')
 			refresh()
 			return true
-		elseif not duration then
+		elseif not duration or duration ~= duration or duration == math.huge or duration == -math.huge then
 			-- Nowhere to go: leave the button where it is.
 			return false
 		end
@@ -485,15 +485,17 @@ end
 local function on_down()
 	state.mouse = mp.get_property_native('mouse-pos') or state.mouse
 	state.hovered = inside(layout(), state.mouse)
-	-- During the guard the button is gone: the press is just swallowed.
-	if state.hovered or guard_active() then state.pressed = true end
+	-- During the guard the press is just swallowed, even if a new button has
+	-- already appeared under the pointer (the next chapter is skippable too).
+	state.guard_press = guard_active()
+	if state.hovered or state.guard_press then state.pressed = true end
 end
 
 local function on_up()
-	local was_pressed = state.pressed
-	state.pressed = false
+	local was_pressed, guard_press = state.pressed, state.guard_press
+	state.pressed, state.guard_press = false, false
 	state.mouse = mp.get_property_native('mouse-pos') or state.mouse
-	if was_pressed and inside(layout(), state.mouse) and skip() then
+	if was_pressed and not guard_press and inside(layout(), state.mouse) and skip() then
 		start_guard()
 	end
 	refresh()
@@ -504,11 +506,13 @@ mp.set_key_bindings({
 	{'mbtn_left_dbl', 'ignore'},
 }, MOUSE_SECTION, 'force')
 
--- Forgets everything about the file that just ended, and lets go of the mouse.
+-- Forgets everything about the file that just ended. The double-click guard
+-- is about input, not the file, so it is left running: after a skip with
+-- playlist-next, end-file arrives before the second click does. Its timer
+-- (2 s at most) turns it off.
 local function reset()
 	state.chapters, state.duration, state.time = nil, nil, nil
 	state.pressed, state.dismissed = false, nil
-	stop_guard()
 	rebuild()
 end
 

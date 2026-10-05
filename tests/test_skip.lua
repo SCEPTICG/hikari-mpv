@@ -358,16 +358,61 @@ test('the guard follows input-doubleclick-time and is not used by the key', func
 	eq(s.guard_active(), false)
 end)
 
-test('end of file clears the guard', function()
-	local s = play(95)
+test('the guard outlives end-file after a playlist-next skip', function()
+	local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+	local s = play(1350, list)
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 2
 	local sec = section(s)
+	local on_up, on_down = sec.bindings[1][2], sec.bindings[1][3]
 	mock.set('mouse-pos', center(s.layout()))
-	sec.bindings[1][3](); sec.bindings[1][2]()
-	eq(sec.enabled, true)
+	on_down(); on_up()
+	eq(mock.commands[1][1], 'playlist-next')
+	mock.advance(0.03)
 	mock.events['end-file']()
-	eq(s.guard_active(), false); eq(sec.enabled, false)
-	mock.advance(1) -- the killed timer must not fire
-	eq(sec.enabled, false)
+	eq(s.guard_active(), true, 'guard survives the end of the file')
+	eq(sec.enabled, true, 'second click still ours')
+	-- The file's own state is gone.
+	eq(#s.state.ranges, 0, 'no ranges'); eq(s.state.dismissed, nil, 'no dismissal')
+	eq(s.state.chapters, nil); eq(s.is_visible(), false)
+	eq(#mock.observers['time-pos'], 0, 'time-pos not observed')
+	eq(#mock.observers['mouse-pos'], 0, 'mouse-pos not observed')
+	on_down(); on_up()
+	eq(#mock.commands, 1, 'second click swallowed')
+	mock.advance(0.3)
+	eq(s.guard_active(), false); eq(sec.enabled, false, 'released by the timer, no file loaded')
+end)
+
+test('a click started in the guard never skips a range that appears under it', function()
+	local list = chapters({{0, 'Part A'}, {90, 'OP'}, {180, 'Preview'}, {200, 'Part B'}})
+	local s = play(95, list, {['sosc-skip-outros'] = 'yes'})
+	local sec = section(s)
+	local on_up, on_down = sec.bindings[1][2], sec.bindings[1][3]
+	local rect = s.layout()
+	mock.set('mouse-pos', center(rect))
+	on_down(); on_up()
+	eq(#mock.commands, 1)
+	mock.advance(0.1)
+	mock.set('time-pos', 180.02) -- the preview button shows up under the pointer
+	eq(s.is_visible(), true)
+	mock.set('mouse-pos', center(s.layout()))
+	on_down(); on_up()
+	eq(#mock.commands, 1, 'second click of the double click does not skip the preview')
+	mock.advance(0.5)
+	on_down(); on_up()
+	eq(#mock.commands, 2, 'a later, separate click does')
+end)
+
+test('last ending with a non-finite duration: no skip', function()
+	for _, d in ipairs({math.huge, 0 / 0}) do
+		local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+		local s = play(1350, list)
+		mock.props['playlist-pos'] = 0
+		mock.props['playlist-count'] = 1
+		mock.props.duration = d
+		eq(s.skip(), false, tostring(d))
+		eq(#mock.commands, 0); eq(s.is_visible(), true)
+	end
 end)
 
 test('press on the button and release outside does not skip', function()
