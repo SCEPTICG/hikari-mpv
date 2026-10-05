@@ -48,6 +48,22 @@ The speed button in the controls bar opens a menu with 0.5×, 0.75×, 1×, 1.25�
 Alt+v  script-binding sosc_speed/open-menu
 ```
 
+## Subtitle styles
+
+The subtitles button with the text icon (`text_fields`) in the controls bar, or `Alt+t`, opens a **Subtítulos** menu with three groups. Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.
+
+- **Style**: *Original* (sets nothing: mpv's defaults or your own `sub-*` lines in `mpv.conf`), *Caja oscura* (white text on a translucent black box, Netflix-like), *Borde grueso* (bold white text, thick black outline, soft shadow, Crunchyroll-like) and *Amarillo clásico* (yellow text, black outline and shadow).
+- **Size**: `sub-scale` 0.85, 1, 1.2 or 1.4.
+- **Height**: `sub-pos` 100 (mpv's default), 95 or 90.
+
+The choice is saved to `~~/sosc-subs.conf`, which `mpv.conf` includes on start-up; sosc owns `sub-scale` and `sub-pos` through that file. The styles are defined in `portable_config/scripts/sosc-subs.lua`. Colours use mpv's `#AARRGGBB`, where the alpha is opacity (`FF` opaque, `00` invisible), the reverse of ASS. To bind another key, use `script-binding sosc_subs/open-menu` in `input.conf`.
+
+ASS subtitles keep their own styling: sosc leaves mpv's `sub-ass-override=scale` alone, so the style only applies to text subtitles (SRT, WebVTT...). With that setting mpv still applies `sub-scale` to ASS, so the size options do change them. `sub-pos` is passed to libass as the line position and moves ASS dialogue too; lines placed with `\pos` (signs, karaoke) should stay where they are. This last point still has to be checked in mpv with real files.
+
+Choosing *Original* puts back the values mpv had when the script started. If mpv was started with another style saved, those values are already the style's, so *Original* falls back to mpv's built-in defaults until the next start, when your `mpv.conf` applies again.
+
+The script adapts to the mpv version: it uses `sub-outline-color`/`sub-outline-size` and `sub-shadow-color` when this mpv has them (0.38 and newer) and `sub-border-color`/`sub-border-size` and `sub-back-color` otherwise. The box of *Caja oscura* is `sub-border-style=opaque-box`, which needs mpv 0.37 or newer; on older versions that style shows a translucent outline instead.
+
 ## Skip openings and endings
 
 `sosc-skip.lua` shows a **Saltar opening ›** / **Saltar ending ›** button at the bottom right, above uosc's controls, for as long as playback is inside a chapter that looks like an opening or an ending, even when uosc's controls are hidden or playback is paused. Clicking it, or pressing `Alt+s`, jumps to the start of the next chapter. Outside those chapters, in files without chapters, while idle and while a uosc menu or the console is open, nothing is drawn and the mouse is left to uosc and mpv.
@@ -67,6 +83,7 @@ lua tests/test_palettes.lua
 lua tests/test_title.lua
 lua tests/test_speed.lua
 lua tests/test_skip.lua
+lua tests/test_subs.lua
 ```
 
 ## License
