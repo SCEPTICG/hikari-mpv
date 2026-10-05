@@ -103,7 +103,8 @@ local KINDS = {
 	},
 	{
 		name = 'endings', label = 'Saltar ending ›',
-		patterns = {'^ed ', '^ed$', ' ed$', '^ending ', '^ending$', ' ending$'},
+		patterns = {'^ed ', '^ed$', ' ed$', '^ending ', '^ending$', ' ending$',
+			'^credits$', '^credits ', ' credits$'},
 		words = {'エンディング'},
 	},
 	{
