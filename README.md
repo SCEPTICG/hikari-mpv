@@ -1,27 +1,80 @@
 # sosc
 
-A cross-platform mpv theme (Windows, Linux, macOS) built on top of [uosc](https://github.com/tomasklaen/uosc), with its own palette, thumbnails via [thumbfast](https://github.com/po5/thumbfast), and a few extras such as skipping anime openings and endings.
+A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https://github.com/tomasklaen/uosc), with its own colour palettes and a few extras for watching series and anime.
 
-Work in progress.
+- **Palettes**: 14 colour palettes for uosc, including sosc's own, SCEPTIC, picked from a menu and applied straight away.
+- **Skip button**: a *Saltar opening / intro / ending* button while a chapter looks like an opening, intro or ending.
+- **Stream titles**: readable titles for streamed URLs, with the access token kept out of the title bar.
+- **Speed menu**: a button with fixed speeds (0.5× to 2×) instead of a slider.
+- **Subtitle styles**: a menu with three subtitle styles, plus size and height.
+- **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
+- **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
+
+The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*).
+
+## Requirements
+
+- **Windows** 10 or 11. macOS and Linux: coming soon (see [Linux and macOS](#linux-and-macos) for a manual setup in the meantime).
+- A player based on mpv: [mpv](https://mpv.io/installation/), [mpv.net](https://github.com/mpvnet-player/mpv.net), or a bundle built on mpv.net such as [AnimeJaNai](https://github.com/the-database/mpv-upscale-2x_animejanai). If none is installed, the installer offers to install mpv.net with `winget`.
+- Windows PowerShell 5.1 (built into Windows) or PowerShell 7. No administrator rights.
 
 ## Install
 
-### Windows
-
-From a copy of this repository (download it as a zip and extract it, or clone it), open PowerShell in that folder and run:
+Open PowerShell (Start menu, type *PowerShell*) and run:
 
 ```
-powershell -ExecutionPolicy Bypass -File install\install.ps1
+irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
 ```
 
-It works with Windows PowerShell 5.1 (built into Windows 10 and 11) and PowerShell 7, needs no administrator rights and does not touch the registry or `PATH`. Messages are in Spanish when Windows is set to Spanish, in English otherwise. Run it as your normal user: as administrator it warns and asks first (with `-Yes` it refuses, unless the folder is under `Program Files` or `ProgramData`), and it will not delete or move anything through a junction or symbolic link inside the config folder.
+`irm` downloads the installer of the latest release and `iex` runs it. A menu opens: choose *Install or update*, then the player (or players) to install sosc for. The installer:
 
-Once sosc has published releases there will also be a one-line install (`irm <url> | iex`). That line runs whatever the server sends without any check: the installer verifies uosc, thumbfast and the sosc files by SHA256, but it cannot verify itself. The `irm` address will always point to a file attached to a tagged release, never to the `main` branch. The safer way, recommended, is to download `install.ps1` from a tagged release, check its SHA256 against the one published with that release and run the file:
+- finds mpv, mpv.net and AnimeJaNai and the config folder each one reads;
+- backs up the files it may change, next to that folder (`<folder>-respaldo-sosc-<date>`);
+- downloads sosc, uosc and thumbfast from GitHub, always the same versions, and checks every download against its SHA256 before using it;
+- sets aside other on-screen controllers that would clash with uosc (nothing is deleted);
+- copies the scripts and their settings, and adds a marked block to `mpv.conf` and `input.conf`, leaving the rest of both files as it is.
+
+It only touches that config folder and the backup next to it, plus a temporary folder that it deletes when it ends (and, only if you choose it when no player is found, installs mpv.net with `winget`). No administrator rights, no registry, no `PATH` changes. Through `iex` it does not close or change your PowerShell window: it only leaves its result in `$LASTEXITCODE`. Messages are in Spanish when Windows is set to Spanish, in English otherwise. Restart the player afterwards.
+
+- **Update**: run the same line again and choose *Install or update*. Your saved palette and subtitle choices are kept.
+- **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes sosc and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
+
+### Options
+
+`iex` cannot pass options to the installer. To pass them, run it as a script block:
 
 ```
-Get-FileHash .\install.ps1 -Algorithm SHA256
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1))) -Action uninstall
 ```
+
+| Option | Meaning |
+| --- | --- |
+| `-Action install` / `-Action uninstall` | Skip the first menu. |
+| `-Target <config folder>` | Work on that folder (several separated by `;`) instead of choosing from the list. |
+| `-Yes` | No questions: take the default answer to everything. Needs `-Action`, and `-Target` when more than one folder is found. |
+| `-NoMenu` | Ask with numbers and typed answers instead of the keyboard menus. |
+
+Exit codes (in `$LASTEXITCODE`): 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. For example:
+
+```
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1))) -Action install -Target "$env:APPDATA\mpv" -Yes
+```
+
+### Checking the installer first
+
+`irm ... | iex` runs whatever the server sends without checking it: the installer verifies everything it downloads, but it cannot verify itself. The address always points to a file attached to a tagged release, never to the `main` branch. To check it yourself, download `sosc.ps1` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/sosc/releases/latest), compare the hash and run the file:
+
+```
+Get-FileHash .\sosc.ps1 -Algorithm SHA256
+Get-Content .\SHA256SUMS
+powershell -ExecutionPolicy Bypass -File .\sosc.ps1
+```
+
+The first line must print the hash `SHA256SUMS` lists for `sosc.ps1`. The options above work after the file name too (`-File .\sosc.ps1 -Action uninstall`). Each release's `sosc.ps1` only installs the `sosc.zip` of that same release, and only if its SHA256 matches the one written inside the script.
+
+From a copy of this repository (clone it, or download it as a zip and extract it), open PowerShell in that folder and run `powershell -ExecutionPolicy Bypass -File install\sosc.ps1`: the sosc files then come from that copy.
+
+### How the installer works
 
 The installer is driven with the keyboard: `↑`/`↓` move through a menu (going past the last entry takes you back to the first), `Enter` chooses and `Esc` leaves. Where you can pick several folders, `Space` ticks or unticks each one and `Enter` confirms; with nothing ticked, `Enter` takes the highlighted folder, so with a single player found `Enter` is enough. *Other folder…* and *Exit* are entries you choose, not boxes you tick. Yes/no questions show `Yes` and `No` side by side, starting on the default answer: `←`/`→` change it, `Enter` confirms, and `Y`/`N` (`S`/`N` in Spanish) answer straight away. `Esc` (and `Ctrl+C` while a menu is open) always answers *No* or leaves, which is never the option that removes or moves anything. So `Ctrl+C` in a yes/no question answers *No* and the installation carries on: it does not stop it. Outside a menu (while it downloads or copies, or at a typed answer) `Ctrl+C` stops the script as usual. Letter shortcuts only count on their own (`Ctrl+S` or `Alt+Y` do not answer *Yes*), keys pressed before a question appears are ignored, and in the single-choice menus the old numbers still work (`1`, `2`... and `0` for *Exit*). In a window too low for a menu, the installer first draws a compact version (folders shortened on the same line, one short help line) and, if even that does not fit, asks with numbers. When there is no interactive console (input or output redirected, `-NonInteractive`, the PowerShell ISE...) the installer asks with numbers and typed answers instead, as it also does with `-NoMenu`. Typing a folder path is always a normal typed answer.
 
@@ -47,15 +100,47 @@ Run it again at any time to update. *Uninstall* (after another backup of the sam
 
 Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
-For scripts: `-Action install|uninstall`, `-Target <config folder>` (several separated by `;`) `-Yes` (no questions, default answers) and `-NoMenu` (numbers and typed answers instead of the keyboard menus). Exit code 0 means done, 1 that a folder failed, 2 wrong usage or nothing to do.
-
-```
-powershell -ExecutionPolicy Bypass -File install\install.ps1 -Action install -Target "$env:APPDATA\mpv" -Yes
-```
+Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
 ### Linux and macOS
 
-No installer yet: copy the contents of `portable_config/` into `~/.config/mpv/` (keeping your own `mpv.conf` and `input.conf`, and adding the lines above to them), install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`.
+Coming soon. Until then, by hand: copy the contents of `portable_config/` into `~/.config/mpv/`, except `mpv.conf` and `input.conf` if you already have your own (then add the `osc=no`, `osd-bar=no` and `include` lines of the repository's `mpv.conf`, and the bindings of its `input.conf`, to yours). Then install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`.
+
+## Usage
+
+| Key | Action |
+| --- | --- |
+| `Alt+p` | Palette menu |
+| `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
+| `Alt+t` | Subtitle menu (style, size, height) |
+
+The controls bar has three sosc buttons before *fullscreen*: subtitles (text icon), speed and palettes. The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
+
+## Configuration
+
+Everything lives in the player's config folder (the one the installer showed you):
+
+| File | What it sets |
+| --- | --- |
+| `script-opts/uosc.conf` | uosc: timeline style and the buttons of the controls bar. |
+| `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
+| `script-opts/sosc-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
+| `script-opts/sosc-title.conf` | Stream titles: on/off and tidying of release names. |
+| `sosc-palette.conf`, `sosc-subs.conf` | Your chosen palette and subtitle style, saved by the menus. Kept on update. |
+
+Updating sosc replaces the `script-opts` files above with sosc's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `sosc-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked sosc block is.
+
+### Example: audio and subtitle languages
+
+sosc does not choose languages for you. A common recipe for anime with Spanish dubs (Spanish audio when there is one, otherwise Japanese with Spanish subtitles) goes in your own `mpv.conf`, before the sosc block:
+
+```
+alang=spa,es,es-ES,ja,jpn
+slang=spa,es,es-ES
+subs-with-matching-audio=no
+```
+
+`alang` and `slang` list the preferred audio and subtitle languages in order; `subs-with-matching-audio=no` stops mpv from turning on subtitles in the same language as the audio. Change the codes to your languages.
 
 ## Palettes
 
@@ -132,6 +217,10 @@ When the ending is the last chapter, skipping it moves on to the next playlist e
 
 The button follows the active palette (background and border from uosc's `background` and `foreground`, filled with `foreground` on hover). Position, size and opacity are set in `script-opts/sosc-skip.conf`. To use another key, bind `script-binding sosc_skip/skip` in `input.conf`.
 
+## Thumbnails
+
+Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
+
 ## Tests
 
 From the repository root:
@@ -143,14 +232,26 @@ lua tests/test_speed.lua
 lua tests/test_skip.lua
 lua tests/test_subs.lua
 pwsh -NoProfile -File tests/install.Tests.ps1
+bash tests/make-release.test.sh
 ```
 
-The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything.
+The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs sosc from it.
 
-## Thumbnails
+## Making a release
 
-Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
+```
+tools/make-release.sh v0.1.0
+```
+
+It needs a clean work tree and builds, from the current commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the release URL of that zip, its SHA256 and the version filled in) and `dist/SHA256SUMS`. It uploads nothing: create the GitHub release `v0.1.0` and attach the three files. `dist/` is not tracked.
+
+## Credits
+
+- [uosc](https://github.com/tomasklaen/uosc) by tomasklaen, LGPL-2.1.
+- [thumbfast](https://github.com/po5/thumbfast) by po5, MPL-2.0.
+
+Neither is included in this repository: the installer downloads them from their official sources (uosc 5.13.0 and a fixed thumbfast commit) and checks their SHA256.
 
 ## License
 
-MIT. uosc (LGPL-2.1) and thumbfast (MPL-2.0) are not included in this repository; the installer downloads them from their official releases.
+MIT, see [LICENSE](LICENSE).
