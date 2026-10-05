@@ -4,6 +4,57 @@ A cross-platform mpv theme (Windows, Linux, macOS) built on top of [uosc](https:
 
 Work in progress.
 
+## Install
+
+### Windows
+
+From a copy of this repository (download it as a zip and extract it, or clone it), open PowerShell in that folder and run:
+
+```
+powershell -ExecutionPolicy Bypass -File install\install.ps1
+```
+
+It works with Windows PowerShell 5.1 (built into Windows 10 and 11) and PowerShell 7, needs no administrator rights and does not touch the registry or `PATH`. Messages are in Spanish when Windows is set to Spanish, in English otherwise. Run it as your normal user: as administrator it warns and asks first (with `-Yes` it refuses, unless the folder is under `Program Files` or `ProgramData`), and it will not delete or move anything through a junction or symbolic link inside the config folder.
+
+Once sosc has published releases there will also be a one-line install (`irm <url> | iex`). That line runs whatever the server sends without any check: the installer verifies uosc, thumbfast and the sosc files by SHA256, but it cannot verify itself. The `irm` address will always point to a file attached to a tagged release, never to the `main` branch. The safer way, recommended, is to download `install.ps1` from a tagged release, check its SHA256 against the one published with that release and run the file:
+
+```
+Get-FileHash .\install.ps1 -Algorithm SHA256
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Choose *Install or update* and the installer lists the players it finds, with the config folder each one reads:
+
+- **AnimeJaNai** (`%LOCALAPPDATA%\Programs\mpv-AnimeJaNai`) and **mpv.net**: `portable_config` next to `mpvnet.exe` if it exists, otherwise `%APPDATA%\mpv.net` (not `%APPDATA%\mpv`).
+- **mpv** (in `PATH`, Scoop, Chocolatey or `Program Files\mpv`): `portable_config` next to `mpv.exe` if it exists, otherwise `%APPDATA%\mpv`.
+- Existing `%APPDATA%\mpv` and `%APPDATA%\mpv.net` folders, even without a player.
+
+Pick one or several (`1,3`), or type another folder (`%APPDATA%\mpv` and relative paths work). If you type the player's own folder, the one with `mpv.exe` or `mpvnet.exe`, the installer uses its `portable_config` or offers the config folder that player reads. Drive roots and your bare user folder are refused, and a folder with no sign of mpv in it (no `mpv.conf`, `input.conf`, `scripts`, `script-opts` and no mpv next to it) is only used if you confirm it; with `-Yes` it is refused. If `MPV_HOME` is set, mpv reads that folder before any `portable_config`, and so does the installer for mpv (not for mpv.net, which picks its own folder). A folder you cannot write to (a `portable_config` under `Program Files`, say) is flagged, and the installer offers the user folder instead; note that a player with a `portable_config` only reads that folder. If no player is found at all, it offers to install mpv.net with `winget` (asking first), to type a folder, or to prepare `%APPDATA%\mpv` for an mpv installed later. Ways to get mpv: <https://mpv.io/installation/>.
+
+For each folder it:
+
+1. Copies what it may change to `<folder>-respaldo-sosc-<date>` next to it, and shows its size: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `sosc-palette.conf`, `sosc-subs.conf`, `sosc-installed.txt`, and `scripts-desactivados` and `sosc-originales` if they exist. Nothing else in the folder is touched, so nothing else is copied (`shaders`, `cache`, `watch_later`...). Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone.
+2. Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom `osc.lua`, `mpv-osc-*`...) to `scripts-desactivados`, together with their `script-opts` and fonts. Nothing is deleted.
+3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: sosc's is.
+4. Copies the sosc scripts and `script-opts`. `sosc-palette.conf` and `sosc-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
+5. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the two `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
+6. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
+7. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
+
+Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside and whether to delete your saved choices.
+
+Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
+
+For scripts: `-Action install|uninstall`, `-Target <config folder>` (several separated by `;`) and `-Yes` (no questions, default answers). Exit code 0 means done, 1 that a folder failed, 2 wrong usage or nothing to do.
+
+```
+powershell -ExecutionPolicy Bypass -File install\install.ps1 -Action install -Target "$env:APPDATA\mpv" -Yes
+```
+
+### Linux and macOS
+
+No installer yet: copy the contents of `portable_config/` into `~/.config/mpv/` (keeping your own `mpv.conf` and `input.conf`, and adding the lines above to them), install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`.
+
 ## Palettes
 
 sosc ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away.
@@ -89,7 +140,10 @@ lua tests/test_title.lua
 lua tests/test_speed.lua
 lua tests/test_skip.lua
 lua tests/test_subs.lua
+pwsh -NoProfile -File tests/install.Tests.ps1
 ```
+
+The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything.
 
 ## Thumbnails
 
