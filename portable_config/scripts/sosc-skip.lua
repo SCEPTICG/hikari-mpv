@@ -59,7 +59,7 @@ local CHAR_WIDTH = 0.52
 local opts = {
 	openings = true,
 	endings = true,
-	intros = false,
+	intros = true,
 	outros = false,
 	-- Extra Lua patterns, separated by '|', matched against the lower-case title.
 	extra_openings = '',

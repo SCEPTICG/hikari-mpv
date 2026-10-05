@@ -40,7 +40,7 @@ end
 
 -- A typical episode: cold open, OP, part A, ED, preview.
 local EPISODE = chapters({
-	{0, 'Prologue'}, {90, 'Opening'}, {180, 'Part A'}, {1300, 'Ending'}, {1390, 'Preview'},
+	{0, 'Cold open'}, {90, 'Opening'}, {180, 'Part A'}, {1300, 'Ending'}, {1390, 'Preview'},
 })
 
 -- Loads the script with a 1280x720 OSD and an episode loaded at `time`.
@@ -83,11 +83,16 @@ test('lookalike titles are not openings or endings', function()
 	eq(s.classify(42), nil, 'number title')
 end)
 
-test('intros and outros are off by default', function()
+test('intros are on and outros off by default', function()
 	local s = load()
-	for _, title in ipairs({'Intro', 'Avant', 'Prologue', 'Outro', 'Closing', 'Preview', 'PV'}) do
+	for _, title in ipairs({'Intro', 'Avant', 'Prologue'}) do
+		eq(s.classify(title).name, 'intros', title)
+	end
+	for _, title in ipairs({'Outro', 'Closing', 'Preview', 'PV'}) do
 		eq(s.classify(title), nil, title)
 	end
+	s = load({['sosc-skip-intros'] = 'no'})
+	eq(s.classify('Intro'), nil, 'intros=no')
 end)
 
 test('intros and outros can be enabled, openings and endings disabled', function()
