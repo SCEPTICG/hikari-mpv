@@ -67,7 +67,7 @@ test('openings and endings are recognised like uosc (plus Japanese)', function()
 		eq(kind and kind.name, 'openings', title)
 	end
 	for _, title in ipairs({'ED', 'ed', 'Ending', 'ENDING', 'Ending Theme', 'ED 1', 'Episode 1 ED',
-		'Main Ending', 'エンディング'}) do
+		'Main Ending', 'エンディング', 'Credits', 'CREDITS', 'End Credits', 'Credits Roll'}) do
 		local kind = s.classify(title)
 		eq(kind and kind.name, 'endings', title)
 	end
@@ -76,7 +76,8 @@ end)
 test('lookalike titles are not openings or endings', function()
 	local s = load()
 	for _, title in ipairs({'Operation', 'Opening Night Part', 'Openings', 'OP1', 'Top', 'Edward',
-		'Edge', 'Bed', 'Endings', 'Pending', 'The End', 'Part A', '', 'Chapter 1'}) do
+		'Edge', 'Bed', 'Endings', 'Pending', 'The End', 'Part A', '', 'Chapter 1',
+		'Credit', 'Discredits', 'Creditscene'}) do
 		eq(s.classify(title), nil, title)
 	end
 	eq(s.classify(nil), nil, 'nil title')
