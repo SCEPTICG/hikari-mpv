@@ -9,8 +9,10 @@
     Run it from a copy of the repository:
         powershell -ExecutionPolicy Bypass -File install\install.ps1
 
-    No administrator rights, no registry, no PATH changes. Every folder it touches
-    is backed up first to a sibling folder named <config>-respaldo-sosc-<date>.
+    No administrator rights, no registry, no PATH changes. Before touching a
+    folder it copies what it may change (mpv.conf, input.conf, scripts,
+    script-opts, fonts and its own files) to a sibling folder named
+    <config>-respaldo-sosc-<date>.
 
     Works with Windows PowerShell 5.1 and PowerShell 7. This file is pure ASCII on
     purpose: Windows PowerShell 5.1 reads BOM-less scripts as ANSI, so the Spanish
@@ -94,12 +96,22 @@ $script:UserChoiceFiles = @('sosc-palette.conf', 'sosc-subs.conf')
 # script-opts that are not named sosc-*: removed on uninstall only if sosc put them there.
 $script:SharedConfs = @('uosc.conf', 'thumbfast.conf')
 
-# Top-level folders left out of the backup (they can be big and are rebuilt by mpv).
-$script:BackupExclude = @('cache', 'watch_later')
-
 $script:RecordName = 'sosc-installed.txt'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'sosc-originales'
+
+# What the backup copies: only what the installer can change. shaders, cache,
+# watch_later and anything else in the folder are never touched, so not copied.
+$script:BackupItems = @(
+    'mpv.conf', 'input.conf', 'scripts', 'script-opts', 'fonts',
+    'sosc-palette.conf', 'sosc-subs.conf', 'sosc-installed.txt',
+    'scripts-desactivados', 'sosc-originales'
+)
+
+# Signs that a folder belongs to mpv (any of them is enough).
+$script:MpvConfigFiles = @('mpv.conf', 'input.conf', 'sosc-installed.txt', 'sosc-palette.conf', 'sosc-subs.conf')
+$script:MpvConfigDirs = @('scripts', 'script-opts')
+$script:PlayerExes = @('mpvnet.exe', 'mpv.exe')
 
 # Scripts that replace mpv's on-screen controller and clash with uosc. Matched
 # against file names in scripts/ (wildcards, case-insensitive). Kept short on
@@ -117,6 +129,9 @@ $script:UoscLegacy = @('uosc.lua', 'uosc_shared')
 $script:SoscScriptRoot = $PSScriptRoot
 $script:SoscQuiet = $false
 $script:NonInteractive = $false
+# Set when running as administrator: deleting or moving then refuses paths that
+# go through a link (junction or symbolic link) inside the config folder.
+$script:SoscElevated = $false
 $script:SoscWarnings = New-Object System.Collections.Generic.List[string]
 
 # Download function, replaceable in tests: param($Url, $OutFile).
@@ -166,8 +181,9 @@ $script:SoscStringsEn = @{
     none_opt_prepare      = '3) Prepare the config in {0} for an mpv installed later'
     none_link             = 'Ways to get mpv: https://mpv.io/installation/'
     none_nowinget         = '   (winget is not available on this computer)'
-    winget_confirm        = 'Run "winget install --id mpv.net -e" now?'
+    winget_confirm        = 'Run "winget install --id mpv.net -e" now? (it accepts the winget source and package agreements)'
     winget_failed         = 'winget finished with code {0}.'
+    winget_error          = 'Could not run winget: {0}'
     yes_no_default_yes    = ' [Y/n] '
     yes_no_default_no     = ' [y/N] '
     backup_done           = 'Backup: {0}'
@@ -218,6 +234,21 @@ $script:SoscStringsEn = @{
     outside_target        = 'Refusing to delete {0}: it is outside {1}.'
     old_ps                = 'Windows PowerShell 5.1 or newer is needed.'
     cancelled             = 'Cancelled.'
+    link_skipped          = 'Not copied to the backup: {0} is a link (junction or symbolic link).'
+    path_bad              = '{0} is not a valid folder path.'
+    target_root           = 'Refusing {0}: a drive root or your user folder is not an mpv config folder.'
+    not_mpv_folder        = '{0} does not look like an mpv config folder: no mpv.conf, input.conf, scripts or script-opts in it, and no mpv next to it.'
+    not_mpv_confirm       = 'Use it anyway?'
+    not_mpv_yes           = 'With -Yes such a folder is refused: run without -Yes to confirm it.'
+    exe_folder            = '{0} is the folder of {1}, not its config folder.'
+    exe_portable          = 'Using {0}, the portable_config next to it.'
+    exe_offer             = 'Use {0}, the config folder that player reads?'
+    mpv_home_note         = 'MPV_HOME is set: mpv reads its config from {0}, not from {1}.'
+    admin_warn            = 'The installer is running as administrator. It does not need it, and what it creates may end up belonging to the administrator.'
+    admin_confirm         = 'Continue as administrator?'
+    admin_refused         = 'As administrator with -Yes, only folders under Program Files or ProgramData are allowed: {0}. Run it without administrator rights.'
+    link_in_path          = 'Refusing to delete or move {0}: {1} is a link (junction or symbolic link) and the installer is running as administrator.'
+    record_bad            = 'Ignored an invalid entry in sosc-installed.txt: {0}'
 }
 
 $script:SoscStringsEs = @{
@@ -250,8 +281,9 @@ $script:SoscStringsEs = @{
     none_opt_prepare      = '3) Dejar la configuraci\u00f3n preparada en {0} para un mpv que instale despu\u00e9s'
     none_link             = 'Formas de conseguir mpv: https://mpv.io/installation/'
     none_nowinget         = '   (winget no est\u00e1 disponible en este equipo)'
-    winget_confirm        = '\u00bfEjecutar ahora "winget install --id mpv.net -e"?'
+    winget_confirm        = '\u00bfEjecutar ahora "winget install --id mpv.net -e"? (acepta los acuerdos del origen y del paquete de winget)'
     winget_failed         = 'winget ha terminado con el c\u00f3digo {0}.'
+    winget_error          = 'No se ha podido ejecutar winget: {0}'
     yes_no_default_yes    = ' [S/n] '
     yes_no_default_no     = ' [s/N] '
     backup_done           = 'Copia de seguridad: {0}'
@@ -302,6 +334,21 @@ $script:SoscStringsEs = @{
     outside_target        = 'No se borra {0}: est\u00e1 fuera de {1}.'
     old_ps                = 'Hace falta Windows PowerShell 5.1 o posterior.'
     cancelled             = 'Cancelado.'
+    link_skipped          = 'No se copia a la copia de seguridad: {0} es un enlace (uni\u00f3n o enlace simb\u00f3lico).'
+    path_bad              = '{0} no es una ruta de carpeta v\u00e1lida.'
+    target_root           = 'No se usa {0}: la ra\u00edz de una unidad o tu carpeta de usuario no son una carpeta de configuraci\u00f3n de mpv.'
+    not_mpv_folder        = '{0} no parece una carpeta de configuraci\u00f3n de mpv: no tiene mpv.conf, input.conf, scripts ni script-opts, ni hay un mpv al lado.'
+    not_mpv_confirm       = '\u00bfUsarla de todos modos?'
+    not_mpv_yes           = 'Con -Yes se rechaza una carpeta as\u00ed: ejecuta sin -Yes para confirmarla.'
+    exe_folder            = '{0} es la carpeta de {1}, no su carpeta de configuraci\u00f3n.'
+    exe_portable          = 'Se usa {0}, la portable_config que tiene al lado.'
+    exe_offer             = '\u00bfUsar {0}, la carpeta de configuraci\u00f3n que lee ese reproductor?'
+    mpv_home_note         = 'MPV_HOME est\u00e1 definida: mpv lee su configuraci\u00f3n de {0}, no de {1}.'
+    admin_warn            = 'El instalador se est\u00e1 ejecutando como administrador. No le hace falta, y lo que cree puede acabar perteneciendo al administrador.'
+    admin_confirm         = '\u00bfSeguir como administrador?'
+    admin_refused         = 'Como administrador y con -Yes solo se admiten carpetas dentro de Program Files o ProgramData: {0}. Ejec\u00fatalo sin permisos de administrador.'
+    link_in_path          = 'No se borra ni se mueve {0}: {1} es un enlace (uni\u00f3n o enlace simb\u00f3lico) y el instalador se est\u00e1 ejecutando como administrador.'
+    record_bad            = 'Se ignora una entrada no v\u00e1lida de sosc-installed.txt: {0}'
 }
 
 function Get-SoscLanguage {
@@ -427,14 +474,37 @@ function Assert-SoscInside {
     }
 }
 
+# True for junctions, symbolic links and other reparse points.
+function Test-SoscLink {
+    param($Item)
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+# Running as administrator, a link inside the config folder (scripts\ -> C:\Windows,
+# say) would let a delete or move land outside it with full rights. So, only when
+# elevated, every folder between $Root (excluded) and $Path (excluded: a link
+# there is deleted or moved as a link) must be a real folder.
+function Assert-SoscNoLink {
+    param([string]$Path, [string]$Root)
+    if (-not $script:SoscElevated) { return }
+    $rootFull = Get-SoscFullPath $Root
+    $p = Split-Path -Path (Get-SoscFullPath $Path) -Parent
+    while ($p -and (Test-SoscInside -Path $p -Root $rootFull)) {
+        $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and (Test-SoscLink $item)) { throw (T 'link_in_path' @($Path, $p)) }
+        $p = Split-Path -Path $p -Parent
+    }
+}
+
 # Deletes a file or folder inside $Root. Links (junctions, symlinks) are removed
 # as links: their target is never followed.
 function Remove-SoscItem {
     param([string]$Path, [string]$Root)
     Assert-SoscInside -Path $Path -Root $Root
+    Assert-SoscNoLink -Path $Path -Root $Root
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $item = Get-Item -LiteralPath $Path -Force
-    $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    $isLink = Test-SoscLink $item
     if ($item.PSIsContainer) {
         if ($isLink) {
             [System.IO.Directory]::Delete($item.FullName, $false)
@@ -452,12 +522,15 @@ function Remove-SoscItem {
     }
 }
 
+# Copies a folder tree. Links inside it are skipped (with a warning), never
+# followed: a junction could point anywhere, even back up the tree.
 function Copy-SoscTree {
     param([string]$From, [string]$To)
     if (-not (Test-Path -LiteralPath $To -PathType Container)) {
         New-Item -ItemType Directory -Path $To -Force | Out-Null
     }
     foreach ($child in @(Get-ChildItem -LiteralPath $From -Force)) {
+        if (Test-SoscLink $child) { Write-SoscWarn (T 'link_skipped' @($child.FullName)); continue }
         $dest = Join-SoscPath $To $child.Name
         if ($child.PSIsContainer) {
             Copy-SoscTree -From $child.FullName -To $dest
@@ -466,6 +539,35 @@ function Copy-SoscTree {
             Copy-Item -LiteralPath $child.FullName -Destination $dest -Force
         }
     }
+}
+
+# Size in bytes of a file or folder tree, without following links.
+function Get-SoscTreeSize {
+    param($Item)
+    if (Test-SoscLink $Item) { return 0 }
+    if (-not $Item.PSIsContainer) { return [long]$Item.Length }
+    $total = [long]0
+    foreach ($child in @(Get-ChildItem -LiteralPath $Item.FullName -Force -ErrorAction SilentlyContinue)) {
+        $total += (Get-SoscTreeSize $child)
+    }
+    return $total
+}
+
+# A path typed by the user (or given with -Target): quotes stripped, %VARS%
+# expanded and a relative path resolved against PowerShell's current folder (not
+# the process one, which can differ). Throws when it is not a file system path.
+function ConvertTo-SoscTypedPath {
+    param([string]$Path)
+    if ($null -eq $Path) { $Path = '' }
+    $p = $Path.Trim().Trim('"').Trim("'").Trim()
+    if ($p -eq '') { throw (T 'path_bad' @($Path)) }
+    $p = [Environment]::ExpandEnvironmentVariables($p)
+    $provider = $null
+    $drive = $null
+    try { $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p, [ref]$provider, [ref]$drive) }
+    catch { throw (T 'path_bad' @($Path)) }
+    if ($null -eq $provider -or $provider.Name -ne 'FileSystem') { throw (T 'path_bad' @($Path)) }
+    return (Get-SoscFullPath $resolved)
 }
 
 function New-SoscDirectory {
@@ -539,9 +641,21 @@ function Test-SoscDirWritable {
 # Detection
 # ---------------------------------------------------------------------------
 
+function Test-SoscAdmin {
+    try {
+        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object System.Security.Principal.WindowsPrincipal($id)
+        return [bool]$principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    catch {
+        return $false
+    }
+}
+
 # Everything detection needs from the machine, so tests can fake a Windows box.
 function New-SoscEnvironment {
     return @{
+        IsAdmin         = (Test-SoscAdmin)
         LocalAppData    = $env:LOCALAPPDATA
         AppData         = $env:APPDATA
         UserProfile     = $env:USERPROFILE
@@ -598,7 +712,7 @@ function Get-SoscInstallState {
     param([string]$ConfigDir)
     $state = [pscustomobject]@{ Installed = $false; Version = ''; Manual = $false }
     if (-not $ConfigDir -or -not (Test-Path -LiteralPath $ConfigDir -PathType Container)) { return $state }
-    $record = Read-SoscRecord $ConfigDir
+    $record = Read-SoscRecord $ConfigDir -NoWarn
     if ($null -ne $record) {
         $state.Installed = $true
         $state.Version = [string]$record.Values['sosc_version']
@@ -698,7 +812,10 @@ function Find-SoscPlayers {
         $seenExe.Add($exeFull)
         $kind = Get-SoscPlayerKind $exeFull
         $portableDir = Join-SoscPath (Split-Path -Path $exeFull -Parent) 'portable_config'
-        $portable = Test-Path -LiteralPath $portableDir -PathType Container
+        # mpv itself gives MPV_HOME priority over portable_config. mpv.net (and
+        # AnimeJaNai) set their own config-dir, which beats both, so for them
+        # MPV_HOME does not matter.
+        $portable = (Test-Path -LiteralPath $portableDir -PathType Container) -and -not ($kind -eq 'mpv' -and $Env.MpvHome)
         if ($portable) { $config = $portableDir } else { $config = Get-SoscUserConfigDir -Env $Env -Kind $kind }
         if (-not $config) { continue }
         $config = Get-SoscFullPath $config
@@ -720,30 +837,87 @@ function Find-SoscPlayers {
 }
 
 # A folder typed by the user (or given with -Target): reuse the detected entry
-# when it is one, otherwise guess the player from an exe next to it.
+# when it is one, otherwise guess the player from an exe next to it. A folder
+# that holds the player itself is not a config folder: its portable_config is
+# used, or the user folder that player reads is offered. Returns $null when the
+# user turns that down.
 function Resolve-SoscManualTarget {
     param([hashtable]$Env, [string]$Path, [object[]]$Candidates)
-    $Path = $Path.Trim().Trim('"').Trim("'")
-    $full = Get-SoscFullPath $Path
+    $full = ConvertTo-SoscTypedPath $Path
     foreach ($c in $Candidates) {
         if (Test-SoscSamePath $c.ConfigDir $full) { return $c }
     }
+
+    foreach ($name in $script:PlayerExes) {
+        $probe = Join-SoscPath $full $name
+        if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) { continue }
+        $kind = Get-SoscPlayerKind $probe
+        Write-SoscWarn (T 'exe_folder' @($full, $name))
+        $portableDir = Join-SoscPath $full 'portable_config'
+        if ((Test-Path -LiteralPath $portableDir -PathType Container) -and -not ($kind -eq 'mpv' -and $Env.MpvHome)) {
+            Write-SoscInfo (T 'exe_portable' @($portableDir))
+            return (Resolve-SoscManualTarget -Env $Env -Path $portableDir -Candidates $Candidates)
+        }
+        $user = Get-SoscUserConfigDir -Env $Env -Kind $kind
+        if (-not $user) { return $null }
+        $user = Get-SoscFullPath $user
+        if (-not (Confirm-Sosc -Question (T 'exe_offer' @($user)) -Default $true)) { return $null }
+        foreach ($c in $Candidates) {
+            if (Test-SoscSamePath $c.ConfigDir $user) { return $c }
+        }
+        return (New-SoscCandidate -Env $Env -Kind $kind -Exe $probe -ConfigDir $user -Portable $false)
+    }
+
     $kind = 'folder'
     $exe = ''
     $portable = $false
     if ((Split-Path -Path $full -Leaf) -ieq 'portable_config') {
         $parent = Split-Path -Path $full -Parent
-        foreach ($name in @('mpvnet.exe', 'mpv.exe')) {
+        foreach ($name in $script:PlayerExes) {
             $probe = Join-SoscPath $parent $name
             if (Test-Path -LiteralPath $probe -PathType Leaf) {
                 $exe = $probe
                 $kind = Get-SoscPlayerKind $probe
                 $portable = $true
+                if ($kind -eq 'mpv' -and $Env.MpvHome) { Write-SoscWarn (T 'mpv_home_note' @($Env.MpvHome, $full)) }
                 break
             }
         }
     }
     return (New-SoscCandidate -Env $Env -Kind $kind -Exe $exe -ConfigDir $full -Portable $portable)
+}
+
+# A drive root (C:\, \\server\share, /) or the bare user profile is never a
+# config folder: backing it up or writing scripts\ there makes no sense.
+function Test-SoscForbiddenTarget {
+    param([hashtable]$Env, [string]$Path)
+    $full = Get-SoscFullPath $Path
+    $seps = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $root = [System.IO.Path]::GetPathRoot($full)
+    if ($null -eq $root -or $full.TrimEnd($seps) -eq $root.TrimEnd($seps)) { return $true }
+    if ($Env.UserProfile -and (Test-SoscSamePath $full $Env.UserProfile)) { return $true }
+    return $false
+}
+
+# False only for a folder that exists, is not empty and shows no sign of mpv.
+function Test-SoscLooksLikeMpvConfig {
+    param([hashtable]$Env, $Candidate)
+    $dir = Get-SoscFullPath $Candidate.ConfigDir
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $true }
+    if (@(Get-ChildItem -LiteralPath $dir -Force).Count -eq 0) { return $true }
+    if ($Candidate.Exe) { return $true }
+    foreach ($n in $script:MpvConfigFiles) { if (Test-Path -LiteralPath (Join-SoscPath $dir $n) -PathType Leaf) { return $true } }
+    foreach ($n in $script:MpvConfigDirs) { if (Test-Path -LiteralPath (Join-SoscPath $dir $n) -PathType Container) { return $true } }
+    foreach ($kind in @('mpv', 'mpv.net')) {
+        $user = Get-SoscUserConfigDir -Env $Env -Kind $kind
+        if ($user -and (Test-SoscSamePath $user $dir)) { return $true }
+    }
+    $parent = Split-Path -Path $dir -Parent
+    foreach ($d in @($dir, $parent)) {
+        if (-not $d) { continue }
+        foreach ($n in $script:PlayerExes) { if (Test-Path -LiteralPath (Join-SoscPath $d $n) -PathType Leaf) { return $true } }
+    }
+    return $false
 }
 
 # "1,3" / "o" / "0" -> what the user picked. Returns $null when the text is not valid.
@@ -823,9 +997,10 @@ function Find-SoscBlock {
 
 # Puts the block (marker lines added here) in place of the old one, or at the end.
 function Set-SoscBlockText {
-    param([string]$Text, [string[]]$BlockLines, [string]$Name = 'file')
+    param([string]$Text, [string[]]$BlockLines, [string]$Name = 'file', [string]$Eol = '')
     if ($null -eq $Text) { $Text = '' }
-    $eol = Get-SoscEol $Text
+    $eol = $Eol
+    if (-not $eol) { $eol = Get-SoscEol $Text }
     $all = @($script:BlockBegin) + @($BlockLines) + @($script:BlockEnd)
     $body = [string]::Join($eol, $all)
     $lines = @(Split-SoscLines $Text)
@@ -866,18 +1041,30 @@ function Get-SoscOutsideLines {
     return $out.ToArray()
 }
 
-# Block for mpv.conf. If the lines before it end inside a [profile], the block
-# opens with [default] so its options are top-level (mpv applies whatever follows
-# a [name] header to that profile only).
+# Profile name of an mpv.conf line, or $null when the line is not a profile
+# header. Same rules as mpv's parser: leading blanks skipped, the name is what
+# lies between '[' and the first ']' (not trimmed), and after it only blanks
+# and a '#' comment may follow.
+function Get-SoscProfileHeader {
+    param([string]$Line)
+    $m = [regex]::Match($Line.TrimStart(), '^\[([^\]]*)\]\s*(#.*)?$')
+    if (-not $m.Success) { return $null }
+    return $m.Groups[1].Value
+}
+
+# Block for mpv.conf, which always goes at the end of the file (so its include of
+# sosc-subs.conf comes after the user's own sub-* lines). If the file ends inside
+# a [profile], the block opens with [default] so its options are top-level: mpv
+# applies whatever follows a [name] header to that profile only. mpv compares
+# names exactly: [DEFAULT] is another profile, and an empty [] means default.
 function Get-SoscMpvConfBlock {
     param([string]$Text)
     $lastHeader = $null
     foreach ($line in @(Get-SoscOutsideLines -Text $Text -Name 'mpv.conf')) {
-        if (-not $line.BeforeBlock) { continue }
-        $c = $line.Content.Trim()
-        if ($c -match '^\[(.+)\]$') { $lastHeader = $Matches[1].Trim() }
+        $h = Get-SoscProfileHeader $line.Content
+        if ($null -ne $h) { $lastHeader = $h }
     }
-    $needsDefault = ($null -ne $lastHeader -and $lastHeader -ne 'default')
+    $needsDefault = ($null -ne $lastHeader -and $lastHeader -cne 'default' -and $lastHeader -ne '')
     $lines = @()
     if ($needsDefault) { $lines += '[default]' }
     $lines += $script:MpvConfLines
@@ -943,17 +1130,19 @@ function Update-SoscManagedFile {
     else { $file = [pscustomobject]@{ Text = ''; Encoding = 'utf8'; Bom = $false } }
 
     if ($Kind -eq 'mpv') {
-        $block = Get-SoscMpvConfBlock $file.Text
+        # The block is taken out of wherever it is and added again at the end.
+        $without = Remove-SoscBlockText -Text $file.Text -Name $name
+        $block = Get-SoscMpvConfBlock $without
         if ($block.NeedsDefault) { Write-SoscInfo (T 'default_section' @($name)) }
-        $lines = $block.Lines
+        $newText = Set-SoscBlockText -Text $without -BlockLines $block.Lines -Name $name -Eol (Get-SoscEol $file.Text)
     }
     else {
+        # input.conf: the block stays where it is (order does not matter there).
         $block = Get-SoscInputBlock $file.Text
         foreach ($t in $block.Taken) { Write-SoscWarn (T 'key_taken' @($t.Key, $t.Existing, $t.Command)) }
         foreach ($s in $block.Same) { Write-SoscInfo (T 'key_same' @($s.Key, $s.Command)) }
-        $lines = $block.Lines
+        $newText = Set-SoscBlockText -Text $file.Text -BlockLines $block.Lines -Name $name
     }
-    $newText = Set-SoscBlockText -Text $file.Text -BlockLines $lines -Name $name
     if (-not $existed -or $newText -ne $file.Text) {
         Write-SoscText -Path $Path -Text $newText -Encoding $file.Encoding -Bom $file.Bom
     }
@@ -1007,8 +1196,22 @@ function Set-SoscConfOption {
 # Installer record (sosc-installed.txt)
 # ---------------------------------------------------------------------------
 
+# The record can be edited by anyone, so its paths are checked before use: they
+# must be relative, '/'-separated, with no '..', '.', empty segment, drive,
+# backslash or characters Windows does not allow, and no segment ending in a dot
+# or a space (Windows drops those, so "..." could act as "..").
+function Test-SoscRecordPath {
+    param([string]$Rel)
+    if ([string]::IsNullOrEmpty($Rel)) { return $false }
+    if ($Rel -match '[\\:*?"<>|\x00-\x1f]') { return $false }
+    foreach ($seg in ($Rel -split '/')) {
+        if ($seg -eq '' -or $seg -match '^\.+$' -or $seg -match '[. ]$') { return $false }
+    }
+    return $true
+}
+
 function Read-SoscRecord {
-    param([string]$ConfigDir)
+    param([string]$ConfigDir, [switch]$NoWarn)
     $path = Join-SoscPath $ConfigDir $script:RecordName
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     $values = @{}
@@ -1019,8 +1222,15 @@ function Read-SoscRecord {
         $idx = $line.IndexOf('=')
         $key = $line.Substring(0, $idx).Trim()
         $value = $line.Substring($idx + 1).Trim()
-        if ($key -eq 'file') { $files.Add($value) }
-        elseif ($key -eq 'disabled') { $disabled.Add($value) }
+        if ($key -eq 'file') {
+            if (Test-SoscRecordPath $value) { $files.Add($value) }
+            elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
+        }
+        elseif ($key -eq 'disabled') {
+            $pair = $value -split '\|'
+            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) { $disabled.Add($value) }
+            elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
+        }
         else { $values[$key] = $value }
     }
     return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray() }
@@ -1095,7 +1305,8 @@ function Invoke-SoscVerifiedDownload {
     Assert-SoscDownloadUrl $Url
     if ([string]::IsNullOrEmpty($Sha256)) { throw (T 'hash_bad' @($Url, '?', '?')) }
     Write-SoscInfo (T 'downloading' @($Url))
-    & $script:SoscDownloader $Url $OutFile
+    # Anything the downloader prints must not end up in the caller's return value.
+    & $script:SoscDownloader $Url $OutFile | Out-Null
     if (-not (Test-Path -LiteralPath $OutFile -PathType Leaf)) { throw (T 'hash_bad' @($Url, $Sha256, '-')) }
     $actual = Get-SoscFileSha256 $OutFile
     if ($actual -ne $Sha256.ToLowerInvariant()) {
@@ -1167,30 +1378,44 @@ function Get-SoscArtifacts {
 # Install steps
 # ---------------------------------------------------------------------------
 
-# Copies the config folder to <config>-respaldo-sosc-<stamp>, next to it.
+# Copies what the installer may change ($script:BackupItems) to
+# <config>-respaldo-sosc-<stamp>, next to it. Links are skipped, not followed.
+# Returns '' when there is nothing to copy. A copy that fails half-way is deleted.
 function New-SoscBackup {
     param([string]$ConfigDir, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $full = Get-SoscFullPath $ConfigDir
+    $parent = Split-Path -Path $full -Parent
+    if (-not $parent) { throw (T 'target_root' @($full)) }
+    $items = @()
+    foreach ($name in $script:BackupItems) {
+        $p = Join-SoscPath $full $name
+        $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        if ($null -eq $item) { continue }
+        if (Test-SoscLink $item) { Write-SoscWarn (T 'link_skipped' @($item.FullName)); continue }
+        $items += $item
+    }
+    if ($items.Count -eq 0) { return '' }
+
     $base = $full + '-respaldo-sosc-' + $Stamp
     $backup = $base
     $n = 2
     while (Test-Path -LiteralPath $backup) { $backup = $base + '-' + $n; $n++ }
-    $bytes = 0
-    foreach ($child in @(Get-ChildItem -LiteralPath $full -Force)) {
-        if ($child.PSIsContainer -and $script:BackupExclude -contains $child.Name.ToLowerInvariant()) { continue }
-        if ($child.PSIsContainer) {
-            foreach ($f in @(Get-ChildItem -LiteralPath $child.FullName -Recurse -File -Force -ErrorAction SilentlyContinue)) { $bytes += $f.Length }
-        }
-        else { $bytes += $child.Length }
-    }
+    $bytes = [long]0
+    foreach ($item in $items) { $bytes += (Get-SoscTreeSize $item) }
     Write-SoscInfo (T 'backup_size' @($full, [math]::Round($bytes / 1MB, 1)))
     New-SoscDirectory $backup
-    foreach ($child in @(Get-ChildItem -LiteralPath $full -Force)) {
-        if ($child.PSIsContainer -and $script:BackupExclude -contains $child.Name.ToLowerInvariant()) { continue }
-        $dest = Join-SoscPath $backup $child.Name
-        if ($child.PSIsContainer) { Copy-SoscTree -From $child.FullName -To $dest }
-        else { Copy-Item -LiteralPath $child.FullName -Destination $dest -Force }
+    try {
+        foreach ($item in $items) {
+            $dest = Join-SoscPath $backup $item.Name
+            if ($item.PSIsContainer) { Copy-SoscTree -From $item.FullName -To $dest }
+            else { Copy-Item -LiteralPath $item.FullName -Destination $dest -Force }
+        }
+    }
+    catch {
+        $failure = $_
+        try { Remove-SoscItem -Path $backup -Root $parent } catch { }
+        throw $failure
     }
     return $backup
 }
@@ -1249,6 +1474,9 @@ function Move-SoscToDisabled {
         if ((Get-Item -LiteralPath $Path -Force).PSIsContainer) { $ext = ''; $stem = $name }
         $dest = Join-SoscPath $destDir ($stem + '-' + $Stamp + $ext)
     }
+    Assert-SoscInside -Path $dest -Root $ConfigDir
+    Assert-SoscNoLink -Path $Path -Root $ConfigDir
+    Assert-SoscNoLink -Path $dest -Root $ConfigDir
     Move-Item -LiteralPath $Path -Destination $dest
     $destRel = Get-SoscRelativePath -Path $dest -Root $ConfigDir
     Write-SoscInfo (T 'moved' @($rel, $destRel))
@@ -1299,11 +1527,9 @@ function Install-SoscTarget {
     # a. Backup (only when there is something to back up).
     $backup = ''
     if (Test-Path -LiteralPath $config -PathType Container) {
-        if (@(Get-ChildItem -LiteralPath $config -Force).Count -gt 0) {
-            try { $backup = New-SoscBackup -ConfigDir $config -Stamp $Stamp }
-            catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
-            Write-SoscInfo (T 'backup_done' @($backup))
-        }
+        try { $backup = New-SoscBackup -ConfigDir $config -Stamp $Stamp }
+        catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
+        if ($backup) { Write-SoscInfo (T 'backup_done' @($backup)) }
     }
     else {
         New-SoscDirectory $config
@@ -1386,7 +1612,8 @@ function Install-SoscTarget {
             }
         }
         foreach ($oldFile in $oldFiles) {
-            if ($installed -contains $oldFile -or $oldFile -notmatch '^scripts/sosc-[^/]+\.lua$|^script-opts/sosc-[^/]+\.conf$') { continue }
+            if ($installed -contains $oldFile -or $oldFile -notmatch '^scripts/sosc-[^/\\]+\.lua$|^script-opts/sosc-[^/\\]+\.conf$') { continue }
+            if (-not (Test-SoscRecordPath $oldFile)) { continue }
             $p = Join-SoscPath $config ($oldFile -split '/')
             if (Test-Path -LiteralPath $p -PathType Leaf) {
                 Remove-SoscItem -Path $p -Root $config
@@ -1448,7 +1675,7 @@ function Uninstall-SoscTarget {
     Write-SoscInfo (T 'uninstalling_from' @($config))
     try { $backup = New-SoscBackup -ConfigDir $config -Stamp $Stamp }
     catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
-    Write-SoscInfo (T 'backup_done' @($backup))
+    if ($backup) { Write-SoscInfo (T 'backup_done' @($backup)) }
 
     try {
         $record = Read-SoscRecord $config
@@ -1477,16 +1704,18 @@ function Uninstall-SoscTarget {
             $orig = Join-SoscPath $originals $c
             if ($before -eq $true -and (Test-Path -LiteralPath $orig -PathType Leaf)) {
                 Copy-Item -LiteralPath $orig -Destination $p -Force
-                Write-SoscInfo (T 'conf_restored' @('script-opts/' + $c))
+                Write-SoscInfo (T 'conf_restored' @(('script-opts/' + $c)))
             }
             elseif ($before -eq $false) {
                 Remove-SoscItem -Path $p -Root $config
             }
             elseif ($before -eq $true) {
-                Write-SoscInfo (T 'conf_left' @('script-opts/' + $c, $values['first_backup']))
+                $firstBackup = ''
+                if ($values.ContainsKey('first_backup')) { $firstBackup = [string]$values['first_backup'] }
+                Write-SoscInfo (T 'conf_left' @(('script-opts/' + $c), $firstBackup))
             }
             elseif (Test-Path -LiteralPath $p -PathType Leaf) {
-                Write-SoscInfo (T 'conf_unknown' @('script-opts/' + $c))
+                Write-SoscInfo (T 'conf_unknown' @(('script-opts/' + $c)))
             }
         }
 
@@ -1515,12 +1744,19 @@ function Uninstall-SoscTarget {
             if (Confirm-Sosc -Question (T 'ask_restore' @($names)) -Default $removeUosc) {
                 foreach ($entry in $pending) {
                     $pair = $entry -split '\|'
+                    # Already checked when the record was read; checked again here
+                    # because an entry pointing outside must never be acted on.
+                    if ($pair.Count -ne 2 -or -not (Test-SoscRecordPath $pair[0]) -or -not (Test-SoscRecordPath $pair[1])) {
+                        Write-SoscWarn (T 'record_bad' @($entry)); continue
+                    }
                     $from = Join-SoscPath $config ($pair[0] -split '/')
                     $to = Join-SoscPath $config ($pair[1] -split '/')
-                    Assert-SoscInside -Path $from -Root $config
-                    Assert-SoscInside -Path $to -Root $config
+                    if (-not (Test-SoscInside -Path $from -Root $config)) { Write-SoscWarn (T 'outside_target' @($from, $config)); continue }
+                    if (-not (Test-SoscInside -Path $to -Root $config)) { Write-SoscWarn (T 'outside_target' @($to, $config)); continue }
                     if (-not (Test-Path -LiteralPath $from)) { continue }
                     if (Test-Path -LiteralPath $to) { Write-SoscWarn (T 'restore_skipped' @($pair[0], $pair[1])); continue }
+                    Assert-SoscNoLink -Path $from -Root $config
+                    Assert-SoscNoLink -Path $to -Root $config
                     New-SoscDirectory (Split-Path -Path $to -Parent)
                     Move-Item -LiteralPath $from -Destination $to
                     Write-SoscInfo (T 'moved' @($pair[0], $pair[1]))
@@ -1543,6 +1779,15 @@ function Uninstall-SoscTarget {
             }
         }
 
+        # Folders left empty (sosc may have created them) go too.
+        foreach ($dirName in @('fonts', 'script-opts', 'scripts')) {
+            $dir = Join-SoscPath $config $dirName
+            $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+            if ($null -ne $item -and $item.PSIsContainer -and -not (Test-SoscLink $item) -and
+                @(Get-ChildItem -LiteralPath $dir -Force).Count -eq 0) {
+                Remove-SoscItem -Path $dir -Root $config
+            }
+        }
         Remove-SoscItem -Path (Join-SoscPath $config $script:OriginalsDir) -Root $config
         Remove-SoscItem -Path (Join-SoscPath $config $script:RecordName) -Root $config
         $disabledDir = Join-SoscPath $config $script:DisabledDir
@@ -1552,7 +1797,9 @@ function Uninstall-SoscTarget {
         }
     }
     catch {
-        throw ($_.Exception.Message + ' ' + (T 'restore_hint' @($backup)))
+        $message = $_.Exception.Message
+        if ($backup) { $message += ' ' + (T 'restore_hint' @($backup)) }
+        throw $message
     }
     Write-SoscOk (T 'uninstall_ok' @($config))
     return $backup
@@ -1588,12 +1835,30 @@ function Read-SoscFolder {
     while ($true) {
         $answer = Read-SoscLine (T 'ask_folder')
         if ($null -eq $answer -or $answer.Trim() -eq '' -or $answer.Trim() -eq '0') { return $null }
-        $path = $answer.Trim().Trim('"').Trim("'")
+        try { $path = ConvertTo-SoscTypedPath $answer }
+        catch { Write-SoscWarn $_.Exception.Message; continue }
         $parent = Split-Path -Path $path -Parent
         if ((Test-Path -LiteralPath $path -PathType Container) -or ($parent -and (Test-Path -LiteralPath $parent -PathType Container))) {
-            return (Resolve-SoscManualTarget -Env $Env -Path $path -Candidates $Candidates)
+            $c = Resolve-SoscManualTarget -Env $Env -Path $path -Candidates $Candidates
+            if ($null -ne $c) { return $c }
+            continue
         }
         Write-SoscWarn (T 'folder_missing' @($path))
+    }
+}
+
+# Runs winget. Its output goes to the screen, never into the caller's return
+# value. Returns winget's exit code (-1 when it could not be started).
+function Invoke-SoscWinget {
+    param([string]$Exe)
+    $wingetArgs = @('install', '--id', 'mpv.net', '-e', '--accept-source-agreements', '--accept-package-agreements')
+    try {
+        & $Exe @wingetArgs | ForEach-Object { Write-SoscInfo ([string]$_) }
+        return [int]$LASTEXITCODE
+    }
+    catch {
+        Write-SoscWarn (T 'winget_error' @($_.Exception.Message))
+        return -1
     }
 }
 
@@ -1618,7 +1883,8 @@ function Resolve-SoscWritable {
 function Invoke-SoscNoPlayerMenu {
     param([hashtable]$Env)
     Write-SoscWarn (T 'none_found')
-    $hasWinget = $null -ne (Get-Command -Name 'winget' -CommandType Application -ErrorAction SilentlyContinue)
+    $winget = & $Env.FindCommand 'winget'
+    $hasWinget = -not [string]::IsNullOrEmpty($winget)
     $appMpv = Get-SoscUserConfigDir -Env $Env -Kind 'mpv'
     while ($true) {
         Write-SoscInfo (T 'none_opt_winget')
@@ -1634,8 +1900,8 @@ function Invoke-SoscNoPlayerMenu {
             '1' {
                 if (-not $hasWinget) { Write-SoscWarn (T 'invalid'); continue }
                 if (Confirm-Sosc -Question (T 'winget_confirm') -Default $true) {
-                    & winget install --id mpv.net -e
-                    if ($LASTEXITCODE -ne 0) { Write-SoscWarn (T 'winget_failed' @($LASTEXITCODE)) }
+                    $code = Invoke-SoscWinget -Exe $winget
+                    if ($code -ne 0) { Write-SoscWarn (T 'winget_failed' @($code)) }
                     $found = @(Find-SoscPlayers -Env $Env)
                     if ($found.Count -gt 0) { return $found }
                     Write-SoscWarn (T 'none_found')
@@ -1646,7 +1912,9 @@ function Invoke-SoscNoPlayerMenu {
                 if ($null -ne $c) { return @($c) }
             }
             '3' {
-                return @(Resolve-SoscManualTarget -Env $Env -Path $appMpv -Candidates @())
+                if (-not $appMpv) { Write-SoscWarn (T 'invalid'); continue }
+                $c = Resolve-SoscManualTarget -Env $Env -Path $appMpv -Candidates @()
+                if ($null -ne $c) { return @($c) }
             }
             default { Write-SoscWarn (T 'invalid') }
         }
@@ -1660,8 +1928,14 @@ function Select-SoscTargets {
     $all = @(Find-SoscPlayers -Env $Env)
     $chosen = New-Object System.Collections.Generic.List[object]
 
+    $refused = $false
     if (@($Paths).Count -gt 0) {
-        foreach ($p in $Paths) { $chosen.Add((Resolve-SoscManualTarget -Env $Env -Path $p -Candidates $all)) }
+        foreach ($p in $Paths) {
+            $c = $null
+            try { $c = Resolve-SoscManualTarget -Env $Env -Path $p -Candidates $all }
+            catch { Write-SoscError $_.Exception.Message }
+            if ($null -ne $c) { $chosen.Add($c) } else { $refused = $true }
+        }
     }
     else {
         $list = $all
@@ -1690,7 +1964,10 @@ function Select-SoscTargets {
                 }
                 Write-SoscInfo (' ' + (T 'opt_other'))
                 Write-SoscInfo (' ' + (T 'opt_quit'))
-                $sel = ConvertFrom-SoscSelection -Text (Read-SoscLine (T 'select_prompt')) -Count $list.Count
+                $text = Read-SoscLine (T 'select_prompt')
+                # No more input (stdin closed or redirected): same as choosing Exit.
+                if ($null -eq $text) { break }
+                $sel = ConvertFrom-SoscSelection -Text $text -Count $list.Count
                 if ($null -eq $sel) { Write-SoscWarn (T 'invalid'); continue }
                 if ($sel.Quit) { break }
                 foreach ($i in $sel.Indexes) { $chosen.Add($list[$i]) }
@@ -1703,13 +1980,63 @@ function Select-SoscTargets {
         }
     }
 
-    if ($Mode -eq 'uninstall') { return [pscustomobject]@{ Ok = $true; Targets = $chosen.ToArray() } }
-    $writable = New-Object System.Collections.Generic.List[object]
+    # Folders that must never be used, and folders that do not look like mpv's.
+    $safe = New-Object System.Collections.Generic.List[object]
     foreach ($c in $chosen) {
+        if (Test-SoscForbiddenTarget -Env $Env -Path $c.ConfigDir) {
+            Write-SoscError (T 'target_root' @($c.ConfigDir))
+            $refused = $true
+            continue
+        }
+        if (-not (Test-SoscLooksLikeMpvConfig -Env $Env -Candidate $c)) {
+            Write-SoscWarn (T 'not_mpv_folder' @($c.ConfigDir))
+            if ($script:NonInteractive) {
+                Write-SoscError (T 'not_mpv_yes')
+                $refused = $true
+                continue
+            }
+            if (-not (Confirm-Sosc -Question (T 'not_mpv_confirm') -Default $false)) {
+                Write-SoscWarn (T 'readonly_skip' @($c.ConfigDir))
+                continue
+            }
+        }
+        $safe.Add($c)
+    }
+    if ($refused -and $script:NonInteractive) { return [pscustomobject]@{ Ok = $false; Targets = @() } }
+
+    if ($Mode -eq 'uninstall') { return [pscustomobject]@{ Ok = $true; Targets = $safe.ToArray() } }
+    $writable = New-Object System.Collections.Generic.List[object]
+    foreach ($c in $safe) {
         $w = Resolve-SoscWritable -Env $Env -Candidate $c
         if ($null -ne $w) { $writable.Add($w) }
     }
     return [pscustomobject]@{ Ok = $true; Targets = $writable.ToArray() }
+}
+
+function Test-SoscUnderSystemDirs {
+    param([hashtable]$Env, [string]$Path)
+    foreach ($root in @($Env.ProgramFiles, $Env.ProgramFilesX86, $Env.ProgramData)) {
+        if ($root -and (Test-SoscInside -Path $Path -Root $root)) { return $true }
+    }
+    return $false
+}
+
+# Running as administrator is not needed and risky: warn and ask; with -Yes,
+# only allow folders under Program Files or ProgramData (the only ones that may
+# really need it).
+function Confirm-SoscElevation {
+    param([hashtable]$Env, [object[]]$Targets)
+    if (-not $Env.IsAdmin) { return $true }
+    Write-SoscWarn (T 'admin_warn')
+    if ($script:NonInteractive) {
+        $bad = @($Targets | Where-Object { -not (Test-SoscUnderSystemDirs -Env $Env -Path $_.ConfigDir) } | ForEach-Object { $_.ConfigDir })
+        if ($bad.Count -gt 0) {
+            Write-SoscError (T 'admin_refused' @(([string]::Join('; ', $bad))))
+            return $false
+        }
+        return $true
+    }
+    return (Confirm-Sosc -Question (T 'admin_confirm') -Default $false)
 }
 
 function Invoke-SoscMain {
@@ -1742,11 +2069,17 @@ function Invoke-SoscMain {
     # powershell -File passes "-Target a,b" as one string: ';' separates folders.
     $paths = @($Target | ForEach-Object { $_ -split ';' } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
     $environment = New-SoscEnvironment
+    $script:SoscElevated = [bool]$environment.IsAdmin
     $selection = Select-SoscTargets -Env $environment -Mode $Action -Paths $paths
     if (-not $selection.Ok) { return 2 }
     $targets = @($selection.Targets)
     if (@($targets).Count -eq 0) {
         if ($Yes) { Write-SoscError (T 'usage_none'); return 2 }
+        Write-SoscInfo (T 'cancelled')
+        return 0
+    }
+    if (-not (Confirm-SoscElevation -Env $environment -Targets $targets)) {
+        if ($Yes) { return 2 }
         Write-SoscInfo (T 'cancelled')
         return 0
     }

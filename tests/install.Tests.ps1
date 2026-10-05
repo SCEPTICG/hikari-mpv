@@ -106,6 +106,7 @@ function New-FakeEnv {
         ProgramFilesX86 = $null
         ProgramData     = (P @($Base, 'ProgramData'))
         MpvHome         = $null
+        IsAdmin         = $false
         FindCommand     = { param([string]$Name) if ($script:FakeCommands.ContainsKey($Name)) { return $script:FakeCommands[$Name] } return $null }
         TestWritable    = {
             param([string]$Path)
@@ -437,7 +438,54 @@ Test-Case 'mpv.conf block: options, includes last, [default] after a profile' {
     $b = Get-SoscMpvConfBlock "[anime]`nx=1`n[default]`ny=2`n"
     Assert-True (-not ($b.Lines -contains '[default]')) 'already back at [default]'
     $b = Get-SoscMpvConfBlock ("a=1`n" + $BlockB + "`nosc=no`n" + $BlockE + "`n[after]`nz=1`n")
-    Assert-True (-not ($b.Lines -contains '[default]')) 'profile after the block does not count'
+    Assert-Equal $b.Lines[0] '[default]' 'the block moves to the end, so a profile after the old block counts'
+}
+
+Test-Case 'mpv.conf profile headers follow mpv rules' {
+    Assert-Equal (Get-SoscProfileHeader '[anime] # my profile') 'anime' 'comment after header'
+    Assert-Equal (Get-SoscProfileHeader '  [anime]  ') 'anime' 'blanks around'
+    Assert-Equal (Get-SoscProfileHeader '[ anime ]') ' anime ' 'name not trimmed (as mpv)'
+    Assert-Equal (Get-SoscProfileHeader '[]') '' 'empty header'
+    Assert-Equal (Get-SoscProfileHeader '[anime]x') $null 'extra characters: not a header'
+    Assert-Equal (Get-SoscProfileHeader '[anime') $null 'no closing bracket'
+    Assert-Equal (Get-SoscProfileHeader '# [anime]') $null 'commented out'
+    Assert-Equal (Get-SoscProfileHeader 'sub-font=[x]') $null 'option line'
+    Assert-True (Get-SoscMpvConfBlock "[anime] # c`nx=1`n").NeedsDefault 'header with comment needs [default]'
+    Assert-True (Get-SoscMpvConfBlock "[anime]`n[DEFAULT]`n").NeedsDefault '[DEFAULT] is another profile'
+    Assert-True (-not (Get-SoscMpvConfBlock "[anime]`n[]`nx=1`n").NeedsDefault) '[] is the default profile'
+    Assert-True (-not (Get-SoscMpvConfBlock "[anime]`n  [default]  # back`n").NeedsDefault) '[default] with blanks and comment'
+    Assert-True (Get-SoscMpvConfBlock "[anime]`n[ default ]`n").NeedsDefault '[ default ] is another profile'
+    Assert-True (-not (Get-SoscMpvConfBlock "[anime]x`n").NeedsDefault) 'malformed header ignored'
+}
+
+Test-Case 'mpv.conf: on update the block moves to the end, after the user lines' {
+    $d = New-TestDir 'block-move'
+    $p = P @($d, 'mpv.conf')
+    $old = "a=1`n" + $BlockB + "`nosc=no`n" + $BlockE + "`nsub-font-size=50`n"
+    Set-TestFile $p $old
+    [void](Update-SoscManagedFile -Path $p -Kind 'mpv')
+    $t = Get-TestText $p
+    Assert-True ($t.StartsWith("a=1`nsub-font-size=50`n" + $BlockB + "`n")) ('user lines first, block after: ' + $t)
+    Assert-True ($t.EndsWith('include="~~/sosc-subs.conf"' + "`n" + $BlockE + "`n")) 'block last, LF kept'
+    Assert-Equal @([regex]::Matches($t, [regex]::Escape($BlockB))).Count 1 'one block'
+    [void](Update-SoscManagedFile -Path $p -Kind 'mpv')
+    Assert-Equal (Get-TestText $p) $t 'idempotent once at the end'
+    Set-TestFile $p ($t + "[anime]`nprofile-cond=1`n")
+    [void](Update-SoscManagedFile -Path $p -Kind 'mpv')
+    $t2 = Get-TestText $p
+    Assert-True ($t2.StartsWith("a=1`nsub-font-size=50`n[anime]`nprofile-cond=1`n" + $BlockB + "`n[default]`nosc=no`n")) ('moved after the profile with [default]: ' + $t2)
+    Remove-SoscManagedFile -Path $p -Root $d -CreatedBySosc $false
+    Assert-Equal (Get-TestText $p) "a=1`nsub-font-size=50`n[anime]`nprofile-cond=1`n" 'removal leaves the user lines'
+    # A file holding only an LF block keeps LF when the block is rewritten.
+    $q = P @($d, 'only.conf')
+    Set-TestFile $q ($BlockB + "`nosc=no`n" + $BlockE + "`n")
+    [void](Update-SoscManagedFile -Path $q -Kind 'mpv')
+    Assert-True (-not (Get-TestText $q).Contains("`r")) 'LF kept'
+    # input.conf: the block stays where it is.
+    $i = P @($d, 'input.conf')
+    Set-TestFile $i ("a cycle pause`n" + $BlockB + "`nold`n" + $BlockE + "`nb cycle mute`n")
+    [void](Update-SoscManagedFile -Path $i -Kind 'input')
+    Assert-True ((Get-TestText $i).EndsWith($BlockE + "`nb cycle mute`n")) 'input.conf block left in place'
 }
 
 Test-Case 'input.conf: taken keys are reported and left alone' {
@@ -526,23 +574,77 @@ Test-Case 'deleting a linked folder removes the link, not its target' {
     Assert-True (Test-Path -LiteralPath (P @($outside, 'precious.txt'))) 'target intact'
 }
 
-Test-Case 'backup is a sibling folder without cache and watch_later' {
+Test-Case 'backup copies only what the installer can change' {
     $d = New-TestDir 'backup'
     $cfg = P @($d, 'portable config')
     Set-TestFile (P @($cfg, 'mpv.conf')) 'x=1'
+    Set-TestFile (P @($cfg, 'input.conf')) 'a b'
+    Set-TestFile (P @($cfg, 'scripts', 'a.lua')) '--'
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'main.lua')) '--'
+    Set-TestFile (P @($cfg, 'script-opts', 'a.conf')) 'k=v'
+    Set-TestFile (P @($cfg, 'fonts', 'f.ttf')) 'f'
+    Set-TestFile (P @($cfg, 'sosc-palette.conf')) 'p'
+    Set-TestFile (P @($cfg, 'sosc-installed.txt')) 'sosc_version=dev'
+    Set-TestFile (P @($cfg, 'scripts-desactivados', 'm.lua')) 'm'
+    Set-TestFile (P @($cfg, 'sosc-originales', 'script-opts', 'uosc.conf')) 'u'
     Set-TestFile (P @($cfg, 'shaders', 'a.glsl')) 'shader'
     Set-TestFile (P @($cfg, 'cache', 'big.bin')) 'cache'
     Set-TestFile (P @($cfg, 'watch_later', 'ABC')) 'pos'
     Set-TestFile (P @($cfg, '.hidden')) 'h'
-    $b = New-SoscBackup -ConfigDir $cfg -Stamp '20260101-000000'
+    Set-TestFile (P @($cfg, 'mpv-animejanai.conf')) 'aj'
+    $script:InfoLog = New-Object System.Collections.Generic.List[string]
+    function Write-SoscInfo { param([string]$Message) $script:InfoLog.Add($Message) }
+    try { $b = New-SoscBackup -ConfigDir $cfg -Stamp '20260101-000000' }
+    finally { Remove-Item Function:\Write-SoscInfo }
     Assert-Equal $b ((Get-SoscFullPath $cfg) + '-respaldo-sosc-20260101-000000') 'name'
-    Assert-Equal (Get-TestText (P @($b, 'mpv.conf'))) 'x=1' 'file copied'
-    Assert-True (Test-Path -LiteralPath (P @($b, 'shaders', 'a.glsl'))) 'subfolder copied'
-    Assert-True (Test-Path -LiteralPath (P @($b, '.hidden'))) 'hidden copied'
-    Assert-True (-not (Test-Path -LiteralPath (P @($b, 'cache')))) 'no cache'
-    Assert-True (-not (Test-Path -LiteralPath (P @($b, 'watch_later')))) 'no watch_later'
+    Assert-True (@($script:InfoLog | Where-Object { $_ -like '*MB*' }).Count -eq 1) 'size shown'
+    foreach ($rel in @(@('mpv.conf'), @('input.conf'), @('scripts', 'a.lua'), @('scripts', 'uosc', 'main.lua'), @('script-opts', 'a.conf'),
+            @('fonts', 'f.ttf'), @('sosc-palette.conf'), @('sosc-installed.txt'), @('scripts-desactivados', 'm.lua'),
+            @('sosc-originales', 'script-opts', 'uosc.conf'))) {
+        Assert-True (Test-Path -LiteralPath (P (@($b) + $rel))) ('copied ' + [string]::Join('/', $rel))
+    }
+    Assert-Equal (Get-TestText (P @($b, 'mpv.conf'))) 'x=1' 'file content'
+    foreach ($name in @('shaders', 'cache', 'watch_later', '.hidden', 'mpv-animejanai.conf')) {
+        Assert-True (-not (Test-Path -LiteralPath (P @($b, $name)))) ('not copied ' + $name)
+    }
     $b2 = New-SoscBackup -ConfigDir $cfg -Stamp '20260101-000000'
     Assert-Equal $b2 ($b + '-2') 'same second: new name'
+    $empty = P @($d, 'only-shaders')
+    Set-TestFile (P @($empty, 'shaders', 'a.glsl')) 's'
+    Assert-Equal (New-SoscBackup -ConfigDir $empty -Stamp '20260101-000000') '' 'nothing to back up: no backup'
+    Assert-True (-not (Test-Path -LiteralPath ($empty + '-respaldo-sosc-20260101-000000'))) 'no empty backup folder'
+}
+
+Test-Case 'backup skips links and deletes a copy that fails half-way' {
+    $d = New-TestDir 'backup-links'
+    $cfg = P @($d, 'cfg')
+    $outside = P @($d, 'outside')
+    Set-TestFile (P @($outside, 'huge.bin')) 'big'
+    Set-TestFile (P @($cfg, 'mpv.conf')) 'x=1'
+    Set-TestFile (P @($cfg, 'scripts', 'a.lua')) '--'
+    $linked = $true
+    try {
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'scripts', 'loop')) -Target $cfg | Out-Null
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'fonts')) -Target $outside | Out-Null
+    }
+    catch { $linked = $false; Write-Host '     (symlinks not available, link part skipped)' }
+    if ($linked) {
+        $b = New-SoscBackup -ConfigDir $cfg -Stamp '20260101-000000'
+        Assert-True (Test-Path -LiteralPath (P @($b, 'scripts', 'a.lua'))) 'real file copied'
+        Assert-True (-not (Test-Path -LiteralPath (P @($b, 'scripts', 'loop')))) 'link inside scripts skipped'
+        Assert-True (-not (Test-Path -LiteralPath (P @($b, 'fonts')))) 'linked fonts folder skipped'
+        Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*link*' }).Count -eq 2) 'two warnings'
+    }
+    function Copy-SoscTree { param([string]$From, [string]$To) New-Item -ItemType Directory -Path $To -Force | Out-Null; throw 'disk full' }
+    try { Assert-Throws { New-SoscBackup -ConfigDir $cfg -Stamp '20260202-000000' } '*disk full*' 'failing copy' }
+    finally { Remove-Item Function:\Copy-SoscTree }
+    Assert-True (-not (Test-Path -LiteralPath ((Get-SoscFullPath $cfg) + '-respaldo-sosc-20260202-000000'))) 'partial copy deleted'
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    function Copy-Item { throw 'disk full' }
+    try { Assert-Throws { Install-SoscTarget -Candidate $cand -Source $Source -Artifacts ([pscustomobject]@{ UoscDir = ''; ThumbfastFile = '' }) -Stamp '20260303-000000' } '*Could not back up*' 'install stops' }
+    finally { Remove-Item Function:\Copy-Item }
+    Assert-True (-not (Test-Path -LiteralPath ((Get-SoscFullPath $cfg) + '-respaldo-sosc-20260303-000000'))) 'no partial backup left by install'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) 'x=1' 'folder untouched'
 }
 
 Test-Case 'conflicting interfaces are found with their conf and fonts' {
@@ -825,6 +927,356 @@ Test-Case 'interactive: menu, no player found, typed folder, then uninstall from
         Remove-Item Function:\New-SoscEnvironment
         Remove-Item Function:\Read-SoscLine
         $script:NonInteractive = $true
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Review fixes
+# ---------------------------------------------------------------------------
+
+$IsWin = ([System.IO.Path]::DirectorySeparatorChar -eq '\')
+
+# Fake winget: prints to stdout like the real one, records its arguments and,
+# when $Install, drops a mpvnet.exe where mpv.net would be.
+function New-FakeWinget {
+    param([string]$Dir, [string]$ExeDir, [int]$Code, [bool]$Install)
+    New-Item -ItemType Directory -Path $Dir -Force | Out-Null
+    $argsFile = P @($Dir, 'args.txt')
+    if ($IsWin) {
+        $path = P @($Dir, 'winget.cmd')
+        $body = "@echo off`r`necho Found mpv.net [mpv.net]`r`necho Successfully installed`r`necho %* > `"$argsFile`"`r`n"
+        if ($Install) { $body += "mkdir `"$ExeDir`" 2>nul`r`ntype nul > `"$ExeDir\mpvnet.exe`"`r`n" }
+        $body += "exit /b $Code`r`n"
+    }
+    else {
+        $path = P @($Dir, 'winget')
+        $body = "#!/bin/sh`necho 'Found mpv.net [mpv.net]'`necho 'Successfully installed'`necho `"`$*`" > '$argsFile'`n"
+        if ($Install) { $body += "mkdir -p '$ExeDir'`n: > '$ExeDir/mpvnet.exe'`n" }
+        $body += "exit $Code`n"
+    }
+    [System.IO.File]::WriteAllText($path, $body)
+    if (-not $IsWin) { & chmod +x $path }
+    return $path
+}
+
+Test-Case 'winget output never ends up as a target (it used to crash with StrictMode)' {
+    Reset-Fake
+    $d = New-TestDir 'winget'
+    $base = P @($d, 'machine')
+    $e = New-FakeEnv $base
+    $exeDir = P @($base, 'Local', 'Programs', 'mpv.net')
+    $script:FakeCommands['winget'] = New-FakeWinget -Dir (P @($d, 'bin')) -ExeDir $exeDir -Code 0 -Install $true
+    $script:Answers = New-Object System.Collections.Generic.Queue[string]
+    foreach ($a in @('1', '')) { $script:Answers.Enqueue($a) }
+    function Read-SoscLine { param([string]$Prompt) return $script:Answers.Dequeue() }
+    $script:FakeEnvBase = $base
+    function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    $script:NonInteractive = $false
+    try {
+        $r = @(Invoke-SoscNoPlayerMenu -Env $e)
+        Assert-Equal $r.Count 1 'only the detected player comes back'
+        Assert-Equal $r[0].Kind 'mpv.net' 'kind'
+        Assert-True ($null -ne $r[0].PSObject.Properties['Writable']) 'a real candidate'
+        $argsSeen = (Get-TestText (P @($d, 'bin', 'args.txt'))).Trim()
+        Assert-True ($argsSeen.Contains('--id mpv.net -e --accept-source-agreements --accept-package-agreements')) ('winget args: ' + $argsSeen)
+        # Whole flow: menu -> install -> winget -> install into %APPDATA%\mpv.net.
+        Remove-Item -LiteralPath $exeDir -Recurse -Force
+        [void](New-FakeArtifacts (P @($d, 'dl')))
+        foreach ($a in @('1', '1', '')) { $script:Answers.Enqueue($a) }
+        $code = Invoke-SoscMain -Action '' -Target @() -Yes $false
+        Assert-Equal $code 0 'exit code'
+        Assert-True (Test-Path -LiteralPath (P @($base, 'Roaming', 'mpv.net', 'scripts', 'sosc-skip.lua'))) 'installed for mpv.net'
+        # winget failing: reported, then back to the menu.
+        Remove-Item -LiteralPath $exeDir -Recurse -Force
+        Remove-Item -LiteralPath (P @($base, 'Roaming')) -Recurse -Force
+        $script:FakeCommands['winget'] = New-FakeWinget -Dir (P @($d, 'bin2')) -ExeDir $exeDir -Code 3 -Install $false
+        $script:SoscWarnings.Clear()
+        foreach ($a in @('1', '', '0')) { $script:Answers.Enqueue($a) }
+        $r = @(Invoke-SoscNoPlayerMenu -Env $e)
+        Assert-Equal $r.Count 0 'nothing chosen'
+        Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*code 3*' }).Count -eq 1) 'exit code reported'
+        Assert-Equal $script:Answers.Count 0 'all answers used'
+    }
+    finally {
+        Remove-Item Function:\Read-SoscLine
+        Remove-Item Function:\New-SoscEnvironment
+        $script:NonInteractive = $true
+        Reset-Fake
+    }
+}
+
+Test-Case 'uninstall finishes when sosc-originales was deleted by hand' {
+    $d = New-TestDir 'no-originals'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'script-opts', 'uosc.conf')) "timeline_style=line`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`n"
+    Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($cfg) -Yes $true) 0 'install'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-originales', 'script-opts', 'uosc.conf'))) 'original kept on install'
+    Remove-Item -LiteralPath (P @($cfg, 'sosc-originales')) -Recurse -Force
+    Assert-Equal (Invoke-SoscMain -Action 'uninstall' -Target @($cfg) -Yes $true) 0 'uninstall exit code'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'sosc-installed.txt')))) 'record gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'scripts (created by sosc, now empty) gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'fonts')))) 'fonts (created by sosc, now empty) gone'
+    Assert-Equal @(Get-ChildItem -LiteralPath (P @($cfg, 'script-opts')) -Filter 'sosc-*').Count 0 'sosc options gone'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'uosc.conf'))) 'uosc.conf left (the earlier one is in the backup)'
+    $left = @(Get-ChildItem -LiteralPath $cfg -Recurse -Force -File | ForEach-Object { Get-SoscRelativePath -Path $_.FullName -Root $cfg } | Sort-Object)
+    Assert-Equal ([string]::Join(',', $left)) 'mpv.conf,script-opts/uosc.conf,sosc-palette.conf,sosc-subs.conf' 'only the user files and the saved choices are left'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "volume=50`n" 'mpv.conf as before'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'input.conf')))) 'input.conf created by sosc removed'
+}
+
+Test-Case 'end of input (stdin closed) is taken as Exit, never as a loop' {
+    Reset-Fake
+    $d = New-TestDir 'eof'
+    $script:FakeEnvBase = P @($d, 'machine')
+    Set-TestFile (P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    $script:ReadCalls = 0
+    function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    function Read-SoscLine { param([string]$Prompt) $script:ReadCalls++; if ($script:ReadCalls -gt 20) { throw 'endless loop' } return $null }
+    $script:NonInteractive = $false
+    try {
+        Assert-Equal (Invoke-SoscMain -Action '' -Target @() -Yes $false) 0 'main menu'
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @() -Yes $false) 0 'target list'
+        Assert-Equal (Invoke-SoscMain -Action 'uninstall' -Target @() -Yes $false) 0 'uninstall list (nothing installed)'
+        Remove-Item -LiteralPath (P @($script:FakeEnvBase, 'Local')) -Recurse -Force
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @() -Yes $false) 0 'no-player menu'
+        Assert-True ($script:ReadCalls -le 4) ('reads: ' + $script:ReadCalls)
+        Assert-True (-not (Test-Path -LiteralPath (P @($script:FakeEnvBase, 'Roaming', 'mpv.net')))) 'nothing installed'
+    }
+    finally {
+        Remove-Item Function:\New-SoscEnvironment
+        Remove-Item Function:\Read-SoscLine
+        $script:NonInteractive = $true
+    }
+}
+
+Test-Case 'typed paths: %VARS%, quotes and relative paths from the PowerShell location' {
+    $d = New-TestDir 'typed'
+    $env:SOSC_TEST_DIR = $d
+    $sep = [string][System.IO.Path]::DirectorySeparatorChar
+    try {
+        Assert-Equal (ConvertTo-SoscTypedPath ('%SOSC_TEST_DIR%' + $sep + 'mpv')) (P @($d, 'mpv')) 'env var expanded'
+        Assert-Equal (ConvertTo-SoscTypedPath ('  "' + $d + $sep + 'a b' + $sep + '"  ')) (P @($d, 'a b')) 'quotes and trailing separator'
+        $sub = New-TestDir (P @('typed', 'here'))
+        Push-Location -LiteralPath $sub
+        try {
+            Assert-Equal (ConvertTo-SoscTypedPath 'mpv') (P @($sub, 'mpv')) 'relative to the PowerShell location'
+            Assert-Equal (ConvertTo-SoscTypedPath ('..' + $sep + 'other')) (P @($d, 'other')) 'dot-dot'
+            Assert-True ([System.IO.Directory]::GetCurrentDirectory() -ne $sub) 'process folder differs (the case that matters)'
+        }
+        finally { Pop-Location }
+        Assert-Throws { ConvertTo-SoscTypedPath '   ' } '*not a valid*' 'empty'
+        Assert-Throws { ConvertTo-SoscTypedPath 'Env:\PATH' } '*not a valid*' 'other provider'
+    }
+    finally { Remove-Item Env:\SOSC_TEST_DIR }
+}
+
+Test-Case 'typed folder holding the player: its portable_config, or the user folder it reads' {
+    Reset-Fake
+    $base = New-TestDir 'typed-exe'
+    $e = New-FakeEnv $base
+    $aj = P @($base, 'Apps', 'mpv-AnimeJaNai')
+    Set-TestFile (P @($aj, 'mpvnet.exe'))
+    New-Item -ItemType Directory -Path (P @($aj, 'portable_config')) | Out-Null
+    $c = Resolve-SoscManualTarget -Env $e -Path $aj -Candidates @()
+    Assert-Equal $c.ConfigDir (P @($aj, 'portable_config')) 'portable_config used'
+    Assert-Equal $c.Kind 'AnimeJaNai' 'kind'
+    Assert-Equal $c.Exe (P @($aj, 'mpvnet.exe')) 'exe kept for mpv_path'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*not its config folder*' }).Count -eq 1) 'warned'
+    $mpvDir = P @($base, 'Apps', 'mpv')
+    Set-TestFile (P @($mpvDir, 'mpv.exe'))
+    $c = Resolve-SoscManualTarget -Env $e -Path $mpvDir -Candidates @()
+    Assert-Equal $c.ConfigDir (Get-SoscFullPath (P @($base, 'Roaming', 'mpv'))) 'user folder offered (yes by default)'
+    Assert-Equal $c.Kind 'mpv' 'mpv kind'
+    $script:NonInteractive = $false
+    function Read-SoscLine { param([string]$Prompt) return 'n' }
+    try { Assert-Equal (Resolve-SoscManualTarget -Env $e -Path $mpvDir -Candidates @()) $null 'declined: nothing' }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+}
+
+Test-Case 'MPV_HOME wins over portable_config for mpv, not for mpv.net' {
+    Reset-Fake
+    $base = New-TestDir 'mpv-home'
+    $e = New-FakeEnv $base
+    $e.MpvHome = P @($base, 'Home')
+    Set-TestFile (P @($base, 'Program Files', 'mpv', 'mpv.exe'))
+    New-Item -ItemType Directory -Path (P @($base, 'Program Files', 'mpv', 'portable_config')) | Out-Null
+    Set-TestFile (P @($base, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    New-Item -ItemType Directory -Path (P @($base, 'Local', 'Programs', 'mpv.net', 'portable_config')) | Out-Null
+    $found = @(Find-SoscPlayers -Env $e)
+    $mpv = @($found | Where-Object { $_.Kind -eq 'mpv' })[0]
+    $net = @($found | Where-Object { $_.Kind -eq 'mpv.net' })[0]
+    Assert-Equal $mpv.ConfigDir (Get-SoscFullPath $e.MpvHome) 'mpv reads MPV_HOME'
+    Assert-True (-not $mpv.Portable) 'not portable'
+    Assert-Equal $net.ConfigDir (Get-SoscFullPath (P @($base, 'Local', 'Programs', 'mpv.net', 'portable_config'))) 'mpv.net keeps portable_config'
+    $c = Resolve-SoscManualTarget -Env $e -Path (P @($base, 'Program Files', 'mpv', 'portable_config')) -Candidates @()
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*MPV_HOME*' }).Count -eq 1) 'typed portable_config: MPV_HOME note'
+}
+
+Test-Case 'refused targets: drive root, user profile, and folders that are not mpv' {
+    Reset-Fake
+    $d = New-TestDir 'refused'
+    $e = New-FakeEnv $d
+    $root = [System.IO.Path]::GetPathRoot($d)
+    Assert-True (Test-SoscForbiddenTarget -Env $e -Path $root) 'drive root'
+    Assert-True (Test-SoscForbiddenTarget -Env $e -Path ($e.UserProfile + [System.IO.Path]::DirectorySeparatorChar)) 'user profile'
+    Assert-True (-not (Test-SoscForbiddenTarget -Env $e -Path (P @($e.UserProfile, 'mpv')))) 'folder inside the profile'
+    $docs = P @($d, 'Documents')
+    Set-TestFile (P @($docs, 'tax.pdf')) 'pdf'
+    $cand = New-SoscCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $docs -Portable $false
+    Assert-True (-not (Test-SoscLooksLikeMpvConfig -Env $e -Candidate $cand)) 'no sign of mpv'
+    $c2 = New-SoscCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir (P @($d, 'new')) -Portable $false
+    Assert-True (Test-SoscLooksLikeMpvConfig -Env $e -Candidate $c2) 'missing folder is fine'
+    $withConf = P @($d, 'withconf')
+    Set-TestFile (P @($withConf, 'mpv.conf')) 'x'
+    Assert-True (Test-SoscLooksLikeMpvConfig -Env $e -Candidate (New-SoscCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $withConf -Portable $false)) 'mpv.conf'
+    $beside = P @($d, 'player', 'cfg')
+    Set-TestFile (P @($beside, 'notes.txt'))
+    Set-TestFile (P @($d, 'player', 'mpv.exe'))
+    Assert-True (Test-SoscLooksLikeMpvConfig -Env $e -Candidate (New-SoscCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $beside -Portable $false)) 'mpv.exe next to it'
+
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $script:FakeEnvBase = $d
+    function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    function Read-SoscLine { param([string]$Prompt) return $script:Reply }
+    try {
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($docs) -Yes $true) 2 '-Yes refuses a non-mpv folder'
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($e.UserProfile) -Yes $true) 2 '-Yes refuses the profile'
+        Assert-Equal (Invoke-SoscMain -Action 'uninstall' -Target @($root) -Yes $true) 2 '-Yes refuses a drive root'
+        Assert-Equal @(Get-ChildItem -LiteralPath $docs -Force).Count 1 'nothing written'
+        Assert-Equal @(Get-ChildItem -LiteralPath $d -Filter 'Documents-respaldo*').Count 0 'no backup made'
+        $script:NonInteractive = $false
+        $script:Reply = 'n'
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($docs) -Yes $false) 0 'interactive no: cancelled'
+        Assert-True (-not (Test-Path -LiteralPath (P @($docs, 'scripts')))) 'still nothing written'
+        $script:Reply = 'y'
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($docs) -Yes $false) 0 'interactive yes: installed'
+        Assert-True (Test-Path -LiteralPath (P @($docs, 'scripts', 'sosc-skip.lua'))) 'installed after confirming'
+    }
+    finally {
+        Remove-Item Function:\New-SoscEnvironment
+        Remove-Item Function:\Read-SoscLine
+        $script:NonInteractive = $true
+    }
+}
+
+Test-Case 'administrator: warned and asked; with -Yes only Program Files or ProgramData' {
+    $d = New-TestDir 'admin'
+    $e = New-FakeEnv $d
+    $user = [pscustomobject]@{ ConfigDir = (P @($d, 'Roaming', 'mpv')) }
+    $pf = [pscustomobject]@{ ConfigDir = (P @($d, 'Program Files', 'mpv', 'portable_config')) }
+    Assert-True (Confirm-SoscElevation -Env $e -Targets @($user)) 'not admin: go on'
+    Assert-Equal $script:SoscWarnings.Count 0 'no warning'
+    $e.IsAdmin = $true
+    Assert-True (-not (Confirm-SoscElevation -Env $e -Targets @($user))) '-Yes refuses a user folder'
+    Assert-True (-not (Confirm-SoscElevation -Env $e -Targets @($pf, $user))) '-Yes refuses a mix'
+    Assert-True (Confirm-SoscElevation -Env $e -Targets @($pf)) '-Yes allows Program Files'
+    $script:NonInteractive = $false
+    $script:Reply = ''
+    function Read-SoscLine { param([string]$Prompt) return $script:Reply }
+    try {
+        Assert-True (-not (Confirm-SoscElevation -Env $e -Targets @($user))) 'interactive: no by default'
+        $script:Reply = 's'
+        Assert-True (Confirm-SoscElevation -Env $e -Targets @($user)) 'interactive: yes'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $script:FakeEnvBase = $d
+    function New-SoscEnvironment { $x = New-FakeEnv $script:FakeEnvBase; $x.IsAdmin = $true; return $x }
+    try {
+        Assert-Equal (Invoke-SoscMain -Action 'install' -Target @($user.ConfigDir) -Yes $true) 2 'main: refused'
+        Assert-True (-not (Test-Path -LiteralPath $user.ConfigDir)) 'nothing created'
+    }
+    finally { Remove-Item Function:\New-SoscEnvironment; $script:SoscElevated = $false }
+}
+
+Test-Case 'administrator: no delete or move through a link inside the config folder' {
+    $d = New-TestDir 'admin-links'
+    $cfg = P @($d, 'cfg')
+    $outside = P @($d, 'outside')
+    Set-TestFile (P @($outside, 'uosc', 'main.lua')) 'precious'
+    Set-TestFile (P @($outside, 'modernz.lua')) 'precious'
+    New-Item -ItemType Directory -Path $cfg | Out-Null
+    try { New-Item -ItemType SymbolicLink -Path (P @($cfg, 'scripts')) -Target $outside | Out-Null }
+    catch { Write-Host '     (symlinks not available, skipped)'; return }
+    $script:SoscElevated = $true
+    try {
+        Assert-Throws { Remove-SoscItem -Path (P @($cfg, 'scripts', 'uosc')) -Root $cfg } '*is a link*' 'delete through link'
+        Assert-Throws { Move-SoscToDisabled -Path (P @($cfg, 'scripts', 'modernz.lua')) -ConfigDir $cfg -Stamp 's' } '*is a link*' 'move through link'
+        Assert-True (Test-Path -LiteralPath (P @($outside, 'uosc', 'main.lua'))) 'target intact'
+        Assert-True (Test-Path -LiteralPath (P @($outside, 'modernz.lua'))) 'file not moved'
+        Remove-SoscItem -Path (P @($cfg, 'scripts')) -Root $cfg
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'the link itself can go'
+        Assert-True (Test-Path -LiteralPath (P @($outside, 'uosc', 'main.lua'))) 'its target stays'
+    }
+    finally { $script:SoscElevated = $false }
+}
+
+Test-Case 'record paths: only clean relative paths are accepted' {
+    foreach ($ok in @('scripts/modernz.lua', 'scripts-desactivados/script-opts/modernz.conf', 'fonts/modernz-icons.ttf', 'scripts/sosc-skip.lua')) {
+        Assert-True (Test-SoscRecordPath $ok) ('accepted ' + $ok)
+    }
+    foreach ($bad in @('', '../x', '../../x', 'scripts/../../x', 'C:/Windows/x', 'C:\Windows\x', 'scripts/sosc-..\..\..\x.lua',
+            '/etc/passwd', '//server/share/x', 'scripts//x', './x', 'scripts/./x', '...', 'scripts/.../x', 'scripts/x.', 'scripts/x ',
+            'a|b', 'scripts/x:stream', "scripts/x`ty")) {
+        Assert-True (-not (Test-SoscRecordPath $bad)) ('rejected ' + $bad)
+    }
+}
+
+Test-Case 'hostile sosc-installed.txt never touches anything outside the folder' {
+    $d = New-TestDir 'hostile'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $top = P @($d, 'top')
+    $cfg = P @($top, 'mid', 'cfg')
+    New-Item -ItemType Directory -Path $cfg -Force | Out-Null
+    $sentinels = @((P @($top, 'x')), (P @($top, 'evil')), (P @($top, 'x.lua')), (P @($top, 'mid', 'x')), (P @($top, 'mid', 'x.lua')), (P @($top, 'mid', 'outside.lua')))
+    foreach ($s in $sentinels) { Set-TestFile $s 'keep' }
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-SoscTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-160000')
+    Set-TestFile (P @($cfg, 'scripts-desactivados', 'a.lua')) '-- set aside'
+    $hostile = @(
+        'disabled=../../x|scripts/a.lua',
+        'disabled=scripts-desactivados/a.lua|../../evil',
+        'disabled=scripts-desactivados/a.lua|../../../dropped.lua',
+        'disabled=C:/Windows/x|scripts/b.lua',
+        'disabled=C:\Windows\x|scripts/b.lua',
+        'disabled=/etc/hostname|scripts/c.lua',
+        'disabled=scripts-desactivados/a.lua|..\..\evil2',
+        'disabled=.../x|scripts/d.lua',
+        'disabled=scripts-desactivados/a.lua',
+        'disabled=a|b|c',
+        'file=scripts/sosc-..\..\..\x.lua',
+        'file=scripts/sosc-../../../x.lua',
+        'file=../outside.lua',
+        'file=script-opts/sosc-..\..\x.conf'
+    )
+    $recPath = P @($cfg, 'sosc-installed.txt')
+    Set-TestFile $recPath ((Get-TestText $recPath) + [string]::Join("`r`n", $hostile) + "`r`n")
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal @($rec.Disabled).Count 0 'no hostile disabled entry kept'
+    foreach ($f in $rec.Files) { Assert-True (Test-SoscRecordPath $f) ('file entry ' + $f) }
+    Assert-Equal @($script:SoscWarnings | Where-Object { $_ -like '*invalid entry*' }).Count $hostile.Count 'each one reported'
+    $before = @(Get-ChildItem -LiteralPath $top -Recurse -Force | Where-Object { $_.FullName -notlike ((Get-SoscFullPath $cfg) + '*') } | ForEach-Object { $_.FullName } | Sort-Object)
+
+    # Update and uninstall with that record.
+    [void](Install-SoscTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-160100')
+    Set-TestFile $recPath ((Get-TestText $recPath) + [string]::Join("`r`n", $hostile) + "`r`n")
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261005-160200')
+
+    foreach ($s in $sentinels) { Assert-Equal (Get-TestText $s) 'keep' ('sentinel ' + $s) }
+    $after = @(Get-ChildItem -LiteralPath $top -Recurse -Force | Where-Object { $_.FullName -notlike ((Get-SoscFullPath $cfg) + '*') } | ForEach-Object { $_.FullName } | Sort-Object)
+    Assert-Equal ([string]::Join('|', $after)) ([string]::Join('|', $before)) 'nothing created or removed outside the folder (backups aside)'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'a.lua'))) 'set-aside file stays inside'
+    Assert-True (-not (Test-Path -LiteralPath $recPath)) 'uninstall finished'
+
+    # The same entries through the restore loop directly (as if the reader had
+    # let them through): every one is refused.
+    $script:SoscWarnings.Clear()
+    $pairs = @('../../x|scripts/a.lua', 'scripts-desactivados/a.lua|../../evil', 'C:/Windows/x|scripts/b.lua', 'scripts-desactivados/a.lua|..\..\evil2')
+    foreach ($entry in $pairs) {
+        $pair = $entry -split '\|'
+        Assert-True (-not ((Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1]))) ('refused ' + $entry)
     }
 }
 
