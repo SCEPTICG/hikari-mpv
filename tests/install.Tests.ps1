@@ -1292,6 +1292,9 @@ $Ptr = [string][char]0x203A
 $script:Keys = New-Object System.Collections.Generic.Queue[string]
 $script:Frames = New-Object System.Collections.Generic.List[string]
 $script:ConsoleLog = New-Object System.Collections.Generic.List[string]
+# Keys pressed before a menu opened: read first, unless the menu throws them away.
+$script:Pending = New-Object System.Collections.Generic.Queue[string]
+$RealKeyFlush = $script:SoscKeyFlush
 $RealKeyReader = $script:SoscKeyReader
 $RealRenderer = $script:SoscMenuRenderer
 $RealConsoleEnter = $script:SoscConsoleEnter
@@ -1311,23 +1314,32 @@ function Use-FakeConsole {
     foreach ($k in $Keys) { $script:Keys.Enqueue($k) }
     $script:Frames.Clear()
     $script:ConsoleLog.Clear()
-    $script:SoscKeyReader = { if ($script:Keys.Count -eq 0) { throw 'no more keys' } return $script:Keys.Dequeue() }
+    $script:Pending.Clear()
+    $script:SoscKeyReader = {
+        if ($script:Pending.Count -gt 0) { return $script:Pending.Dequeue() }
+        if ($script:Keys.Count -eq 0) { throw 'no more keys' }
+        return $script:Keys.Dequeue()
+    }
+    $script:SoscKeyFlush = { $script:Pending.Clear() }
     $script:SoscMenuRenderer = { param([object[]]$Lines, [int]$Previous) $script:Frames.Add((ConvertTo-FrameText $Lines)); return @($Lines).Count }
     $script:SoscConsoleEnter = { $script:ConsoleLog.Add('enter'); return @{ Fake = $true } }
     $script:SoscConsoleExit = { param($State) $script:ConsoleLog.Add('exit') }
     $script:SoscMenu = $true
     $script:SoscMenuWidth = 80
+    $script:SoscMenuHeight = 50
     $script:NonInteractive = $false
 }
 
 function Reset-FakeConsole {
     $script:SoscKeyReader = $RealKeyReader
+    $script:SoscKeyFlush = $RealKeyFlush
     $script:SoscMenuRenderer = $RealRenderer
     $script:SoscConsoleEnter = $RealConsoleEnter
     $script:SoscConsoleExit = $RealConsoleExit
     $script:SoscConsoleProbe = { $false }
     $script:SoscMenu = $false
     $script:SoscMenuWidth = 0
+    $script:SoscMenuHeight = 0
     $script:NonInteractive = $true
 }
 
@@ -1606,6 +1618,161 @@ Test-Case 'menus end to end: install from the list, then uninstall answering wit
         Remove-Item Function:\Read-SoscLine
         Reset-FakeConsole
     }
+}
+
+# Two detected folders, as in the low-window report (tmux 61x6).
+function New-TwoFolderList {
+    param([string]$Name)
+    $base = New-TestDir $Name
+    $e = New-FakeEnv $base
+    return @(
+        (New-SoscCandidate -Env $e -Kind 'mpv' -Exe '' -ConfigDir (P @($base, 'one', 'mpv')) -Portable $false),
+        (New-SoscCandidate -Env $e -Kind 'mpv.net' -Exe '' -ConfigDir (P @($base, 'two', 'mpv.net')) -Portable $false)
+    )
+}
+
+Test-Case 'low window: compact menu first, then numbers; never taller than the window' {
+    $list = New-TwoFolderList 'menu-low'
+    $script:Lines = New-Object System.Collections.Generic.Queue[string]
+    function Read-SoscLine { param([string]$Prompt) return $script:Lines.Dequeue() }
+    $script:Headers = New-Object System.Collections.Generic.List[string]
+    function Write-SoscInfo { param([string]$Message) $script:Headers.Add($Message) }
+    try {
+        # Tall enough: the full menu, with the folder lines.
+        Use-FakeConsole @('Enter')
+        $script:SoscMenuWidth = 61
+        [void](Read-SoscTargetChoice -List $list -Mode 'install')
+        $full = @($script:Frames[0] -split "`n")
+        Assert-True ($script:Frames[0].Contains((P @('one', 'mpv')))) 'full frame shows the folders'
+        Assert-True ($full.Count -lt 49) ('fits in 50 lines: ' + $full.Count)
+        # Lower: the compact menu (entries and one short help line), every frame
+        # of the same height, so redrawing never leaves copies behind.
+        Use-FakeConsole @('DownArrow', 'Spacebar', 'Enter')
+        $script:SoscMenuWidth = 61
+        $script:SoscMenuHeight = $full.Count
+        $sel = Read-SoscTargetChoice -List $list -Mode 'install'
+        Assert-Equal ([string]::Join(',', $sel.Indexes)) '1' 'compact menu still works'
+        foreach ($f in @($script:Frames | Select-Object -First 3)) {
+            $rows = @($f -split "`n")
+            Assert-Equal $rows.Count 5 ('compact frame: ' + $f)
+            Assert-True ($rows.Count -lt $script:SoscMenuHeight - 1) 'leaves a free line'
+            Assert-True ($rows[0].EndsWith((P @('one', 'mpv')))) ('folder on the entry line, shortened: ' + $rows[0])
+            Assert-True ($rows[0].Contains([char]0x2026) -and $rows[0].Length -le 60) 'shortened to the width'
+            Assert-True ($rows[1].EndsWith((P @('two', 'mpv.net')))) 'second folder told apart'
+            Assert-True ($rows[4].Contains('Space') -and -not $rows[4].Contains('tick')) ('short help: ' + $rows[4])
+        }
+        Assert-Equal ([string]::Join(',', $script:ConsoleLog)) 'enter,exit' 'console restored'
+        # 61x6 (the report): not even compact fits, so numbers, with nothing drawn
+        # and the header written once (by the numbered question).
+        Use-FakeConsole @('Enter')
+        $script:SoscMenuWidth = 61
+        $script:SoscMenuHeight = 6
+        $script:Headers.Clear()
+        $script:Lines.Enqueue('2')
+        $sel = Read-SoscTargetChoice -List $list -Mode 'install'
+        Assert-Equal ([string]::Join(',', $sel.Indexes)) '1' 'answered with a number'
+        Assert-Equal $script:Frames.Count 0 'no menu drawn'
+        Assert-Equal $script:ConsoleLog.Count 0 'console never switched to menu mode'
+        Assert-Equal $script:Keys.Count 1 'no key read'
+        Assert-True (-not $script:SoscMenu) 'numbers from now on'
+        Assert-Equal @($script:Headers | Where-Object { $_ -eq (T 'found_header') }).Count 1 'header written once'
+        # Yes/No: two lines, one (no help) in a very low window, numbers below that.
+        Use-FakeConsole @('Enter')
+        $script:SoscMenuHeight = 3
+        Assert-True (Confirm-Sosc -Question 'Q?' -Default $true) 'compact yes/no'
+        Assert-Equal $script:Frames[0] ('  ' + $Ptr + ' Yes      No    ') 'answers only'
+        Use-FakeConsole @('Enter')
+        $script:SoscMenuHeight = 2
+        $script:Lines.Enqueue('n')
+        Assert-True (-not (Confirm-Sosc -Question 'Q?' -Default $true)) 'typed answer'
+        Assert-Equal $script:Frames.Count 0 'no yes/no drawn'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Remove-Item Function:\Write-SoscInfo; Reset-FakeConsole }
+    # The real renderer refuses a frame taller than the window before writing,
+    # and Invoke-SoscRender turns that into the switch to numbers.
+    $script:SoscMenuHeight = 4
+    try {
+        $tall = @(1..3 | ForEach-Object { , [object[]]@(New-SoscSeg ('line ' + $_)) })
+        Assert-Throws { Write-SoscMenuFrame -Lines $tall -Previous 0 } '*does not fit*' 'renderer'
+        $script:SoscMenuRenderer = $RealRenderer
+        Assert-Throws { Invoke-SoscRender -Lines $tall -Previous 0 } $script:SoscNoConsole 'render'
+        Assert-True (Test-SoscFrameFits 2) 'two lines fit in four'
+        Assert-True (Test-SoscFrameFits 0) 'clearing always fits'
+    }
+    finally { $script:SoscMenuHeight = 0 }
+}
+
+Test-Case 'narrow window: help texts are wrapped, not cut' {
+    Set-SoscLanguage 'es'
+    try {
+        $list = New-TwoFolderList 'menu-narrow'
+        Use-FakeConsole @('Enter')
+        $script:SoscMenuWidth = 61
+        [void](Read-SoscTargetChoice -List $list -Mode 'install')
+        $f = $script:Frames[0]
+        Assert-True (($f -replace "`n\s*", ' ').Contains('se elige la resaltada)')) ('multi_help2 complete: ' + $f)
+        Assert-True ($f.Contains('Esc para salir')) 'multi_help complete'
+        $help = $false
+        foreach ($row in @($f -split "`n")) {
+            Assert-True ($row.Length -le 60) ('fits in 61 columns: ' + $row)
+            if ($row -eq '') { $help = $true }
+            if ($help) { Assert-True (-not $row.Contains([char]0x2026)) ('help not cut: ' + $row) }
+        }
+        Assert-True $help 'help lines found'
+        $wrapped = Split-SoscHelp -Text 'aaa bbb ccc' -Max 7
+        Assert-Equal ([string]::Join('|', $wrapped)) 'aaa bbb|ccc' 'words'
+        $dot = ' ' + [char]0x00B7 + ' '
+        $wrapped = Split-SoscHelp -Text ('one two' + $dot + 'three' + $dot + 'four') -Max 15
+        Assert-Equal ([string]::Join('|', $wrapped)) ('one two' + $dot + 'three|four') 'breaks between parts, without the dot'
+    }
+    finally { Set-SoscLanguage 'en'; Reset-FakeConsole }
+}
+
+Test-Case 'shortcuts: Ctrl/Alt letters do not answer, digits choose in single menus' {
+    function Read-SoscLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        Use-FakeConsole @('Ctrl+S', 'Ctrl+Y', 'Alt+S', 'Enter')
+        Assert-True (-not (Confirm-Sosc -Question 'Q?' -Default $false)) 'Ctrl+S, Ctrl+Y and Alt+S ignored'
+        Assert-Equal $script:Keys.Count 0 'keys used'
+        Use-FakeConsole @('Alt+N', 'Ctrl+N', 'Enter')
+        Assert-True (Confirm-Sosc -Question 'Q?' -Default $true) 'Alt+N, Ctrl+N ignored'
+        Use-FakeConsole @('Ctrl+C')
+        Assert-True (-not (Confirm-Sosc -Question 'Q?' -Default $true)) 'Ctrl+C is still No'
+        # Digits, as in the numbered menus.
+        Use-FakeConsole @('2')
+        Assert-Equal (Read-SoscMainChoice) '2' 'main menu: 2'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' Uninstall') 'choice left on screen'
+        Use-FakeConsole @('0')
+        Assert-Equal (Read-SoscMainChoice) '0' 'main menu: 0 exits'
+        Use-FakeConsole @('7', 'Ctrl+2', 'Alt+1', '1')
+        Assert-Equal (Read-SoscMainChoice) '1' 'unknown digit and Ctrl/Alt digits ignored'
+        Use-FakeConsole @('1', '3', '2')
+        Assert-Equal (Read-SoscNoPlayerChoice -HasWinget $false -AppMpv '') '2' 'disabled entries (1, 3) do not answer'
+        Use-FakeConsole @('3')
+        Assert-Equal (Read-SoscNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') '3' 'no player: 3'
+        # Multiple choice: digits do nothing (Enter takes the highlighted one).
+        $list = New-TwoFolderList 'menu-digits'
+        Use-FakeConsole @('2', 'Enter')
+        Assert-Equal ([string]::Join(',', (Read-SoscTargetChoice -List $list -Mode 'install').Indexes)) '0' 'digits ignored in the folder list'
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Reset-FakeConsole }
+}
+
+Test-Case 'keys pressed before a menu opens are thrown away' {
+    function Read-SoscLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        Use-FakeConsole @('Enter')
+        $script:Pending.Enqueue('S')
+        Assert-True (-not (Confirm-Sosc -Question 'Q?' -Default $false)) 'an S typed during a download does not answer Yes'
+        Assert-Equal $script:Pending.Count 0 'flushed'
+        Use-FakeConsole @('Enter')
+        foreach ($k in @('DownArrow', 'Enter')) { $script:Pending.Enqueue($k) }
+        Assert-Equal (Read-SoscMainChoice) '1' 'list menu: earlier keys do not move or choose'
+        # The real flush never fails, with or without a console.
+        $script:SoscKeyFlush = $RealKeyFlush
+        & $script:SoscKeyFlush
+    }
+    finally { Remove-Item Function:\Read-SoscLine; Reset-FakeConsole }
 }
 
 Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {

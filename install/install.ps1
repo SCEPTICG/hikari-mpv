@@ -259,6 +259,8 @@ $script:SoscStringsEn = @{
     multi_help            = '\u2191/\u2193 to move \u00b7 Space to tick or untick \u00b7 Esc to exit'
     multi_help2           = 'Enter to confirm (with nothing ticked, the highlighted one is chosen)'
     yesno_help            = '\u2190/\u2192 to change \u00b7 Enter to confirm \u00b7 Y/N \u00b7 Esc = No'
+    menu_help_short       = '\u2191/\u2193 \u00b7 Enter \u00b7 Esc'
+    multi_help_short      = '\u2191/\u2193 \u00b7 Space \u00b7 Enter \u00b7 Esc'
     answer_yes            = 'Yes'
     answer_no             = 'No'
 }
@@ -365,6 +367,8 @@ $script:SoscStringsEs = @{
     multi_help            = '\u2191/\u2193 para moverte \u00b7 Espacio para marcar o desmarcar \u00b7 Esc para salir'
     multi_help2           = 'Intro para confirmar (si no marcas ninguna, se elige la resaltada)'
     yesno_help            = '\u2190/\u2192 para cambiar \u00b7 Intro para confirmar \u00b7 S/N \u00b7 Esc = No'
+    menu_help_short       = '\u2191/\u2193 \u00b7 Intro \u00b7 Esc'
+    multi_help_short      = '\u2191/\u2193 \u00b7 Espacio \u00b7 Intro \u00b7 Esc'
     answer_yes            = 'S\u00ed'
     answer_no             = 'No'
 }
@@ -469,6 +473,8 @@ $script:SoscNoConsole = 'SOSC_NO_INTERACTIVE_CONSOLE'
 $script:SoscUseNumbers = New-Object psobject
 # Menu width in columns; 0 means the console's own width.
 $script:SoscMenuWidth = 0
+# Window height in lines; 0 means the console's own height (replaceable in tests).
+$script:SoscMenuHeight = 0
 $script:GlyphPointer = [string][char]0x203A
 $script:GlyphEllipsis = [string][char]0x2026
 
@@ -484,6 +490,9 @@ $script:SoscMenuRenderer = { param([object[]]$Lines, [int]$Previous) Write-SoscM
 # Replaceable in tests: hide the cursor and take Ctrl+C as a key, and undo it.
 $script:SoscConsoleEnter = { Enter-SoscMenuConsole }
 $script:SoscConsoleExit = { param($State) Exit-SoscMenuConsole -State $State }
+# Replaceable in tests: throws away keys pressed before a menu opened (during a
+# download, say), so they never answer its question.
+$script:SoscKeyFlush = { Clear-SoscPendingKeys }
 
 function Test-SoscInteractiveConsole {
     try {
@@ -533,6 +542,63 @@ function Get-SoscMenuWidth {
     return $w
 }
 
+# Window height in lines, or 0 when it cannot be known (then it is not checked).
+function Get-SoscMenuHeight {
+    if ($script:SoscMenuHeight -gt 0) { return $script:SoscMenuHeight }
+    try { $h = [Console]::WindowHeight } catch { $h = 0 }
+    if ($null -eq $h) { $h = 0 }
+    return [int]$h
+}
+
+# A frame of $Count lines fits when it leaves one line free below it: redrawing
+# goes back up exactly that many lines, which only works while the whole frame
+# is inside the window. Taller, every key would leave a copy of the menu above.
+function Test-SoscFrameFits {
+    param([int]$Count)
+    if ($Count -le 0) { return $true }
+    $h = Get-SoscMenuHeight
+    return ($h -le 0 -or $Count -lt $h - 1)
+}
+
+# Splits a help text into lines of at most $Max characters instead of cutting
+# it: first between its ' . ' separated parts, then between words.
+function Split-SoscHelp {
+    param([string]$Text, [int]$Max)
+    $out = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrEmpty($Text) -or $Max -lt 1) { return , $out.ToArray() }
+    $sep = ' ' + [string][char]0x00B7 + ' '
+    $tokens = New-Object System.Collections.Generic.List[object]
+    $first = $true
+    foreach ($part in ($Text -split [regex]::Escape($sep))) {
+        $join = $sep
+        if ($first) { $join = '' }
+        $first = $false
+        if ($part.Length -le $Max) { $tokens.Add(@($join, $part)); continue }
+        foreach ($word in @($part -split ' ' | Where-Object { $_ -ne '' })) {
+            $tokens.Add(@($join, $word))
+            $join = ' '
+        }
+    }
+    $line = ''
+    foreach ($t in $tokens) {
+        $text = Format-SoscFit -Text $t[1] -Max $Max
+        if ($line -eq '') { $line = $text }
+        elseif ($line.Length + $t[0].Length + $text.Length -le $Max) { $line += $t[0] + $text }
+        else { $out.Add($line); $line = $text }
+    }
+    if ($line -ne '') { $out.Add($line) }
+    return , $out.ToArray()
+}
+
+# Help lines for a frame, indented by two spaces and wrapped to the width.
+function Add-SoscHelpLines {
+    param($Lines, [string[]]$Texts)
+    $max = (Get-SoscMenuWidth) - 3
+    foreach ($h in $Texts) {
+        foreach ($part in (Split-SoscHelp -Text $h -Max $max)) { $Lines.Add([object[]]@(New-SoscSeg ('  ' + $part) 'DarkGray')) }
+    }
+}
+
 # Shortens a text to $Max characters with an ellipsis, at the end or (paths,
 # where the last folders matter most) in the middle.
 function Format-SoscFit {
@@ -562,9 +628,12 @@ function New-SoscSeg {
 # Draws the frame over the previous one: back up $Previous lines, write every
 # line padded to the width (so nothing of the old frame is left) and clear the
 # old lines that are no longer needed. Lines never reach the last column, so
-# the console never wraps them and going back up stays exact.
+# the console never wraps them and going back up stays exact. A frame taller
+# than the window is refused before anything is written (Invoke-SoscRender then
+# switches to numbers): redrawing it would leave copies of it on screen.
 function Write-SoscMenuFrame {
     param([object[]]$Lines, [int]$Previous)
+    if (-not (Test-SoscFrameFits @($Lines).Count)) { throw 'The menu does not fit in the window.' }
     $max = (Get-SoscMenuWidth) - 1
     if ($Previous -gt 0) {
         $top = [Console]::CursorTop - $Previous
@@ -624,8 +693,17 @@ function Exit-SoscMenuConsole {
     try { [Console]::CursorVisible = [bool]$State.Cursor } catch { }
 }
 
-# One key as Key (ConsoleKey name), Char and Ctrl. A reader that fails means
-# there is no console to read from.
+# Throws away the keys already waiting (a bounded number: a key held down keeps
+# them coming). Nothing to do when there is no console to ask.
+function Clear-SoscPendingKeys {
+    try {
+        for ($i = 0; $i -lt 256 -and [Console]::KeyAvailable; $i++) { [void][Console]::ReadKey($true) }
+    }
+    catch { }
+}
+
+# One key as Key (ConsoleKey name), Char, Ctrl and Alt. A reader that fails
+# means there is no console to read from.
 function Read-SoscKey {
     try { $k = & $script:SoscKeyReader }
     catch { throw $script:SoscNoConsole }
@@ -633,12 +711,29 @@ function Read-SoscKey {
     if ($k -is [string]) {
         $name = $k
         $ctrl = $false
-        if ($name -like 'Ctrl+?*') { $ctrl = $true; $name = $name.Substring(5) }
+        $alt = $false
+        while ($true) {
+            if ($name -like 'Ctrl+?*') { $ctrl = $true; $name = $name.Substring(5); continue }
+            if ($name -like 'Alt+?*') { $alt = $true; $name = $name.Substring(4); continue }
+            break
+        }
         $char = [char]0
         if ($name.Length -eq 1) { $char = $name[0]; $name = $name.ToUpperInvariant() }
-        return [pscustomobject]@{ Key = $name; Char = $char; Ctrl = $ctrl }
+        return [pscustomobject]@{ Key = $name; Char = $char; Ctrl = $ctrl; Alt = $alt }
     }
-    return [pscustomobject]@{ Key = [string]$k.Key; Char = $k.KeyChar; Ctrl = (($k.Modifiers -band [ConsoleModifiers]::Control) -ne 0) }
+    return [pscustomobject]@{
+        Key  = [string]$k.Key
+        Char = $k.KeyChar
+        Ctrl = (($k.Modifiers -band [ConsoleModifiers]::Control) -ne 0)
+        Alt  = (($k.Modifiers -band [ConsoleModifiers]::Alt) -ne 0)
+    }
+}
+
+# Letter and number shortcuts only count when typed on their own: Ctrl+S or
+# Alt+Y must not answer Yes.
+function Test-SoscPlainKey {
+    param($Key)
+    return (-not $Key.Ctrl -and -not $Key.Alt)
 }
 
 # Esc, and Ctrl+C while a menu is open: always the safe way out.
@@ -649,11 +744,13 @@ function Test-SoscCancelKey {
 
 # An entry of a list menu. Action: in a multiple choice menu, an entry that is
 # chosen with Enter instead of ticked ("Other folder...", "Exit"). Quit: the
-# entry that leaves. Summary: what the line left after choosing says.
+# entry that leaves. Summary: what the line left after choosing says. Hotkey:
+# in a single choice menu, the digit that chooses it at once (the number it had
+# in the old numbered menus).
 function New-SoscMenuItem {
-    param([string]$Label, [string[]]$Details = @(), [bool]$Action = $false, [bool]$Disabled = $false, [string]$Summary = '', [bool]$Quit = $false)
+    param([string]$Label, [string[]]$Details = @(), [bool]$Action = $false, [bool]$Disabled = $false, [string]$Summary = '', [bool]$Quit = $false, [string]$Hotkey = '')
     if (-not $Summary) { $Summary = $Label }
-    return [pscustomobject]@{ Label = $Label; Details = @($Details); Action = $Action; Disabled = $Disabled; Summary = $Summary; Quit = $Quit }
+    return [pscustomobject]@{ Label = $Label; Details = @($Details); Action = $Action; Disabled = $Disabled; Summary = $Summary; Quit = $Quit; Hotkey = $Hotkey }
 }
 
 # Next entry that is not disabled, wrapping around at both ends.
@@ -668,8 +765,20 @@ function Get-SoscNextItem {
     return $From
 }
 
+# The list menu as it is drawn: the full version when it fits in the window,
+# otherwise a compact one (no folder lines, short help). When not even that
+# fits, the question is asked with numbers.
 function Get-SoscListFrame {
     param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi)
+    foreach ($compact in @($false, $true)) {
+        $frame = New-SoscListFrame -Items $Items -Current $Current -Checked $Checked -Multi $Multi -Compact $compact
+        if (Test-SoscFrameFits @($frame).Count) { return , $frame }
+    }
+    throw $script:SoscNoConsole
+}
+
+function New-SoscListFrame {
+    param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi, [bool]$Compact)
     $width = Get-SoscMenuWidth
     $lines = New-Object System.Collections.Generic.List[object]
     for ($i = 0; $i -lt $Items.Count; $i++) {
@@ -685,16 +794,34 @@ function Get-SoscListFrame {
         if ($Multi -and -not $it.Action) {
             if ($Checked[$i]) { $box = '[x] ' } else { $box = '[ ] ' }
         }
-        $lines.Add([object[]]@(New-SoscSeg ($pointer + $box + $it.Label) $color))
+        $head = $pointer + $box + $it.Label
+        $segs = @(New-SoscSeg $head $color)
+        if ($Compact) {
+            # No folder line, but entries that look alike must still be told
+            # apart: the folder goes, shortened, on the same line when it fits.
+            $room = $width - 1 - $head.Length - 2
+            if (@($it.Details).Count -gt 0 -and $room -ge 12) {
+                $segs += New-SoscSeg ('  ' + (Format-SoscFit -Text $it.Details[0] -Max $room -Middle)) $detailColor
+            }
+            $lines.Add([object[]]$segs)
+            continue
+        }
+        $lines.Add([object[]]$segs)
         $indent = ' ' * (2 + $box.Length)
         foreach ($d in $it.Details) {
             $lines.Add([object[]]@(New-SoscSeg ($indent + (Format-SoscFit -Text $d -Max ($width - 1 - $indent.Length) -Middle)) $detailColor))
         }
     }
-    $lines.Add([object[]]@())
-    $help = @(T 'menu_help')
-    if ($Multi) { $help = @((T 'multi_help'), (T 'multi_help2')) }
-    foreach ($h in $help) { $lines.Add([object[]]@(New-SoscSeg ('  ' + $h) 'DarkGray')) }
+    if ($Compact) {
+        $help = @(T 'menu_help_short')
+        if ($Multi) { $help = @(T 'multi_help_short') }
+    }
+    else {
+        $lines.Add([object[]]@())
+        $help = @(T 'menu_help')
+        if ($Multi) { $help = @((T 'multi_help'), (T 'multi_help2')) }
+    }
+    Add-SoscHelpLines -Lines $lines -Texts $help
     return , $lines.ToArray()
 }
 
@@ -702,22 +829,42 @@ function Get-SoscListFrame {
 # Esc leaves. Multiple choice (-Multi): Space ticks or unticks, Enter confirms
 # the ticked entries or, with none ticked, the highlighted one; Enter on an
 # action entry chooses it (together with what is ticked).
+# Single choice: a digit chooses the entry with that Hotkey (not when disabled).
+# $Header: lines written above the menu, only once it is sure the menu fits.
 # Returns Cancelled, Index (entry Enter was pressed on; -1 for ticked ones) and
 # Checked (indexes of the chosen entries that are not actions).
 function Invoke-SoscListMenu {
-    param([object[]]$Items, [switch]$Multi, [int]$Start = 0)
+    param([object[]]$Items, [switch]$Multi, [int]$Start = 0, [string[]]$Header = @())
     $n = $Items.Count
     $checked = New-Object 'bool[]' $n
     $cur = Get-SoscNextItem -Items $Items -From ($Start - 1) -Step 1
     $result = $null
     $drawn = 0
+    # Too tall even when compact: this throws before anything is written, so
+    # the numbered question that replaces it starts on a clean screen.
+    [void](Get-SoscListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi))
+    foreach ($h in $Header) { Write-SoscInfo $h }
     $console = & $script:SoscConsoleEnter
     try {
+        & $script:SoscKeyFlush
         while ($null -eq $result) {
             $drawn = Invoke-SoscRender -Lines (Get-SoscListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi)) -Previous $drawn
             $key = Read-SoscKey
             if (Test-SoscCancelKey $key) {
                 $result = [pscustomobject]@{ Cancelled = $true; Index = -1; Checked = @() }
+                continue
+            }
+            $digit = [string]$key.Char
+            if (-not $Multi -and $digit -match '^[0-9]$') {
+                if (Test-SoscPlainKey $key) {
+                    for ($i = 0; $i -lt $n; $i++) {
+                        if ($Items[$i].Hotkey -eq $digit -and -not $Items[$i].Disabled) {
+                            $cur = $i
+                            $result = [pscustomobject]@{ Cancelled = $false; Index = $i; Checked = @() }
+                            break
+                        }
+                    }
+                }
                 continue
             }
             switch ($key.Key) {
@@ -767,7 +914,13 @@ function Get-SoscYesNoFrame {
         else { $segs += New-SoscSeg ('  ' + $a[0]) }
         $segs += New-SoscSeg '    '
     }
-    return , @([object[]]$segs, [object[]]@(New-SoscSeg ('  ' + (T 'yesno_help')) 'DarkGray'))
+    # Full: answers and help. Compact (a very low window): only the answers.
+    $lines = New-Object System.Collections.Generic.List[object]
+    $lines.Add([object[]]$segs)
+    Add-SoscHelpLines -Lines $lines -Texts @(T 'yesno_help')
+    if (Test-SoscFrameFits $lines.Count) { return , $lines.ToArray() }
+    if (Test-SoscFrameFits 1) { return , @(, [object[]]$segs) }
+    throw $script:SoscNoConsole
 }
 
 # Yes/No on one line. Starts on $Default; Left/Right (and Up/Down, Tab) change
@@ -775,16 +928,20 @@ function Get-SoscYesNoFrame {
 # always answer No: every question is asked so that No is the safe answer.
 function Read-SoscYesNoMenu {
     param([string]$Question, [bool]$Default)
-    Write-SoscInfo $Question
     $yes = $Default
     $result = $null
     $drawn = 0
+    # Checked before the question is written (see Invoke-SoscListMenu).
+    [void](Get-SoscYesNoFrame $yes)
+    Write-SoscInfo $Question
     $console = & $script:SoscConsoleEnter
     try {
+        & $script:SoscKeyFlush
         while ($null -eq $result) {
             $drawn = Invoke-SoscRender -Lines (Get-SoscYesNoFrame $yes) -Previous $drawn
             $key = Read-SoscKey
             if (Test-SoscCancelKey $key) { $result = $false; continue }
+            $plain = Test-SoscPlainKey $key
             switch ($key.Key) {
                 'LeftArrow' { $yes = $true }
                 'RightArrow' { $yes = $false }
@@ -792,9 +949,9 @@ function Read-SoscYesNoMenu {
                 'DownArrow' { $yes = -not $yes }
                 'Tab' { $yes = -not $yes }
                 'Enter' { $result = $yes }
-                'S' { $result = $true }
-                'Y' { $result = $true }
-                'N' { $result = $false }
+                'S' { if ($plain) { $result = $true } }
+                'Y' { if ($plain) { $result = $true } }
+                'N' { if ($plain) { $result = $false } }
             }
         }
     }
@@ -2214,10 +2371,18 @@ function Show-SoscCandidates {
     }
 }
 
+# The line above the list of folders ('' with no folders).
+function Get-SoscTargetHeader {
+    param([object[]]$List, [string]$Mode)
+    if (@($List).Count -eq 0) { return '' }
+    if ($Mode -eq 'uninstall') { return (T 'found_header_uninst') }
+    return (T 'found_header')
+}
+
 function Write-SoscTargetHeader {
     param([object[]]$List, [string]$Mode)
-    if (@($List).Count -eq 0) { return }
-    if ($Mode -eq 'uninstall') { Write-SoscInfo (T 'found_header_uninst') } else { Write-SoscInfo (T 'found_header') }
+    $h = Get-SoscTargetHeader -List $List -Mode $Mode
+    if ($h) { Write-SoscInfo $h }
 }
 
 # Menu entry for a detected folder: player and tags, then its config folder.
@@ -2236,13 +2401,13 @@ function New-SoscCandidateItem {
 function Read-SoscTargetChoice {
     param([object[]]$List, [string]$Mode)
     $r = Invoke-SoscMenuOrNumbers {
-        Write-SoscTargetHeader -List $List -Mode $Mode
+        $header = @(Get-SoscTargetHeader -List $List -Mode $Mode | Where-Object { $_ })
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($c in $List) { $items.Add((New-SoscCandidateItem $c)) }
         $otherIndex = $items.Count
         $items.Add((New-SoscMenuItem -Label ((Get-SoscPlainLabel (T 'opt_other')) + $script:GlyphEllipsis) -Action $true))
         $items.Add((New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'opt_quit')) -Action $true -Quit $true))
-        $m = Invoke-SoscListMenu -Items $items.ToArray() -Multi
+        $m = Invoke-SoscListMenu -Items $items.ToArray() -Multi -Header $header
         $sel = [pscustomobject]@{ Indexes = @(); Other = $false; Quit = $false }
         if ($m.Cancelled -or ($m.Index -ge 0 -and $items[$m.Index].Quit)) { $sel.Quit = $true; return $sel }
         $sel.Indexes = @($m.Checked)
@@ -2269,9 +2434,9 @@ function Read-SoscMainChoice {
     $r = Invoke-SoscMenuOrNumbers {
         $labels = @((T 'menu') -split "`r?`n" | ForEach-Object { Get-SoscPlainLabel $_ })
         $items = @(
-            (New-SoscMenuItem -Label $labels[0]),
-            (New-SoscMenuItem -Label $labels[1]),
-            (New-SoscMenuItem -Label $labels[2] -Quit $true)
+            (New-SoscMenuItem -Label $labels[0] -Hotkey '1'),
+            (New-SoscMenuItem -Label $labels[1] -Hotkey '2'),
+            (New-SoscMenuItem -Label $labels[2] -Quit $true -Hotkey '0')
         )
         $m = Invoke-SoscListMenu -Items $items
         if ($m.Cancelled) { return '0' }
@@ -2287,16 +2452,15 @@ function Read-SoscMainChoice {
 function Read-SoscNoPlayerChoice {
     param([bool]$HasWinget, [string]$AppMpv)
     $r = Invoke-SoscMenuOrNumbers {
-        Write-SoscInfo (T 'none_link')
         $wingetLabel = Get-SoscPlainLabel (T 'none_opt_winget')
         if (-not $HasWinget) { $wingetLabel += ' ' + (T 'none_nowinget').Trim() }
         $items = @(
-            (New-SoscMenuItem -Label $wingetLabel -Disabled (-not $HasWinget)),
-            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'none_opt_folder'))),
-            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'none_opt_prepare' @($AppMpv))) -Disabled (-not $AppMpv)),
-            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'opt_quit')) -Quit $true)
+            (New-SoscMenuItem -Label $wingetLabel -Disabled (-not $HasWinget) -Hotkey '1'),
+            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'none_opt_folder')) -Hotkey '2'),
+            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'none_opt_prepare' @($AppMpv))) -Disabled (-not $AppMpv) -Hotkey '3'),
+            (New-SoscMenuItem -Label (Get-SoscPlainLabel (T 'opt_quit')) -Quit $true -Hotkey '0')
         )
-        $m = Invoke-SoscListMenu -Items $items
+        $m = Invoke-SoscListMenu -Items $items -Header @(T 'none_link')
         if ($m.Cancelled) { return '0' }
         return @('1', '2', '3', '0')[$m.Index]
     }
