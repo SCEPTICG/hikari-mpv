@@ -11,6 +11,11 @@ M.expand = {}        -- path -> expanded path
 M.props = {}         -- property name -> value
 M.events = {}        -- event name -> function
 M.backups = {}       -- option name -> value saved by file-local-options/<name>
+M.observers = {}     -- property name -> array of callbacks (mp.observe_property)
+M.overlays = {}      -- every mp.create_osd_overlay object, in creation order
+M.sections = {}      -- input section name -> {bindings, flags, enabled, enable_flags}
+M.clock = 0          -- what mp.get_time returns; move it with M.advance
+M.timers = {}        -- pending mp.add_timeout timers
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -45,6 +50,8 @@ function M.install(script_name)
 	M.logs = {warn = {}, error = {}, info = {}}
 	M.bindings, M.messages = {}, {}
 	M.props, M.events, M.backups = {}, {}, {}
+	M.observers, M.overlays, M.sections = {}, {}, {}
+	M.clock, M.timers = 0, {}
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
@@ -62,6 +69,51 @@ function M.install(script_name)
 			local v = M.props[name]
 			if v == nil then return def end
 			return tostring(v)
+		end,
+		get_time = function() return M.clock end,
+		add_timeout = function(seconds, fn)
+			local timer = {due = M.clock + seconds, fn = fn, active = true}
+			function timer:kill() self.active = false end
+			table.insert(M.timers, timer)
+			return timer
+		end,
+		get_property_native = function(name, def)
+			local v = M.props[name]
+			if v == nil then return def end
+			return v
+		end,
+		observe_property = function(name, kind, fn)
+			M.observers[name] = M.observers[name] or {}
+			table.insert(M.observers[name], fn)
+		end,
+		unobserve_property = function(fn)
+			for _, list in pairs(M.observers) do
+				for i = #list, 1, -1 do
+					if list[i] == fn then table.remove(list, i) end
+				end
+			end
+		end,
+		-- Overlays keep what the script sent: `updates` counts update() calls,
+		-- `visible` is false after remove().
+		create_osd_overlay = function(format)
+			local overlay = {format = format, data = '', res_x = 0, res_y = 0, updates = 0, removes = 0, visible = false}
+			function overlay:update() self.updates = self.updates + 1; self.visible = true end
+			function overlay:remove() self.removes = self.removes + 1; self.visible = false end
+			table.insert(M.overlays, overlay)
+			return overlay
+		end,
+		-- Input sections as in mpv's defaults.lua: entries are {key, cb_up, cb_down}
+		-- or {key, 'command'}.
+		set_key_bindings = function(list, section, flags)
+			M.sections[section] = {bindings = list, flags = flags, enabled = false}
+		end,
+		enable_key_bindings = function(section, flags)
+			local s = M.sections[section]
+			s.enabled, s.enable_flags = true, flags
+			s.enables = (s.enables or 0) + 1
+		end,
+		disable_key_bindings = function(section)
+			M.sections[section].enabled = false
 		end,
 		get_property_number = function(name, def)
 			local v = tonumber(M.props[name])
@@ -93,6 +145,32 @@ function M.install(script_name)
 			end
 		end,
 	}
+end
+
+-- Sets a property and notifies its observers, like mpv does on a change.
+function M.set(name, value)
+	M.props[name] = value
+	local list = M.observers[name]
+	if not list then return end
+	local copy = {}
+	for i, fn in ipairs(list) do copy[i] = fn end
+	for _, fn in ipairs(copy) do fn(name, value) end
+end
+
+-- Moves the clock forward and fires the timers that fall due, in order.
+function M.advance(seconds)
+	M.clock = M.clock + seconds
+	table.sort(M.timers, function(a, b) return a.due < b.due end)
+	local pending = {}
+	for _, timer in ipairs(M.timers) do
+		if timer.active and timer.due <= M.clock then
+			timer.active = false
+			timer.fn()
+		elseif timer.active then
+			pending[#pending + 1] = timer
+		end
+	end
+	M.timers = pending
 end
 
 -- Simulates the end of the current file: file-local options go back.
