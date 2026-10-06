@@ -248,7 +248,17 @@ What the installer does:
 - **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that sosc did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, your files are moved to `shaders-desactivados/` (nothing is deleted), sosc installs its own copy, and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` can be turned off by putting `# sosc: ` in front of them, so the sosc keys can use those keys. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
 - `-Anime4K yes` installs it (and takes over one installed by hand) without asking; `-Anime4K no` leaves it out (an Anime4K that sosc installed earlier is left as it is).
 
-The quality is chosen from your graphics card the first time `sosc-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. *Alta*: NVIDIA RTX, NVIDIA GTX 1060 and newer (GTX 16xx too), AMD Radeon RX 500 series and newer, RX Vega 56/64 and Radeon VII, Intel Arc. *Rápida*: Intel UHD/Iris/HD, AMD integrated graphics, NVIDIA MX and GT, and anything unknown. It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use *Rápida* or a mode without `+`.
+The quality is chosen from your graphics card the first time `sosc-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. The line follows [Anime4K's own guide](https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md), which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets *Rápida*:
+
+| | *Alta* | *Rápida* |
+| --- | --- | --- |
+| NVIDIA | GTX 1080 / 1080 Ti; RTX 2070 and up; RTX 3060, 4060, 5060 and up; TITAN Xp / V / RTX; professional RTX 4000 and up | GTX 1070, GTX 16xx, GTX 1060 and older; RTX 2060 (Super too); RTX 3050, 4050, 5050; RTX A2000 and smaller; MX, GT |
+| AMD | RX 590; RX 5600, 5700; RX 6600 and up; RX 7600 and up; RX 9060 and up; RX Vega 56/64, Radeon VII | RX 580, 570 and older; RX 5500; RX 6400, 6500; RX 7400; integrated graphics (*Radeon Graphics*, *780M*...) |
+| Intel | Arc A580, A750, A770, B570, B580 (and A770M) | *Arc Graphics* with no model number and Arc 140V (integrated in Core Ultra), Arc A380, laptop Arc below A770M, UHD, Iris, HD |
+| Apple | M Pro, Max and Ultra | M base chips, Intel Macs |
+| Other | | anything unknown |
+
+It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use *Rápida* or a mode without `+`.
 
 The modes, qualities and shader lists are defined in `portable_config/scripts/sosc-upscale.lua`. To open the menu from the keyboard, bind `script-binding sosc_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to sosc_upscale set-mode <off|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
 

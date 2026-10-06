@@ -2101,28 +2101,69 @@ function Get-SoscGpuNames {
 }
 
 # Anime4K quality for one graphics card name: 'hq' (Alta) or 'fast' (Rapida).
-# Pure, so the same rules can serve the macOS installer:
-#   hq   - NVIDIA RTX (any); NVIDIA GTX 1060 and newer (GTX 16xx too; not GTX
-#          1050 and older, not MX or GT); AMD Radeon RX 5xx and newer, RX Vega
-#          56/64 and Radeon VII (dedicated cards, never "... Graphics", the name
-#          of AMD integrated graphics); Intel Arc; Apple M Pro, Max and Ultra.
-#   fast - everything else: Intel UHD/Iris/HD, AMD integrated graphics, NVIDIA
-#          MX/GT, Apple M base chips, Intel Macs and unknown names.
+# Pure, so the same rules can serve the macOS installer. The line comes from
+# Anime4K's own mpv guide (md/GLSL_Instructions_Windows_MPV.md): its "higher-end"
+# examples are GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and
+# 6600 XT; its "lower-end" ones GTX 980, GTX 1060 and RX 570. When a card is not
+# clearly at the level of an RTX 2070, it gets 'fast' (the user can change it).
+#   hq   - NVIDIA: GTX 1080 / 1080 Ti, TITAN Xp / V / RTX / X (Pascal); RTX
+#          2070 and up in the 20 series, RTX x060 and up from the 30 series on
+#          (3060, 4060, 5060...); professional RTX numbered 4000 and up (Quadro
+#          RTX 4000+, RTX A4000+, RTX 4000 Ada...).
+#          AMD (dedicated: never "... Graphics", the name of its integrated
+#          graphics): RX 590; RX 5600 and up in the 5000, 6000 and 7000 series
+#          (x600+); RX 9060 and up; RX Vega 56/64 and Radeon VII.
+#          Intel Arc dedicated cards with a model number of 570 and up (A580,
+#          A750, A770, B570, B580); laptop ones (A...M) only from A770M.
+#          Apple M Pro, Max and Ultra.
+#   fast - everything else: GTX 1070, GTX 16xx, GTX 1060 and older, RTX 2060
+#          (Super too), RTX x050 (3050, 4050, 5050), RTX A2000 and smaller,
+#          NVIDIA MX/GT; RX 580/570 and older, RX 5500, RX 6400/6500, RX 7400;
+#          AMD and Intel integrated graphics (UHD/Iris/HD, "Intel(R) Arc(TM)
+#          Graphics" with no number, Arc 140V, Arc A380); Apple M base chips,
+#          Intel Macs and unknown names.
 function Get-SoscGpuQuality {
     param([string]$Name)
     if ([string]::IsNullOrWhiteSpace($Name)) { return 'fast' }
     if ($Name -match '(?i)\bApple\s+M\d+\s+(Pro|Max|Ultra)\b') { return 'hq' }
-    if ($Name -match '(?i)NVIDIA|GeForce|Quadro|\bRTX\b|\bGTX\b') {
-        if ($Name -match '(?i)\bRTX\b') { return 'hq' }
-        $m = [regex]::Match($Name, '(?i)\bGTX\s*(\d{3,4})(?!\d)')
-        if ($m.Success -and [int]$m.Groups[1].Value -ge 1060) { return 'hq' }
+    if ($Name -match '(?i)NVIDIA|GeForce|Quadro|\bRTX\b|\bGTX\b|\bTITAN\b') {
+        $m = [regex]::Match($Name, '(?i)\bRTX\s*(PRO\s*)?(A)?\s*(\d{3,4})(?!\d)')
+        if ($m.Success) {
+            $num = [int]$m.Groups[3].Value
+            $pro = $m.Groups[1].Success -or $m.Groups[2].Success -or $Name -match '(?i)Quadro' -or ($num % 100) -eq 0
+            if ($pro) { if ($num -ge 4000) { return 'hq' } else { return 'fast' } }
+            if ($num -lt 1000) { return 'fast' }
+            $series = [int][math]::Floor($num / 100)
+            $tier = $num % 100
+            if ($series -eq 20 -and $tier -ge 70) { return 'hq' }
+            if ($series -ge 30 -and $tier -ge 60) { return 'hq' }
+            return 'fast'
+        }
+        if ($Name -match '(?i)\bGTX\s*1080(?!\d)') { return 'hq' }
+        if ($Name -match '(?i)\bTITAN\s+(Xp|V|RTX|X\s*\(Pascal\))(?![\w])') { return 'hq' }
         return 'fast'
     }
-    if ($Name -match '(?i)\bIntel\b' -and $Name -match '(?i)\bArc\b') { return 'hq' }
+    if ($Name -match '(?i)\bIntel\b|\bArc\b') {
+        $m = [regex]::Match($Name, '(?i)\bArc\b.*?\b[AB](\d{3})(M?)\b')
+        if ($m.Success) {
+            $num = [int]$m.Groups[1].Value
+            $min = 570
+            if ($m.Groups[2].Value) { $min = 770 }
+            if ($num -ge $min) { return 'hq' }
+        }
+        return 'fast'
+    }
     if ($Name -match '(?i)Radeon') {
         if ($Name -match '(?i)\bGraphics\b') { return 'fast' }
         $m = [regex]::Match($Name, '(?i)\bRX\s*(\d{3,4})(?!\d)')
-        if ($m.Success -and [int]$m.Groups[1].Value -ge 500) { return 'hq' }
+        if ($m.Success) {
+            $num = [int]$m.Groups[1].Value
+            if ($num -lt 1000) { if ($num -ge 590 -and $num -lt 600) { return 'hq' } else { return 'fast' } }
+            $series = [int][math]::Floor($num / 1000)
+            if ($series -ge 5 -and $series -le 8) { $tier = [int][math]::Floor(($num % 1000) / 10) } else { $tier = $num % 100 }
+            if ($tier -ge 60) { return 'hq' }
+            return 'fast'
+        }
         if ($Name -match '(?i)\bRX\s+Vega(\s+(56|64))?\s*$|\bVega\s+(56|64)\b|\bRadeon\s+VII\b') { return 'hq' }
         return 'fast'
     }

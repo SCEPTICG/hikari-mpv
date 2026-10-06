@@ -1965,16 +1965,31 @@ Test-Case 'repository input.conf and mpv.conf carry the same keys and includes a
     foreach ($l in $script:MpvConfLines) { Assert-True ($conf -match ('(?m)^' + [regex]::Escape($l) + '\s*$')) ($l + ' in mpv.conf') }
 }
 
-Test-Case 'graphics card: Alta for capable cards, Rapida for the rest (Windows and Mac names)' {
-    $hq = @('NVIDIA GeForce RTX 3060', 'NVIDIA GeForce RTX 2050', 'NVIDIA RTX A2000 12GB', 'NVIDIA GeForce GTX 1060 6GB',
-        'NVIDIA GeForce GTX 1070 Ti', 'NVIDIA GeForce GTX 1650', 'NVIDIA GeForce GTX 1660 SUPER', 'AMD Radeon RX 580 Series',
-        'AMD Radeon RX 5700 XT', 'AMD Radeon RX 6600M', 'AMD Radeon RX 550X', 'AMD Radeon RX 7900 XTX', 'AMD Radeon RX 9070 XT', 'Radeon RX Vega',
-        'AMD Radeon VII', 'Intel(R) Arc(TM) A770 Graphics', 'Intel(R) Arc(TM) B580 Graphics', 'Apple M1 Pro', 'Apple M2 Max',
-        'Apple M3 Ultra', 'Apple M4 Pro')
-    $fast = @('Intel(R) UHD Graphics 620', 'Intel(R) Iris(R) Xe Graphics', 'Intel(R) HD Graphics 4600', 'AMD Radeon(TM) Graphics',
-        'AMD Radeon(TM) RX Vega 10 Graphics', 'AMD Radeon 780M Graphics', 'NVIDIA GeForce MX450', 'NVIDIA GeForce GT 1030',
-        'NVIDIA GeForce GTX 1050 Ti', 'NVIDIA GeForce GTX 980', 'NVIDIA GeForce GTX 960M', 'AMD Radeon RX 460', 'Apple M1', 'Apple M3',
-        'Intel Iris Plus Graphics 655', 'Microsoft Basic Display Adapter', 'Some Unknown GPU', '')
+Test-Case 'graphics card: Alta from GTX 1080 / RTX 2070 / RX 590 up (Anime4K guide), Rapida for the rest' {
+    $hq = @('NVIDIA GeForce GTX 1080', 'NVIDIA GeForce GTX 1080 Ti', 'NVIDIA TITAN Xp', 'NVIDIA TITAN RTX',
+        'NVIDIA GeForce RTX 2070', 'NVIDIA GeForce RTX 2070 SUPER', 'NVIDIA GeForce RTX 2080 Ti', 'NVIDIA GeForce RTX 3060',
+        'NVIDIA GeForce RTX 3060 Laptop GPU', 'NVIDIA GeForce RTX 3070', 'NVIDIA GeForce RTX 4060', 'NVIDIA GeForce RTX 4070 Laptop GPU',
+        'NVIDIA GeForce RTX 4090', 'NVIDIA GeForce RTX 5060 Ti', 'NVIDIA GeForce RTX 5090', 'Quadro RTX 4000', 'NVIDIA RTX A4000',
+        'NVIDIA RTX 4000 Ada Generation', 'NVIDIA RTX PRO 6000 Blackwell Workstation Edition',
+        'Radeon RX 590 Series', 'AMD Radeon RX 590 GME', 'AMD Radeon RX 5600 XT', 'AMD Radeon RX 5700 XT', 'AMD Radeon RX 6600',
+        'AMD Radeon RX 6600M', 'AMD Radeon RX 6650 XT', 'AMD Radeon RX 7600', 'AMD Radeon RX 7900 XTX', 'AMD Radeon RX 9060 XT',
+        'AMD Radeon RX 9070 XT', 'Radeon RX Vega', 'Radeon RX Vega 56', 'AMD Radeon VII',
+        'Intel(R) Arc(TM) A580 Graphics', 'Intel(R) Arc(TM) A750 Graphics', 'Intel(R) Arc(TM) A770 Graphics',
+        'Intel(R) Arc(TM) A770M Graphics', 'Intel(R) Arc(TM) B570 Graphics', 'Intel(R) Arc(TM) B580 Graphics',
+        'Apple M1 Pro', 'Apple M2 Max', 'Apple M3 Ultra', 'Apple M4 Pro')
+    $fast = @('NVIDIA GeForce GTX 1070', 'NVIDIA GeForce GTX 1070 Ti', 'NVIDIA GeForce GTX 1060 6GB', 'NVIDIA GeForce GTX 1660 SUPER',
+        'NVIDIA GeForce GTX 1650', 'NVIDIA GeForce GTX 1050 Ti', 'NVIDIA GeForce GTX 980', 'NVIDIA GeForce GTX 960M',
+        'NVIDIA GeForce GTX TITAN X', 'NVIDIA GeForce RTX 2050', 'NVIDIA GeForce RTX 2060', 'NVIDIA GeForce RTX 2060 SUPER',
+        'NVIDIA GeForce RTX 3050', 'NVIDIA GeForce RTX 3050 Ti Laptop GPU', 'NVIDIA GeForce RTX 4050 Laptop GPU',
+        'NVIDIA GeForce RTX 5050', 'NVIDIA RTX A2000 12GB', 'NVIDIA RTX A500 Laptop GPU', 'NVIDIA RTX 2000 Ada Generation',
+        'NVIDIA Quadro P4000', 'NVIDIA GeForce MX450', 'NVIDIA GeForce GT 1030',
+        'AMD Radeon RX 580 Series', 'AMD Radeon RX 570', 'AMD Radeon RX 550X', 'AMD Radeon RX 460', 'AMD Radeon RX 5500 XT',
+        'AMD Radeon RX 6400', 'AMD Radeon RX 6500 XT', 'AMD Radeon RX 7400', 'AMD Radeon(TM) Graphics',
+        'AMD Radeon(TM) RX Vega 10 Graphics', 'AMD Radeon 780M Graphics', 'AMD Radeon Pro 5500M',
+        'Intel(R) Arc(TM) Graphics', 'Intel(R) Arc(TM) 140V GPU (16GB)', 'Intel(R) Arc(TM) A380 Graphics',
+        'Intel(R) Arc(TM) A370M Graphics', 'Intel(R) Arc(TM) A730M Graphics', 'Intel(R) Iris(R) Xe Graphics',
+        'Intel(R) UHD Graphics 630', 'Intel(R) UHD Graphics 620', 'Intel(R) HD Graphics 4600', 'Intel Iris Plus Graphics 655',
+        'Apple M1', 'Apple M3', 'Apple M4', 'Microsoft Basic Display Adapter', 'Some Unknown GPU', '')
     foreach ($n in $hq) { Assert-Equal (Get-SoscGpuQuality $n) 'hq' $n }
     foreach ($n in $fast) { Assert-Equal (Get-SoscGpuQuality $n) 'fast' $n }
 }
@@ -1983,6 +1998,11 @@ Test-Case 'graphics card: the most capable one decides; virtual adapters only as
     $t = Get-SoscGpuTier @('Intel(R) UHD Graphics 630', 'NVIDIA GeForce RTX 4070 Laptop GPU')
     Assert-Equal $t.Name 'NVIDIA GeForce RTX 4070 Laptop GPU' 'dedicated wins'
     Assert-Equal $t.Quality 'hq' 'quality'
+    $t = Get-SoscGpuTier @('Intel(R) Arc(TM) Graphics', 'NVIDIA GeForce GTX 1060 6GB', 'AMD Radeon RX 6600')
+    Assert-Equal $t.Name 'AMD Radeon RX 6600' 'the capable one decides, whatever the order'
+    Assert-Equal $t.Quality 'hq' 'quality of the best'
+    $t = Get-SoscGpuTier @('Intel(R) UHD Graphics 630', 'NVIDIA GeForce RTX 3050 Laptop GPU')
+    Assert-Equal $t.Quality 'fast' 'no capable card: fast'
     $t = Get-SoscGpuTier @('Parsec Virtual Display Adapter', 'Intel(R) UHD Graphics 630')
     Assert-Equal $t.Name 'Intel(R) UHD Graphics 630' 'real card named'
     Assert-Equal $t.Quality 'fast' 'fast'
