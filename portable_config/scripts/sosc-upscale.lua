@@ -1,0 +1,377 @@
+-- sosc-upscale: Anime4K mode and quality picker for uosc.
+--
+-- Opens a uosc menu with two groups (mode, quality). Picking an option applies
+-- it on the fly, keeps the menu open and refreshes it, and saves the choice to
+-- `~~/sosc-upscale.conf`, which mpv.conf includes on the next start.
+--
+-- Anime4K (https://github.com/bloc97/Anime4K, MIT) is not bundled: the sosc
+-- installer downloads release v4.0.1 and puts its Anime4K_*.glsl files in
+-- `~~/shaders/`. Without them the menu says so and no mode can be picked.
+--
+-- mpv turns this file name into the script name `sosc_upscale`, so:
+--   input.conf:  Ctrl+1 script-message-to sosc_upscale set-mode a
+--                Ctrl+0 script-message-to sosc_upscale set-mode off
+--                (script-binding sosc_upscale/open-menu opens the menu)
+--   options:     script-opts=sosc_upscale-mode=<id>,sosc_upscale-quality=<id>
+--
+-- How shaders are set. `glsl-shaders` is a path list, whose separator is `;` on
+-- Windows and `:` elsewhere, so a joined string (`change-list glsl-shaders set
+-- "a;b"`, as Anime4K's own input.conf templates do) would only work on one
+-- platform. Instead:
+--   - at run time the whole list is set at once with set_property_native and a
+--     Lua array: no separator at all, and a single change for the renderer;
+--   - the .conf uses `glsl-shaders-clr` followed by one `glsl-shaders-append`
+--     per file (`-append` takes a single item and never splits it), so the
+--     shaders are there from the first frame on any platform.
+-- "Apagado" writes no glsl-shaders line at all: whatever mpv.conf says applies.
+--
+-- The shader lists are the ones of Anime4K's official mpv templates
+-- (md/Template/GLSL_*_High-end and _Low-end, input.conf, Ctrl+1..6), in the
+-- same order: Alta = High-end (HQ), Rápida = Low-end (Fast).
+
+local msg = require('mp.msg')
+local utils = require('mp.utils')
+local options = require('mp.options')
+
+local script_name = mp.get_script_name()
+
+local PERSIST_PATH = '~~/sosc-upscale.conf'
+local SHADER_DIR = '~~/shaders'
+local MENU_TYPE = 'sosc-upscale'
+-- uosc shows the controls-bar button only while this is true (see uosc.conf).
+local AVAILABLE_PROP = 'user-data/sosc_upscale/available'
+
+-- Short descriptions after Anime4K's GLSL_Instructions_Advanced.md ("Modes").
+local MODES = {
+	{id = 'off', name = 'Apagado', hint = 'sin Anime4K'},
+	{id = 'a', name = 'Modo A', hint = '1080p borroso o comprimido'},
+	{id = 'b', name = 'Modo B', hint = '720p, bordes dentados'},
+	{id = 'c', name = 'Modo C', hint = 'SD (480p) limpio, imágenes'},
+	{id = 'aa', name = 'Modo A+A', hint = 'como A, más nítido, más lento'},
+	{id = 'bb', name = 'Modo B+B', hint = 'como B, más nítido, más lento'},
+	{id = 'ca', name = 'Modo C+A', hint = 'como C, más nítido, más lento'},
+}
+
+local QUALITIES = {
+	{id = 'hq', name = 'Alta', hint = 'gráficas potentes', osd = 'Alta calidad'},
+	{id = 'fast', name = 'Rápida', hint = 'gráficas modestas', osd = 'Rápido'},
+}
+
+local DEFAULTS = {mode = 'off', quality = 'fast'}
+
+-- Shader file names (in ~~/shaders/) per quality and mode, in the order mpv runs them.
+local CHAINS = {
+	hq = {
+		a = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_VL.glsl', 'Anime4K_Upscale_CNN_x2_VL.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl'},
+		b = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_Soft_VL.glsl', 'Anime4K_Upscale_CNN_x2_VL.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl'},
+		c = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Upscale_Denoise_CNN_x2_VL.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl'},
+		aa = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_VL.glsl', 'Anime4K_Upscale_CNN_x2_VL.glsl',
+			'Anime4K_Restore_CNN_M.glsl', 'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl',
+			'Anime4K_Upscale_CNN_x2_M.glsl'},
+		bb = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_Soft_VL.glsl', 'Anime4K_Upscale_CNN_x2_VL.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Restore_CNN_Soft_M.glsl',
+			'Anime4K_Upscale_CNN_x2_M.glsl'},
+		ca = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Upscale_Denoise_CNN_x2_VL.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Restore_CNN_M.glsl',
+			'Anime4K_Upscale_CNN_x2_M.glsl'},
+	},
+	fast = {
+		a = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_M.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_S.glsl'},
+		b = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_Soft_M.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_S.glsl'},
+		c = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Upscale_Denoise_CNN_x2_M.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Upscale_CNN_x2_S.glsl'},
+		aa = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_M.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl',
+			'Anime4K_Restore_CNN_S.glsl', 'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl',
+			'Anime4K_Upscale_CNN_x2_S.glsl'},
+		bb = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_Soft_M.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Restore_CNN_Soft_S.glsl',
+			'Anime4K_Upscale_CNN_x2_S.glsl'},
+		ca = {'Anime4K_Clamp_Highlights.glsl', 'Anime4K_Upscale_Denoise_CNN_x2_M.glsl',
+			'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Restore_CNN_S.glsl',
+			'Anime4K_Upscale_CNN_x2_S.glsl'},
+	},
+}
+
+local function index_by_id(list)
+	local t = {}
+	for _, item in ipairs(list) do t[item.id] = item end
+	return t
+end
+local mode_by_id, quality_by_id = index_by_id(MODES), index_by_id(QUALITIES)
+
+local function is_valid_id(id) return type(id) == 'string' and id:match('^[a-z0-9_-]+$') ~= nil end
+local function is_shader_name(name) return type(name) == 'string' and name:match('^Anime4K_[%w_]+%.glsl$') ~= nil end
+
+-- Every file any mode uses, once each, sorted: what "installed" means.
+local function required_shaders()
+	local seen, list = {}, {}
+	for _, quality in ipairs(QUALITIES) do
+		for _, mode in ipairs(MODES) do
+			for _, name in ipairs(CHAINS[quality.id][mode.id] or {}) do
+				if not seen[name] then seen[name] = true; list[#list + 1] = name end
+			end
+		end
+	end
+	table.sort(list)
+	return list
+end
+
+-- The `~~/shaders/...` paths of a mode at a quality: an empty list for "Apagado",
+-- nil when the table is broken (unknown ids or a bad file name).
+local function chain_paths(mode, quality)
+	if not mode or not quality then return nil end
+	if mode.id == 'off' then return {} end
+	local names = CHAINS[quality.id] and CHAINS[quality.id][mode.id]
+	if not names or #names == 0 then return nil end
+	local paths = {}
+	for _, name in ipairs(names) do
+		if not is_shader_name(name) then
+			msg.error('Bad shader name in mode ' .. tostring(mode.id) .. ': ' .. tostring(name))
+			return nil
+		end
+		paths[#paths + 1] = SHADER_DIR .. '/' .. name
+	end
+	return paths
+end
+
+-- True when every shader the modes use is in ~~/shaders/.
+local function shaders_installed()
+	local dir = mp.command_native({'expand-path', SHADER_DIR})
+	if type(dir) ~= 'string' or dir == '' then return false end
+	for _, name in ipairs(required_shaders()) do
+		local file = io.open(dir .. '/' .. name, 'rb')
+		if not file then return false end
+		file:close()
+	end
+	return true
+end
+
+local function persist_content(mode, quality)
+	if not mode or not quality or not is_valid_id(script_name) or not is_valid_id(mode.id)
+		or not is_valid_id(quality.id) then
+		return nil
+	end
+	local paths = chain_paths(mode, quality)
+	if not paths then return nil end
+	local lines = {'# Generated by sosc-upscale.lua. Mode: ' .. mode.id .. ', quality: ' .. quality.id}
+	if #paths > 0 then
+		lines[#lines + 1] = 'glsl-shaders-clr'
+		for _, path in ipairs(paths) do lines[#lines + 1] = 'glsl-shaders-append="' .. path .. '"' end
+	end
+	lines[#lines + 1] = 'script-opts-append=' .. script_name .. '-mode=' .. mode.id
+	lines[#lines + 1] = 'script-opts-append=' .. script_name .. '-quality=' .. quality.id
+	return table.concat(lines, '\n') .. '\n'
+end
+
+-- Writes through a temporary file and a rename so a crash never leaves half a file.
+local function write_file_atomic(path, content)
+	local tmp = path .. '.tmp'
+	local file, err = io.open(tmp, 'wb')
+	if not file then return false, err end
+	local ok, write_err = file:write(content)
+	local closed, close_err = file:close()
+	if not ok or not closed then
+		os.remove(tmp)
+		return false, write_err or close_err
+	end
+	local renamed, rename_err = os.rename(tmp, path)
+	if not renamed then
+		-- On Windows rename() won't replace an existing file: remove it and retry.
+		os.remove(path)
+		renamed, rename_err = os.rename(tmp, path)
+	end
+	if not renamed then
+		os.remove(tmp)
+		return false, rename_err
+	end
+	return true
+end
+
+local function pick(by_id, id, what)
+	if by_id[id] then return by_id[id] end
+	msg.warn('Unknown upscale ' .. what .. ' "' .. tostring(id) .. '", using ' .. DEFAULTS[what])
+	return by_id[DEFAULTS[what]]
+end
+
+local opts = {mode = DEFAULTS.mode, quality = DEFAULTS.quality}
+options.read_options(opts, script_name)
+local active = {mode = pick(mode_by_id, opts.mode, 'mode'), quality = pick(quality_by_id, opts.quality, 'quality')}
+local installed = false
+
+-- What "Apagado" puts back: the list mpv had at start-up when the saved mode
+-- was "Apagado" (so the .conf set nothing and this is mpv.conf's list), an
+-- empty list otherwise (mpv.conf's list was cleared by the .conf).
+local baseline = {}
+local function capture_baseline()
+	baseline = {}
+	local current = mp.get_property_native('glsl-shaders')
+	if type(current) ~= 'table' then return end
+	for _, path in ipairs(current) do
+		if type(path) ~= 'string' then baseline = {}; return end
+		baseline[#baseline + 1] = path
+	end
+end
+
+local function same_list(a, b)
+	if type(a) ~= 'table' or type(b) ~= 'table' or #a ~= #b then return false end
+	for i = 1, #a do if a[i] ~= b[i] then return false end end
+	return true
+end
+
+-- Sets glsl-shaders to the list, unless it already is exactly that list (a
+-- change makes mpv rebuild its shaders).
+local function set_shaders(list)
+	if same_list(mp.get_property_native('glsl-shaders'), list) then return end
+	mp.set_property_native('glsl-shaders', list)
+end
+
+local function apply(mode, quality)
+	local paths = chain_paths(mode, quality)
+	if not paths then return false end
+	if mode.id == 'off' then set_shaders(baseline) else set_shaders(paths) end
+	active.mode, active.quality = mode, quality
+	return true
+end
+
+local function save()
+	local content = persist_content(active.mode, active.quality)
+	local path = mp.command_native({'expand-path', PERSIST_PATH})
+	local ok, err = false, 'invalid upscale settings'
+	if content and path then ok, err = write_file_atomic(path, content) end
+	if not ok then
+		msg.warn('Could not save upscale settings to ' .. tostring(path) .. ': ' .. tostring(err))
+		mp.osd_message('sosc: no se pudo guardar el escalado', 3)
+	end
+	return ok
+end
+
+local function osd_text(mode, quality)
+	if mode.id == 'off' then return 'Anime4K: apagado' end
+	return 'Anime4K: ' .. mode.name .. ' (' .. quality.osd .. ')'
+end
+
+local function refresh_installed()
+	installed = shaders_installed()
+	mp.set_property_native(AVAILABLE_PROP, installed)
+	return installed
+end
+
+local function menu_data()
+	local items = {}
+	if not installed then
+		items[#items + 1] = {
+			title = 'Anime4K no está instalado: ejecuta el instalador',
+			selectable = false, muted = true, italic = true, align = 'center', separator = true,
+		}
+	end
+	local function group(title, list, current, message)
+		if #items > 0 then items[#items].separator = true end
+		items[#items + 1] = {title = title, selectable = false, muted = true, italic = true}
+		for _, entry in ipairs(list) do
+			local usable = installed or (message == 'set-mode' and entry.id == 'off')
+			items[#items + 1] = {
+				title = entry.name,
+				hint = entry.hint,
+				active = entry == current,
+				selectable = usable,
+				muted = not usable or nil,
+				value = {'script-message-to', script_name, message, entry.id},
+			}
+		end
+	end
+	group('Modo', MODES, active.mode, 'set-mode')
+	group('Calidad', QUALITIES, active.quality, 'set-quality')
+	-- keep_open: picking an item doesn't close the menu; each pick sends
+	-- update-menu to move the marks.
+	return {type = MENU_TYPE, title = 'Escalado (Anime4K)', keep_open = true, items = items}
+end
+
+local function send_menu(message)
+	local json, err = utils.format_json(menu_data())
+	if not json then
+		msg.error('Could not build the upscale menu: ' .. tostring(err))
+		return
+	end
+	mp.commandv('script-message-to', 'uosc', message, json)
+end
+
+local function open_menu()
+	refresh_installed()
+	send_menu('open-menu')
+end
+
+-- Ids come from outside (menu, input.conf), so they must match a table.
+local function set_mode(id)
+	local mode = mode_by_id[id]
+	if not mode then
+		msg.warn('Ignoring unknown upscale mode: ' .. tostring(id))
+		return
+	end
+	if mode.id ~= 'off' and not refresh_installed() then
+		mp.osd_message('Anime4K no está instalado: ejecuta el instalador de sosc', 3)
+		return
+	end
+	if apply(mode, active.quality) then
+		save()
+		mp.osd_message(osd_text(mode, active.quality), 2)
+		-- uosc only updates a menu of this type if it is still open.
+		send_menu('update-menu')
+	end
+end
+
+local function set_quality(id)
+	local quality = quality_by_id[id]
+	if not quality then
+		msg.warn('Ignoring unknown upscale quality: ' .. tostring(id))
+		return
+	end
+	if not refresh_installed() then
+		mp.osd_message('Anime4K no está instalado: ejecuta el instalador de sosc', 3)
+		return
+	end
+	if apply(active.mode, quality) then
+		save()
+		if active.mode.id ~= 'off' then mp.osd_message(osd_text(active.mode, quality), 2) end
+		send_menu('update-menu')
+	end
+end
+
+mp.register_script_message('set-mode', set_mode)
+mp.register_script_message('set-quality', set_quality)
+mp.add_key_binding(nil, 'open-menu', open_menu)
+
+-- Start-up: the included .conf already set the shaders for the first frame.
+-- Setting them again from the table only happens when they differ (the table
+-- was edited), and never for "Apagado", so mpv.conf's own list stays untouched.
+-- Without the shader files, a saved mode is dropped for this session (mpv would
+-- fail to load every shader) but stays saved for when they are back.
+if active.mode.id == 'off' then capture_baseline() end
+refresh_installed()
+if active.mode.id ~= 'off' then
+	if installed then
+		apply(active.mode, active.quality)
+	else
+		msg.warn('Anime4K shaders not found in ' .. SHADER_DIR .. ': upscaling is off')
+		set_shaders({})
+	end
+end
+
+if SOSC_UPSCALE_TEST then
+	return {
+		MODES = MODES, QUALITIES = QUALITIES, CHAINS = CHAINS, DEFAULTS = DEFAULTS,
+		mode_by_id = mode_by_id, quality_by_id = quality_by_id,
+		required_shaders = required_shaders, chain_paths = chain_paths,
+		shaders_installed = shaders_installed, persist_content = persist_content,
+		write_file_atomic = write_file_atomic, apply = apply, osd_text = osd_text,
+		set_mode = set_mode, set_quality = set_quality, menu_data = menu_data, open_menu = open_menu,
+		is_valid_id = is_valid_id, is_shader_name = is_shader_name,
+		get_active = function() return active end,
+		get_baseline = function() return baseline end,
+		is_installed = function() return installed end,
+	}
+end

@@ -49,6 +49,12 @@
     their own when there is no interactive console (input or output
     redirected, -NonInteractive, ISE...).
 
+.PARAMETER SoscAnime4K
+    Use it as -Anime4K (alias). yes or no: answers the Anime4K questions
+    (install it; take over an Anime4K installed by hand) instead of asking.
+    Without it, -Yes installs Anime4K where there is none and leaves one
+    installed by hand alone. Never used for AnimeJaNai.
+
 .NOTES
     Exit codes: 0 done (or cancelled by the user), 1 at least one folder failed,
     2 wrong usage or nothing to work on.
@@ -56,7 +62,7 @@
 # The parameters are named Sosc* on purpose: run through iex, a param block
 # creates its variables in the caller's session, so they get names nobody else
 # uses and are removed again at the end (see the finally below). The aliases
-# keep the public names: -Action, -Target, -Yes, -NoMenu.
+# keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K.
 [CmdletBinding()]
 param(
     [Alias('Action')]
@@ -67,7 +73,10 @@ param(
     [Alias('Yes')]
     [switch]$SoscYes,
     [Alias('NoMenu')]
-    [switch]$SoscNoMenu
+    [switch]$SoscNoMenu,
+    [Alias('Anime4K')]
+    [ValidateSet('', 'yes', 'no')]
+    [string]$SoscAnime4K = ''
 )
 
 try {
@@ -81,7 +90,8 @@ param(
     [string]$Action = '',
     [string[]]$Target = @(),
     [switch]$Yes,
-    [switch]$NoMenu
+    [switch]$NoMenu,
+    [string]$Anime4K = ''
 )
 
 # Both are local to this script block: the caller's session keeps its own.
@@ -115,6 +125,43 @@ $script:ThumbfastCommit = '0f711de3138c9bd6718209d819ac54022c23ded2'
 $script:ThumbfastUrl = 'https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua'
 $script:ThumbfastSha256 = 'a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf'
 
+# Anime4K (https://github.com/bloc97/Anime4K, MIT): fixed release, verified by
+# SHA256. The zip is flat: 39 Anime4K_*.glsl files and nothing else. Only files
+# with that name pattern are ever taken out of it, into <config>/shaders.
+$script:Anime4KVersion = '4.0.1'
+$script:Anime4KUrl = 'https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip'
+$script:Anime4KSha256 = '139cd282086457c5adc79caf7b75b8b825091d71c9b54958c18745fea62d7ed7'
+$script:Anime4KPattern = '^Anime4K_[A-Za-z0-9_]+\.glsl$'
+# The shaders sosc-upscale.lua uses (its required_shaders(); the Lua tests
+# compare both lists). The zip must have all of them.
+$script:Anime4KRequired = @(
+    'Anime4K_AutoDownscalePre_x2.glsl', 'Anime4K_AutoDownscalePre_x4.glsl', 'Anime4K_Clamp_Highlights.glsl',
+    'Anime4K_Restore_CNN_M.glsl', 'Anime4K_Restore_CNN_S.glsl', 'Anime4K_Restore_CNN_Soft_M.glsl',
+    'Anime4K_Restore_CNN_Soft_S.glsl', 'Anime4K_Restore_CNN_Soft_VL.glsl', 'Anime4K_Restore_CNN_VL.glsl',
+    'Anime4K_Upscale_CNN_x2_M.glsl', 'Anime4K_Upscale_CNN_x2_S.glsl', 'Anime4K_Upscale_CNN_x2_VL.glsl',
+    'Anime4K_Upscale_Denoise_CNN_x2_M.glsl', 'Anime4K_Upscale_Denoise_CNN_x2_VL.glsl'
+)
+# Keys of Anime4K's official mpv templates, here driving sosc-upscale.lua.
+# Only added to input.conf when sosc installed (and manages) Anime4K.
+$script:Anime4KBindings = @(
+    @{ Key = 'Ctrl+1'; Command = 'script-message-to sosc_upscale set-mode a' },
+    @{ Key = 'Ctrl+2'; Command = 'script-message-to sosc_upscale set-mode b' },
+    @{ Key = 'Ctrl+3'; Command = 'script-message-to sosc_upscale set-mode c' },
+    @{ Key = 'Ctrl+4'; Command = 'script-message-to sosc_upscale set-mode aa' },
+    @{ Key = 'Ctrl+5'; Command = 'script-message-to sosc_upscale set-mode bb' },
+    @{ Key = 'Ctrl+6'; Command = 'script-message-to sosc_upscale set-mode ca' },
+    @{ Key = 'Ctrl+0'; Command = 'script-message-to sosc_upscale set-mode off' }
+)
+$script:ShadersDir = 'shaders'
+$script:ShadersDisabledDir = 'shaders-desactivados'
+$script:UpscaleConf = 'sosc-upscale.conf'
+# What sosc puts in front of a line of the user's it turns off (never deleted).
+$script:CommentPrefix = '# sosc: '
+# Backups of one folder that are kept (plus the one from before the first install).
+$script:BackupKeep = 3
+# -Anime4K: '' (ask; -Yes takes the default answers), 'yes' or 'no'.
+$script:SoscAnime4KChoice = ''
+
 # Downloads are only allowed over HTTPS from these hosts.
 $script:AllowedHosts = @('github.com', 'raw.githubusercontent.com')
 
@@ -125,7 +172,8 @@ $script:MpvConfLines = @(
     'osc=no',
     'osd-bar=no',
     'include="~~/sosc-palette.conf"',
-    'include="~~/sosc-subs.conf"'
+    'include="~~/sosc-subs.conf"',
+    'include="~~/sosc-upscale.conf"'
 )
 
 $script:InputBindings = @(
@@ -135,7 +183,9 @@ $script:InputBindings = @(
 )
 
 # Files of sosc that only get copied when missing: they hold the user's choices.
-$script:UserChoiceFiles = @('sosc-palette.conf', 'sosc-subs.conf')
+# sosc-upscale.conf is written by the installer itself (with the quality that
+# suits the graphics card), the others are copied from the sosc files.
+$script:UserChoiceFiles = @('sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale.conf')
 
 # script-opts that are not named sosc-*: removed on uninstall only if sosc put them there.
 $script:SharedConfs = @('uosc.conf', 'thumbfast.conf')
@@ -144,16 +194,19 @@ $script:RecordName = 'sosc-installed.txt'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'sosc-originales'
 
-# What the backup copies: only what the installer can change. shaders, cache,
+# What the backup copies: only what the installer can change. cache,
 # watch_later and anything else in the folder are never touched, so not copied.
+# shaders is not copied either: sosc only adds and removes its own Anime4K
+# files there, and moves (never deletes) an Anime4K installed by hand to
+# shaders-desactivados, which is copied.
 $script:BackupItems = @(
     'mpv.conf', 'input.conf', 'scripts', 'script-opts', 'fonts',
-    'sosc-palette.conf', 'sosc-subs.conf', 'sosc-installed.txt',
-    'scripts-desactivados', 'sosc-originales'
+    'sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale.conf', 'sosc-installed.txt',
+    'scripts-desactivados', 'sosc-originales', 'shaders-desactivados'
 )
 
 # Signs that a folder belongs to mpv (any of them is enough).
-$script:MpvConfigFiles = @('mpv.conf', 'input.conf', 'sosc-installed.txt', 'sosc-palette.conf', 'sosc-subs.conf')
+$script:MpvConfigFiles = @('mpv.conf', 'input.conf', 'sosc-installed.txt', 'sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale.conf')
 $script:MpvConfigDirs = @('scripts', 'script-opts')
 $script:PlayerExes = @('mpvnet.exe', 'mpv.exe')
 
@@ -178,6 +231,9 @@ $script:NonInteractive = $false
 # go through a link (junction or symbolic link) inside the config folder.
 $script:SoscElevated = $false
 $script:SoscWarnings = New-Object System.Collections.Generic.List[string]
+
+# Names of the graphics cards, replaceable in tests (returns a list of names).
+$script:SoscGpuProbe = { Get-SoscGpuNames }
 
 # Download function, replaceable in tests: param($Url, $OutFile).
 $script:SoscDownloader = {
@@ -263,7 +319,7 @@ $script:SoscStringsEn = @{
     ask_remove_uosc       = 'Remove uosc too?'
     ask_remove_thumbfast  = 'Remove thumbfast too?'
     ask_restore           = 'Move back the interfaces sosc set aside ({0})?'
-    ask_delete_choices    = 'Delete your saved palette and subtitle choices (sosc-palette.conf, sosc-subs.conf)?'
+    ask_delete_choices    = 'Delete your saved palette, subtitle and upscaling choices (sosc-palette.conf, sosc-subs.conf, sosc-upscale.conf)?'
     restore_skipped       = '{0} not moved back: {1} already exists.'
     conf_restored         = '{0}: your version from before sosc was put back.'
     conf_left             = '{0} was there before sosc and is left as it is now. Your earlier version is in {1}.'
@@ -302,6 +358,33 @@ $script:SoscStringsEn = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Space \u00b7 Enter \u00b7 Esc'
     answer_yes            = 'Yes'
     answer_no             = 'No'
+    anime4k_intro         = 'Anime4K sharpens and upscales anime on the graphics card. It stays off until you pick a mode in the Escalado menu or press Ctrl+1 to Ctrl+6 (Ctrl+0 turns it off).'
+    anime4k_confirm       = 'Install Anime4K (anime upscaling on the graphics card)?'
+    anime4k_done          = 'Anime4K {0} installed ({1} shaders in {2}).'
+    anime4k_animejanai    = 'AnimeJaNai already upscales with AI (Ctrl+1 to Ctrl+9): Anime4K is not installed here.'
+    anime4k_declined      = 'Anime4K not installed. Run the installer again to install it.'
+    anime4k_kept          = 'Anime4K left as it is (-Anime4K no).'
+    anime4k_manual        = 'There is already an Anime4K installed by hand in {0} (files: {1}).'
+    anime4k_manage        = 'Let sosc take care of it? Your files go to {0} (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+6 keys.'
+    anime4k_manual_kept   = 'Your Anime4K is left as it is, with its own keys. The sosc Escalado menu changes the same shaders and does not know what those keys turned on.'
+    anime4k_keys_found    = 'input.conf binds these Anime4K keys outside the sosc block:'
+    anime4k_comment       = 'Turn those lines off by putting "# sosc: " in front of them, so the sosc keys can use them? They are turned back on when you uninstall.'
+    anime4k_commented     = 'input.conf: lines turned off with "# sosc: ": {0}.'
+    anime4k_bad_zip       = 'The Anime4K download does not have the shaders sosc needs ({0}).'
+    gpu_line              = 'Graphics card: {0} \u2192 quality {1}'
+    gpu_unknown           = 'unknown'
+    quality_hq            = 'High'
+    quality_fast          = 'Fast'
+    backup_pruned         = 'Old backup deleted: {0}'
+    backup_prune_failed   = 'Could not delete the old backup {0}: {1}'
+    ask_restore_anime4k   = 'Move your earlier Anime4K back from {0}?'
+    ask_uncomment         = 'Turn your Anime4K keys in input.conf back on?'
+    uncommented           = 'input.conf: lines turned back on: {0}.'
+    osc_orphan            = 'mpv.conf has "{0}" outside the sosc block: without uosc the player would have no on-screen controls.'
+    ask_restore_osc       = 'Move back the interfaces sosc set aside ({0}), so there are controls?'
+    ask_comment_osc       = 'Turn that line off by putting "# sosc: " in front of it, so mpv shows its own controls?'
+    osc_commented         = 'mpv.conf: "{0}" turned off with "# sosc: ".'
+    osc_left              = 'Left as it is: remove that line or install an on-screen controller to get controls back.'
 }
 
 $script:SoscStringsEs = @{
@@ -371,7 +454,7 @@ $script:SoscStringsEs = @{
     ask_remove_uosc       = '\u00bfQuitar tambi\u00e9n uosc?'
     ask_remove_thumbfast  = '\u00bfQuitar tambi\u00e9n thumbfast?'
     ask_restore           = '\u00bfDevolver a su sitio las interfaces que sosc apart\u00f3 ({0})?'
-    ask_delete_choices    = '\u00bfBorrar tus elecciones guardadas de paleta y subt\u00edtulos (sosc-palette.conf, sosc-subs.conf)?'
+    ask_delete_choices    = '\u00bfBorrar tus elecciones guardadas de paleta, subt\u00edtulos y escalado (sosc-palette.conf, sosc-subs.conf, sosc-upscale.conf)?'
     restore_skipped       = '{0} no se devuelve: ya existe {1}.'
     conf_restored         = '{0}: se ha devuelto tu versi\u00f3n de antes de sosc.'
     conf_left             = '{0} ya exist\u00eda antes de sosc y se deja como est\u00e1 ahora. Tu versi\u00f3n anterior est\u00e1 en {1}.'
@@ -410,6 +493,33 @@ $script:SoscStringsEs = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Espacio \u00b7 Intro \u00b7 Esc'
     answer_yes            = 'S\u00ed'
     answer_no             = 'No'
+    anime4k_intro         = 'Anime4K mejora y reescala el anime en la tarjeta gr\u00e1fica. Est\u00e1 apagado hasta que eliges un modo en el men\u00fa Escalado o pulsas Ctrl+1 a Ctrl+6 (Ctrl+0 lo apaga).'
+    anime4k_confirm       = '\u00bfInstalar Anime4K (reescalado de anime en la gr\u00e1fica)?'
+    anime4k_done          = 'Anime4K {0} instalado ({1} shaders en {2}).'
+    anime4k_animejanai    = 'AnimeJaNai ya reescala con IA (Ctrl+1 a Ctrl+9): aqu\u00ed no se instala Anime4K.'
+    anime4k_declined      = 'Anime4K no se instala. Vuelve a ejecutar el instalador para instalarlo.'
+    anime4k_kept          = 'Anime4K se deja como est\u00e1 (-Anime4K no).'
+    anime4k_manual        = 'Ya hay un Anime4K instalado a mano en {0} (ficheros: {1}).'
+    anime4k_manage        = '\u00bfQuieres que lo gestione sosc? Tus ficheros van a {0} (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el men\u00fa Escalado y los atajos Ctrl+0 a Ctrl+6.'
+    anime4k_manual_kept   = 'Tu Anime4K se queda como est\u00e1, con sus atajos. El men\u00fa Escalado de sosc cambia los mismos shaders y no sabe lo que hayan activado esos atajos.'
+    anime4k_keys_found    = 'input.conf tiene estos atajos de Anime4K fuera del bloque de sosc:'
+    anime4k_comment       = '\u00bfDesactivar esas l\u00edneas poni\u00e9ndoles delante "# sosc: ", para que los atajos de sosc puedan usar esas teclas? Se vuelven a activar al desinstalar.'
+    anime4k_commented     = 'input.conf: l\u00edneas desactivadas con "# sosc: ": {0}.'
+    anime4k_bad_zip       = 'La descarga de Anime4K no tiene los shaders que necesita sosc ({0}).'
+    gpu_line              = 'Gr\u00e1fica: {0} \u2192 calidad {1}'
+    gpu_unknown           = 'desconocida'
+    quality_hq            = 'Alta'
+    quality_fast          = 'R\u00e1pida'
+    backup_pruned         = 'Borrada la copia de seguridad antigua {0}'
+    backup_prune_failed   = 'No se ha podido borrar la copia de seguridad antigua {0}: {1}'
+    ask_restore_anime4k   = '\u00bfDevolver a su sitio tu Anime4K anterior, que est\u00e1 en {0}?'
+    ask_uncomment         = '\u00bfVolver a activar tus atajos de Anime4K de input.conf?'
+    uncommented           = 'input.conf: l\u00edneas activadas de nuevo: {0}.'
+    osc_orphan            = 'mpv.conf tiene "{0}" fuera del bloque de sosc: sin uosc, el reproductor se quedar\u00eda sin controles en pantalla.'
+    ask_restore_osc       = '\u00bfDevolver a su sitio las interfaces que sosc apart\u00f3 ({0}), para tener controles?'
+    ask_comment_osc       = '\u00bfDesactivar esa l\u00ednea poni\u00e9ndole delante "# sosc: ", para que mpv muestre sus propios controles?'
+    osc_commented         = 'mpv.conf: "{0}" desactivada con "# sosc: ".'
+    osc_left              = 'Se deja como est\u00e1: quita esa l\u00ednea o instala otra interfaz para recuperar los controles.'
 }
 
 function Get-SoscLanguage {
@@ -1663,7 +1773,7 @@ function ConvertTo-SoscKeyName {
 # outside the block is left alone (and reported); same key and same command is
 # simply not repeated.
 function Get-SoscInputBlock {
-    param([string]$Text)
+    param([string]$Text, [object[]]$Extra = @())
     # Case-sensitive: in mpv, Alt+p and Alt+P (with Shift) are different keys.
     $bound = New-Object System.Collections.Hashtable ([System.StringComparer]::Ordinal)
     foreach ($line in @(Get-SoscOutsideLines -Text $Text -Name 'input.conf')) {
@@ -1678,7 +1788,7 @@ function Get-SoscInputBlock {
     $lines = @()
     $taken = @()
     $same = @()
-    foreach ($b in $script:InputBindings) {
+    foreach ($b in (@($script:InputBindings) + @($Extra))) {
         $norm = ConvertTo-SoscKeyName $b.Key
         if ($bound.ContainsKey($norm)) {
             $existing = $bound[$norm]
@@ -1698,7 +1808,7 @@ function Get-SoscInputBlock {
 # Writes the block into a file (created when missing), keeping its encoding,
 # BOM and line endings. Returns whether the file existed.
 function Update-SoscManagedFile {
-    param([string]$Path, [string]$Kind)
+    param([string]$Path, [string]$Kind, [object[]]$ExtraBindings = @())
     $existed = Test-Path -LiteralPath $Path -PathType Leaf
     $name = [System.IO.Path]::GetFileName($Path)
     if ($existed) { $file = Read-SoscText $Path }
@@ -1713,7 +1823,7 @@ function Update-SoscManagedFile {
     }
     else {
         # input.conf: the block stays where it is (order does not matter there).
-        $block = Get-SoscInputBlock $file.Text
+        $block = Get-SoscInputBlock -Text $file.Text -Extra $ExtraBindings
         foreach ($t in $block.Taken) { Write-SoscWarn (T 'key_taken' @($t.Key, $t.Existing, $t.Command)) }
         foreach ($s in $block.Same) { Write-SoscInfo (T 'key_same' @($s.Key, $s.Command)) }
         $newText = Set-SoscBlockText -Text $file.Text -BlockLines $block.Lines -Name $name
@@ -1792,6 +1902,8 @@ function Read-SoscRecord {
     $values = @{}
     $files = New-Object System.Collections.Generic.List[string]
     $disabled = New-Object System.Collections.Generic.List[string]
+    $moved = New-Object System.Collections.Generic.List[string]
+    $commented = New-Object System.Collections.Generic.List[string]
     foreach ($line in ((Read-SoscText $path).Text -split "`r?`n")) {
         if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
         $idx = $line.IndexOf('=')
@@ -1806,18 +1918,33 @@ function Read-SoscRecord {
             if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) { $disabled.Add($value) }
             elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
         }
+        elseif ($key -eq 'a4k_moved') {
+            # shaders-desactivados/<file>|shaders/<file>: never anything else.
+            $pair = $value -split '\|'
+            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1]) -and
+                $pair[0].StartsWith($script:ShadersDisabledDir + '/') -and $pair[1].StartsWith($script:ShadersDir + '/')) { $moved.Add($value) }
+            elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
+        }
+        elseif ($key -eq 'a4k_commented') {
+            # Only used to recognise lines sosc turned off; checked again before use.
+            if ($value -ne '' -and $value.Length -le 2000 -and $value -notmatch '[\x00-\x1f]') { $commented.Add($value) }
+            elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
+        }
         else { $values[$key] = $value }
     }
-    return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray() }
+    return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray(); Moved = $moved.ToArray(); Commented = $commented.ToArray() }
 }
 
 function Write-SoscRecord {
-    param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled)
+    param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled,
+        [string[]]$Moved = @(), [string[]]$Commented = @())
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('# Written by the sosc installer (install/sosc.ps1). Used to update and uninstall; do not edit.' + $eol)
     foreach ($key in $Values.Keys) { [void]$sb.Append($key + '=' + $Values[$key] + $eol) }
     foreach ($d in $Disabled) { [void]$sb.Append('disabled=' + $d + $eol) }
+    foreach ($m in $Moved) { [void]$sb.Append('a4k_moved=' + $m + $eol) }
+    foreach ($c in $Commented) { [void]$sb.Append('a4k_commented=' + $c + $eol) }
     foreach ($f in $Files) { [void]$sb.Append('file=' + $f + $eol) }
     Write-SoscText -Path (Join-SoscPath $ConfigDir $script:RecordName) -Text $sb.ToString()
 }
@@ -1954,7 +2081,363 @@ function Get-SoscArtifacts {
     }
     $thumb = Join-SoscPath $TempDir 'thumbfast.lua'
     Invoke-SoscVerifiedDownload -Url $script:ThumbfastUrl -Sha256 $script:ThumbfastSha256 -OutFile $thumb
-    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb }
+    # Anime4K is only downloaded when a folder needs it (Get-SoscAnime4KSource).
+    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb; TempDir = $TempDir; Anime4KDir = '' }
+}
+
+# ---------------------------------------------------------------------------
+# Anime4K and the graphics card
+# ---------------------------------------------------------------------------
+
+# Names of the graphics cards (Windows). Empty when they cannot be read.
+function Get-SoscGpuNames {
+    try {
+        return @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop |
+                ForEach-Object { [string]$_.Name } | Where-Object { $_ })
+    }
+    catch {
+        return @()
+    }
+}
+
+# Anime4K quality for one graphics card name: 'hq' (Alta) or 'fast' (Rapida).
+# Pure, so the same rules can serve the macOS installer:
+#   hq   - NVIDIA RTX (any); NVIDIA GTX 1060 and newer (GTX 16xx too; not GTX
+#          1050 and older, not MX or GT); AMD Radeon RX 5xx and newer, RX Vega
+#          56/64 and Radeon VII (dedicated cards, never "... Graphics", the name
+#          of AMD integrated graphics); Intel Arc; Apple M Pro, Max and Ultra.
+#   fast - everything else: Intel UHD/Iris/HD, AMD integrated graphics, NVIDIA
+#          MX/GT, Apple M base chips, Intel Macs and unknown names.
+function Get-SoscGpuQuality {
+    param([string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return 'fast' }
+    if ($Name -match '(?i)\bApple\s+M\d+\s+(Pro|Max|Ultra)\b') { return 'hq' }
+    if ($Name -match '(?i)NVIDIA|GeForce|Quadro|\bRTX\b|\bGTX\b') {
+        if ($Name -match '(?i)\bRTX\b') { return 'hq' }
+        $m = [regex]::Match($Name, '(?i)\bGTX\s*(\d{3,4})(?!\d)')
+        if ($m.Success -and [int]$m.Groups[1].Value -ge 1060) { return 'hq' }
+        return 'fast'
+    }
+    if ($Name -match '(?i)\bIntel\b' -and $Name -match '(?i)\bArc\b') { return 'hq' }
+    if ($Name -match '(?i)Radeon') {
+        if ($Name -match '(?i)\bGraphics\b') { return 'fast' }
+        $m = [regex]::Match($Name, '(?i)\bRX\s*(\d{3,4})(?!\d)')
+        if ($m.Success -and [int]$m.Groups[1].Value -ge 500) { return 'hq' }
+        if ($Name -match '(?i)\bRX\s+Vega(\s+(56|64))?\s*$|\bVega\s+(56|64)\b|\bRadeon\s+VII\b') { return 'hq' }
+        return 'fast'
+    }
+    return 'fast'
+}
+
+# The card that decides (the most capable one when there are several) and its
+# quality. Virtual adapters (remote desktop, basic display...) are only used
+# when there is nothing else.
+function Get-SoscGpuTier {
+    param([string[]]$Names)
+    $list = @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+    foreach ($n in $list) {
+        if ((Get-SoscGpuQuality $n) -eq 'hq') { return [pscustomobject]@{ Name = $n; Quality = 'hq' } }
+    }
+    $real = @($list | Where-Object { $_ -notmatch '(?i)basic|virtual|remote|parsec|mirage|displaylink|citrix|vmware|hyper-v|spacedesk|indirect' })
+    $name = ''
+    if ($real.Count -gt 0) { $name = $real[0] } elseif ($list.Count -gt 0) { $name = $list[0] }
+    return [pscustomobject]@{ Name = $name; Quality = 'fast' }
+}
+
+# sosc-upscale.conf for "Apagado" and the given quality, byte for byte what
+# sosc-upscale.lua writes for that choice (the tests compare both).
+function Get-SoscUpscaleConfText {
+    param([string]$Quality)
+    if (@('hq', 'fast') -notcontains $Quality) { $Quality = 'fast' }
+    $lines = @(
+        ('# Generated by sosc-upscale.lua. Mode: off, quality: ' + $Quality),
+        'script-opts-append=sosc_upscale-mode=off',
+        ('script-opts-append=sosc_upscale-quality=' + $Quality)
+    )
+    return ([string]::Join("`n", $lines) + "`n")
+}
+
+# Writes sosc-upscale.conf when it is missing, with the quality that suits the
+# graphics card; an existing one holds the user's choice and is kept.
+function Initialize-SoscUpscaleConf {
+    param([string]$ConfigDir, [bool]$Announce)
+    $path = Join-SoscPath $ConfigDir $script:UpscaleConf
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        Write-SoscInfo (T 'kept_user_file' @($script:UpscaleConf))
+        return
+    }
+    $gpu = Get-SoscGpuTier -Names @(& $script:SoscGpuProbe)
+    Write-SoscText -Path $path -Text (Get-SoscUpscaleConfText -Quality $gpu.Quality)
+    if ($Announce) {
+        $name = $gpu.Name
+        if (-not $name) { $name = T 'gpu_unknown' }
+        Write-SoscInfo (T 'gpu_line' @($name, (T ('quality_' + $gpu.Quality))))
+    }
+}
+
+# AnimeJaNai brings its own AI upscaling (and uses Ctrl+1..9 for it).
+function Test-SoscAnimeJaNai {
+    param($Candidate, [string]$ConfigDir)
+    if ($Candidate.Kind -eq 'AnimeJaNai') { return $true }
+    $scripts = Join-SoscPath $ConfigDir 'scripts'
+    if (Test-Path -LiteralPath $scripts -PathType Container) {
+        if (@(Get-ChildItem -LiteralPath $scripts -File -Force -Filter 'animejanai*.lua').Count -gt 0) { return $true }
+    }
+    return $false
+}
+
+function Test-SoscOwnShaderPath {
+    param([string]$Rel)
+    return ((Test-SoscRecordPath $Rel) -and $Rel -cmatch '^shaders/Anime4K_[A-Za-z0-9_]+\.glsl$')
+}
+
+# Anime4K_*.glsl files in shaders/ that sosc did not put there.
+function Find-SoscManualAnime4K {
+    param([string]$ConfigDir, [string[]]$Own = @())
+    $dir = Join-SoscPath $ConfigDir $script:ShadersDir
+    $found = New-Object System.Collections.Generic.List[string]
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $found.ToArray() }
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Force)) {
+        if ($f.Name -notmatch $script:Anime4KPattern) { continue }
+        if (@($Own) -contains ('shaders/' + $f.Name)) { continue }
+        $found.Add($f.FullName)
+    }
+    return $found.ToArray()
+}
+
+# Takes the Anime4K shaders out of the verified zip into $Destination: only
+# entries named like Anime4K_*.glsl at the root of the zip, nothing else.
+function Expand-SoscAnime4K {
+    param([string]$Zip, [string]$Destination)
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    New-SoscDirectory $Destination
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($Zip)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if ($entry.FullName -cnotmatch $script:Anime4KPattern) { continue }
+            $out = Join-SoscPath $Destination $entry.FullName
+            Assert-SoscInside -Path $out -Root $Destination
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $out, $true)
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+    $missing = @($script:Anime4KRequired | Where-Object { -not (Test-Path -LiteralPath (Join-SoscPath $Destination $_) -PathType Leaf) })
+    if ($missing.Count -gt 0) { throw (T 'anime4k_bad_zip' @([string]::Join(', ', $missing))) }
+}
+
+# Downloads, checks and extracts Anime4K the first time a folder needs it; the
+# other folders of the same run reuse it.
+function Get-SoscAnime4KSource {
+    param($Artifacts)
+    $cached = $Artifacts.PSObject.Properties['Anime4KDir']
+    if ($null -ne $cached -and $cached.Value) { return [string]$cached.Value }
+    $temp = $Artifacts.PSObject.Properties['TempDir']
+    if ($null -eq $temp -or -not $temp.Value) { throw (T 'source_missing' @($script:Anime4KUrl)) }
+    $zip = Join-SoscPath $temp.Value 'anime4k.zip'
+    Invoke-SoscVerifiedDownload -Url $script:Anime4KUrl -Sha256 $script:Anime4KSha256 -OutFile $zip
+    $dest = Join-SoscPath $temp.Value 'anime4k'
+    Expand-SoscAnime4K -Zip $zip -Destination $dest
+    $Artifacts | Add-Member -NotePropertyName 'Anime4KDir' -NotePropertyValue $dest -Force
+    return $dest
+}
+
+# Copies the extracted shaders into <config>/shaders. Returns their record paths.
+function Install-SoscAnime4KFiles {
+    param([string]$ConfigDir, [string]$SourceDir)
+    $dir = Join-SoscPath $ConfigDir $script:ShadersDir
+    New-SoscDirectory $dir
+    $rels = New-Object System.Collections.Generic.List[string]
+    foreach ($f in @(Get-ChildItem -LiteralPath $SourceDir -File -Force | Sort-Object Name)) {
+        if ($f.Name -cnotmatch $script:Anime4KPattern) { continue }
+        $dest = Join-SoscPath $dir $f.Name
+        Assert-SoscInside -Path $dest -Root $ConfigDir
+        Assert-SoscNoLink -Path $dest -Root $ConfigDir
+        Copy-Item -LiteralPath $f.FullName -Destination $dest -Force
+        $rels.Add('shaders/' + $f.Name)
+    }
+    return $rels.ToArray()
+}
+
+# Moves a shader installed by hand into shaders-desactivados. Returns
+# "moved|original" (relative), like Move-SoscToDisabled.
+function Move-SoscShaderAside {
+    param([string]$Path, [string]$ConfigDir, [string]$Stamp)
+    Assert-SoscInside -Path $Path -Root $ConfigDir
+    $rel = Get-SoscRelativePath -Path $Path -Root $ConfigDir
+    $destDir = Join-SoscPath $ConfigDir $script:ShadersDisabledDir
+    New-SoscDirectory $destDir
+    $name = Split-Path -Path $Path -Leaf
+    $dest = Join-SoscPath $destDir $name
+    if (Test-Path -LiteralPath $dest) {
+        $dest = Join-SoscPath $destDir ([System.IO.Path]::GetFileNameWithoutExtension($name) + '-' + $Stamp + [System.IO.Path]::GetExtension($name))
+    }
+    Assert-SoscInside -Path $dest -Root $ConfigDir
+    Assert-SoscNoLink -Path $Path -Root $ConfigDir
+    Assert-SoscNoLink -Path $dest -Root $ConfigDir
+    Move-Item -LiteralPath $Path -Destination $dest
+    $destRel = Get-SoscRelativePath -Path $dest -Root $ConfigDir
+    Write-SoscInfo (T 'moved' @($rel, $destRel))
+    return ($destRel + '|' + $rel)
+}
+
+# An input.conf line (without the sosc prefix) that binds Ctrl+0..Ctrl+6 to
+# something that changes glsl-shaders, as Anime4K's templates do.
+function Test-SoscAnime4KKeyLine {
+    param([string]$Line)
+    $c = $Line.Trim()
+    if ($c -eq '' -or $c.StartsWith('#')) { return $false }
+    $m = [regex]::Match($c, '^(\S+)\s+(.*)$')
+    if (-not $m.Success) { return $false }
+    $key = ConvertTo-SoscKeyName $m.Groups[1].Value
+    if (@('ctrl+0', 'ctrl+1', 'ctrl+2', 'ctrl+3', 'ctrl+4', 'ctrl+5', 'ctrl+6') -cnotcontains $key) { return $false }
+    return ($m.Groups[2].Value -match 'glsl-shaders')
+}
+
+# Those lines of input.conf, outside the sosc block: Index and Content.
+function Find-SoscAnime4KKeyLines {
+    param([string]$Text)
+    return @(Get-SoscOutsideLines -Text $Text -Name 'input.conf' | Where-Object { Test-SoscAnime4KKeyLine $_.Content })
+}
+
+# mpv.conf lines outside the sosc block that turn mpv's own controller off.
+function Find-SoscOscOffLines {
+    param([string]$Text)
+    return @(Get-SoscOutsideLines -Text $Text -Name 'mpv.conf' | Where-Object {
+            $_.Content -match '^\s*(osc\s*=\s*"?(no|false)"?|no-osc)\s*(#.*)?$' })
+}
+
+# Rewrites some lines of a file ($Map: line index -> new content), keeping its
+# encoding, BOM and every line ending.
+function Update-SoscLines {
+    param([string]$Path, [hashtable]$Map)
+    $file = Read-SoscText $Path
+    $sb = New-Object System.Text.StringBuilder
+    $lines = @(Split-SoscLines $file.Text)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $content = $lines[$i].Content
+        if ($Map.ContainsKey($i)) { $content = [string]$Map[$i] }
+        [void]$sb.Append($content + $lines[$i].Eol)
+    }
+    Write-SoscText -Path $Path -Text $sb.ToString() -Encoding $file.Encoding -Bom $file.Bom
+}
+
+# Turns lines off by putting $script:CommentPrefix in front of them (never deleted).
+function Set-SoscLinesCommented {
+    param([string]$Path, [object[]]$Lines)
+    $map = @{}
+    foreach ($l in $Lines) { $map[[int]$l.Index] = $script:CommentPrefix + $l.Content }
+    if ($map.Count -gt 0) { Update-SoscLines -Path $Path -Map $map }
+}
+
+# Lines sosc turned off in input.conf and recorded ($Recorded: their trimmed
+# text) that are still there: Index and the original Content to put back.
+function Find-SoscCommentedKeyLines {
+    param([string]$Text, [string[]]$Recorded)
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($l in @(Get-SoscOutsideLines -Text $Text -Name 'input.conf')) {
+        if (-not $l.Content.StartsWith($script:CommentPrefix)) { continue }
+        $rest = $l.Content.Substring($script:CommentPrefix.Length)
+        if (@($Recorded) -ccontains $rest.Trim() -and (Test-SoscAnime4KKeyLine $rest)) {
+            $out.Add([pscustomobject]@{ Index = $l.Index; Content = $rest })
+        }
+    }
+    return $out.ToArray()
+}
+
+# Decides what to do with Anime4K in one folder and does it. Returns State
+# (sosc: installed and managed by sosc; declined; manual: one installed by hand
+# is left alone; animejanai), Files (record paths of sosc's shaders), Moved
+# ("moved|original" of the hand-installed ones set aside), Commented (input.conf
+# lines turned off) and Version.
+function Invoke-SoscAnime4KStep {
+    param($Candidate, [string]$ConfigDir, $Artifacts, [string]$Stamp,
+        [hashtable]$OldValues, [string[]]$OldFiles = @(), [string[]]$OldMoved = @(), [string[]]$OldCommented = @())
+    $choice = $script:SoscAnime4KChoice
+    $prevState = ''
+    if ($OldValues.ContainsKey('anime4k')) { $prevState = [string]$OldValues['anime4k'] }
+    $own = @($OldFiles | Where-Object { Test-SoscOwnShaderPath $_ })
+    $result = [pscustomobject]@{ State = ''; Files = $own; Moved = @($OldMoved); Commented = @($OldCommented); Version = '' }
+    if ($OldValues.ContainsKey('anime4k_version')) { $result.Version = [string]$OldValues['anime4k_version'] }
+
+    if (Test-SoscAnimeJaNai -Candidate $Candidate -ConfigDir $ConfigDir) {
+        Write-SoscInfo (T 'anime4k_animejanai')
+        $result.State = 'animejanai'
+        return $result
+    }
+
+    $manual = @(Find-SoscManualAnime4K -ConfigDir $ConfigDir -Own $own)
+    if ($manual.Count -gt 0) {
+        Write-SoscWarn (T 'anime4k_manual' @($script:ShadersDir, $manual.Count))
+        $manage = $false
+        if ($choice -eq 'yes') { $manage = $true }
+        elseif ($choice -ne 'no' -and $prevState -ne 'manual') {
+            $manage = Confirm-Sosc -Question (T 'anime4k_manage' @($script:ShadersDisabledDir)) -Default $false
+        }
+        if (-not $manage) {
+            Write-SoscWarn (T 'anime4k_manual_kept')
+            $result.State = 'manual'
+            return $result
+        }
+        $moved = New-Object System.Collections.Generic.List[string]
+        foreach ($m in $result.Moved) { $moved.Add($m) }
+        foreach ($p in $manual) { $moved.Add((Move-SoscShaderAside -Path $p -ConfigDir $ConfigDir -Stamp $Stamp)) }
+        $result.Moved = $moved.ToArray()
+
+        $inputPath = Join-SoscPath $ConfigDir 'input.conf'
+        if (Test-Path -LiteralPath $inputPath -PathType Leaf) {
+            $keys = @(Find-SoscAnime4KKeyLines (Read-SoscText $inputPath).Text)
+            if ($keys.Count -gt 0) {
+                Write-SoscWarn (T 'anime4k_keys_found')
+                foreach ($k in $keys) { Write-SoscWarn ('  ' + $k.Content.Trim()) }
+                $comment = ($choice -eq 'yes')
+                if (-not $comment) { $comment = Confirm-Sosc -Question (T 'anime4k_comment') -Default $true }
+                if ($comment) {
+                    Set-SoscLinesCommented -Path $inputPath -Lines $keys
+                    $commented = New-Object System.Collections.Generic.List[string]
+                    foreach ($c in $result.Commented) { $commented.Add($c) }
+                    foreach ($k in $keys) { $commented.Add($k.Content.Trim()) }
+                    $result.Commented = $commented.ToArray()
+                    Write-SoscInfo (T 'anime4k_commented' @($keys.Count))
+                }
+            }
+        }
+    }
+    elseif ($prevState -eq 'sosc' -and $own.Count -gt 0) {
+        if ($choice -eq 'no') {
+            Write-SoscInfo (T 'anime4k_kept')
+            $result.State = 'sosc'
+            return $result
+        }
+    }
+    else {
+        $install = ($choice -eq 'yes')
+        if ($choice -eq '') {
+            Write-SoscInfo (T 'anime4k_intro')
+            $install = Confirm-Sosc -Question (T 'anime4k_confirm') -Default ($prevState -ne 'declined')
+        }
+        if (-not $install) {
+            Write-SoscInfo (T 'anime4k_declined')
+            $result.State = 'declined'
+            return $result
+        }
+    }
+
+    $src = Get-SoscAnime4KSource -Artifacts $Artifacts
+    $files = @(Install-SoscAnime4KFiles -ConfigDir $ConfigDir -SourceDir $src)
+    # Files of an earlier Anime4K install by sosc that this one no longer has.
+    foreach ($f in $own) {
+        if ($files -contains $f) { continue }
+        $p = Join-SoscPath $ConfigDir ($f -split '/')
+        if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-SoscItem -Path $p -Root $ConfigDir }
+    }
+    Write-SoscOk (T 'anime4k_done' @($script:Anime4KVersion, $files.Count, $script:ShadersDir))
+    $result.State = 'sosc'
+    $result.Files = $files
+    $result.Version = $script:Anime4KVersion
+    return $result
 }
 
 # ---------------------------------------------------------------------------
@@ -2001,6 +2484,47 @@ function New-SoscBackup {
         throw $failure
     }
     return $backup
+}
+
+# Keeps the newest $Keep backups of this folder (<config>-respaldo-sosc-<stamp>,
+# siblings of it) and deletes the older ones. Only folders whose name is
+# exactly that pattern for this folder are considered; links are never touched.
+# $Protect (the backup from before sosc's first install) is never deleted.
+function Remove-SoscOldBackups {
+    param([string]$ConfigDir, [int]$Keep = $script:BackupKeep, [string[]]$Protect = @())
+    $full = Get-SoscFullPath $ConfigDir
+    $parent = Split-Path -Path $full -Parent
+    if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
+    $re = '^' + [regex]::Escape((Split-Path -Path $full -Leaf)) + '-respaldo-sosc-(\d{8}-\d{6})(?:-(\d+))?$'
+    $found = New-Object System.Collections.Generic.List[object]
+    $dirs = @()
+    try { $dirs = @(Get-ChildItem -LiteralPath $parent -Directory -Force -ErrorAction Stop) }
+    catch { Write-SoscWarn (T 'backup_prune_failed' @($parent, $_.Exception.Message)); return }
+    foreach ($d in $dirs) {
+        $m = [regex]::Match($d.Name, $re, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $m.Success -or (Test-SoscLink $d)) { continue }
+        $n = 1
+        if ($m.Groups[2].Success) { $n = [int]$m.Groups[2].Value }
+        $found.Add([pscustomobject]@{ Path = $d.FullName; Stamp = $m.Groups[1].Value; N = $n })
+    }
+    $sorted = @($found | Sort-Object -Property @{ Expression = 'Stamp'; Descending = $true }, @{ Expression = 'N'; Descending = $true })
+    for ($i = $Keep; $i -lt $sorted.Count; $i++) {
+        $old = $sorted[$i].Path
+        $keepIt = $false
+        foreach ($p in $Protect) {
+            # $Protect comes from the record, which is not trusted: a bad path just protects nothing.
+            try { if ($p -and (Test-SoscSamePath $p $old)) { $keepIt = $true } } catch { }
+        }
+        if ($keepIt) { continue }
+        try {
+            Assert-SoscInside -Path $old -Root $parent
+            Remove-SoscItem -Path $old -Root $parent
+            Write-SoscInfo (T 'backup_pruned' @($old))
+        }
+        catch {
+            Write-SoscWarn (T 'backup_prune_failed' @($old, $_.Exception.Message))
+        }
+    }
 }
 
 function Get-SoscRelativePath {
@@ -2123,8 +2647,18 @@ function Install-SoscTarget {
         $oldValues = @{}
         $oldDisabled = @()
         $oldFiles = @()
-        if ($null -ne $old) { $oldValues = $old.Values; $oldDisabled = @($old.Disabled); $oldFiles = @($old.Files) }
+        $oldMoved = @()
+        $oldCommented = @()
+        if ($null -ne $old) {
+            $oldValues = $old.Values; $oldDisabled = @($old.Disabled); $oldFiles = @($old.Files)
+            $oldMoved = @($old.Moved); $oldCommented = @($old.Commented)
+        }
         $first = ($null -eq $old)
+        if ($backup) {
+            $protect = @()
+            if ($oldValues.ContainsKey('first_backup')) { $protect = @([string]$oldValues['first_backup']) }
+            Remove-SoscOldBackups -ConfigDir $config -Protect $protect
+        }
         $prev = {
             param([string]$Key, [bool]$Now)
             if (-not $first -and $oldValues.ContainsKey($Key)) { return ($oldValues[$Key] -eq 'yes') }
@@ -2137,6 +2671,7 @@ function Install-SoscTarget {
         $thumbBefore = & $prev 'thumbfast_preexisting' (Test-Path -LiteralPath (Join-SoscPath $scripts 'thumbfast.lua') -PathType Leaf)
         $mpvConfBefore = & $prev 'mpv_conf_preexisting' (Test-Path -LiteralPath (Join-SoscPath $config 'mpv.conf') -PathType Leaf)
         $inputConfBefore = & $prev 'input_conf_preexisting' (Test-Path -LiteralPath (Join-SoscPath $config 'input.conf') -PathType Leaf)
+        $shadersBefore = & $prev 'shaders_preexisting' (Test-Path -LiteralPath (Join-SoscPath $config $script:ShadersDir) -PathType Container)
         $confBefore = @{}
         foreach ($c in $script:SharedConfs) {
             $key = ($c -replace '\.conf$', '') + '_conf_preexisting'
@@ -2186,6 +2721,7 @@ function Install-SoscTarget {
             $installed.Add('script-opts/' + $f.Name)
         }
         foreach ($name in $script:UserChoiceFiles) {
+            if ($name -eq $script:UpscaleConf) { continue }
             $dest = Join-SoscPath $config $name
             if (Test-Path -LiteralPath $dest -PathType Leaf) {
                 Write-SoscInfo (T 'kept_user_file' @($name))
@@ -2205,6 +2741,14 @@ function Install-SoscTarget {
         }
         Write-SoscOk (T 'sosc_files_done' @($installed.Count))
 
+        # e2. Anime4K, and the upscale choice file (with the quality for this
+        # graphics card when it is new).
+        $a4k = Invoke-SoscAnime4KStep -Candidate $Candidate -ConfigDir $config -Artifacts $Artifacts -Stamp $Stamp `
+            -OldValues $oldValues -OldFiles $oldFiles -OldMoved $oldMoved -OldCommented $oldCommented
+        Initialize-SoscUpscaleConf -ConfigDir $config -Announce (@('sosc', 'manual') -contains $a4k.State)
+        $a4kBindings = @()
+        if ($a4k.State -eq 'sosc') { $a4kBindings = $script:Anime4KBindings }
+
         # g. mpv.net does not always tell thumbfast where it is.
         if (($Candidate.Kind -eq 'mpv.net' -or $Candidate.Kind -eq 'AnimeJaNai') -and $Candidate.Exe) {
             Set-SoscConfOption -Path (Join-SoscPath $opts 'thumbfast.conf') -Key 'mpv_path' -Value $Candidate.Exe `
@@ -2214,7 +2758,7 @@ function Install-SoscTarget {
 
         # f. Managed blocks.
         [void](Update-SoscManagedFile -Path (Join-SoscPath $config 'mpv.conf') -Kind 'mpv')
-        [void](Update-SoscManagedFile -Path (Join-SoscPath $config 'input.conf') -Kind 'input')
+        [void](Update-SoscManagedFile -Path (Join-SoscPath $config 'input.conf') -Kind 'input' -ExtraBindings $a4kBindings)
 
         # h. Record.
         $firstBackup = $backup
@@ -2233,9 +2777,13 @@ function Install-SoscTarget {
         $values['thumbfast_conf_preexisting'] = ConvertTo-SoscYesNo $confBefore['thumbfast.conf']
         $values['mpv_conf_preexisting'] = ConvertTo-SoscYesNo $mpvConfBefore
         $values['input_conf_preexisting'] = ConvertTo-SoscYesNo $inputConfBefore
+        $values['shaders_preexisting'] = ConvertTo-SoscYesNo $shadersBefore
+        $values['anime4k'] = $a4k.State
+        $values['anime4k_version'] = $a4k.Version
         $values['first_backup'] = $firstBackup
         $values['last_backup'] = $backup
-        Write-SoscRecord -ConfigDir $config -Values $values -Files $installed.ToArray() -Disabled $disabled.ToArray()
+        $allFiles = @($installed.ToArray()) + @($a4k.Files)
+        Write-SoscRecord -ConfigDir $config -Values $values -Files $allFiles -Disabled $disabled.ToArray() -Moved @($a4k.Moved) -Commented @($a4k.Commented)
     }
     catch {
         $message = $_.Exception.Message
@@ -2249,6 +2797,31 @@ function Install-SoscTarget {
 # ---------------------------------------------------------------------------
 # Uninstall
 # ---------------------------------------------------------------------------
+
+# Moves set-aside items back ("moved|original" record entries, relative to the
+# folder). Entries are checked again (they come from the record, which is not
+# trusted): both ends must be clean paths inside the folder, nothing is
+# overwritten and links are not followed when running as administrator.
+function Restore-SoscPairs {
+    param([string]$ConfigDir, [string[]]$Pairs)
+    foreach ($entry in $Pairs) {
+        $pair = $entry -split '\|'
+        if ($pair.Count -ne 2 -or -not (Test-SoscRecordPath $pair[0]) -or -not (Test-SoscRecordPath $pair[1])) {
+            Write-SoscWarn (T 'record_bad' @($entry)); continue
+        }
+        $from = Join-SoscPath $ConfigDir ($pair[0] -split '/')
+        $to = Join-SoscPath $ConfigDir ($pair[1] -split '/')
+        if (-not (Test-SoscInside -Path $from -Root $ConfigDir)) { Write-SoscWarn (T 'outside_target' @($from, $ConfigDir)); continue }
+        if (-not (Test-SoscInside -Path $to -Root $ConfigDir)) { Write-SoscWarn (T 'outside_target' @($to, $ConfigDir)); continue }
+        if (-not (Test-Path -LiteralPath $from)) { continue }
+        if (Test-Path -LiteralPath $to) { Write-SoscWarn (T 'restore_skipped' @($pair[0], $pair[1])); continue }
+        Assert-SoscNoLink -Path $from -Root $ConfigDir
+        Assert-SoscNoLink -Path $to -Root $ConfigDir
+        New-SoscDirectory (Split-Path -Path $to -Parent)
+        Move-Item -LiteralPath $from -Destination $to
+        Write-SoscInfo (T 'moved' @($pair[0], $pair[1]))
+    }
+}
 
 function Uninstall-SoscTarget {
     param([Parameter(Mandatory = $true)]$Candidate, [string]$Stamp = '')
@@ -2264,7 +2837,18 @@ function Uninstall-SoscTarget {
         $record = Read-SoscRecord $config
         $values = @{}
         $disabled = @()
-        if ($null -ne $record) { $values = $record.Values; $disabled = @($record.Disabled) }
+        $recordFiles = @()
+        $movedA4k = @()
+        $commentedA4k = @()
+        if ($null -ne $record) {
+            $values = $record.Values; $disabled = @($record.Disabled); $recordFiles = @($record.Files)
+            $movedA4k = @($record.Moved); $commentedA4k = @($record.Commented)
+        }
+        if ($backup) {
+            $protect = @()
+            if ($values.ContainsKey('first_backup')) { $protect = @([string]$values['first_backup']) }
+            Remove-SoscOldBackups -ConfigDir $config -Protect $protect
+        }
         $wasThere = {
             param([string]$Key)
             if ($null -eq $record -or -not $values.ContainsKey($Key)) { return $null }
@@ -2278,6 +2862,11 @@ function Uninstall-SoscTarget {
         }
         if (Test-Path -LiteralPath $opts -PathType Container) {
             foreach ($f in @(Get-ChildItem -LiteralPath $opts -File -Filter 'sosc-*.conf' -Force)) { Remove-SoscItem -Path $f.FullName -Root $config }
+        }
+        # Anime4K shaders: only the ones the record says sosc installed.
+        foreach ($rel in @($recordFiles | Where-Object { Test-SoscOwnShaderPath $_ })) {
+            $p = Join-SoscPath $config ($rel -split '/')
+            if ((Test-SoscInside -Path $p -Root $config) -and (Test-Path -LiteralPath $p -PathType Leaf)) { Remove-SoscItem -Path $p -Root $config }
         }
 
         $originals = Join-SoscPath $config @($script:OriginalsDir, 'script-opts')
@@ -2325,25 +2914,50 @@ function Uninstall-SoscTarget {
         if ($pending.Count -gt 0) {
             $names = [string]::Join(', ', @($pending | ForEach-Object { ($_ -split '\|')[1] }))
             if (Confirm-Sosc -Question (T 'ask_restore' @($names)) -Default $removeUosc) {
-                foreach ($entry in $pending) {
-                    $pair = $entry -split '\|'
-                    # Already checked when the record was read; checked again here
-                    # because an entry pointing outside must never be acted on.
-                    if ($pair.Count -ne 2 -or -not (Test-SoscRecordPath $pair[0]) -or -not (Test-SoscRecordPath $pair[1])) {
-                        Write-SoscWarn (T 'record_bad' @($entry)); continue
+                Restore-SoscPairs -ConfigDir $config -Pairs $pending
+            }
+        }
+
+        # Without uosc, an osc=no of the user's own leaves the player without
+        # controls: offer to put back an interface, or to turn that line off.
+        # With -Yes it only warns.
+        $mpvConf = Join-SoscPath $config 'mpv.conf'
+        if ($removeUosc -and (Test-Path -LiteralPath $mpvConf -PathType Leaf)) {
+            $oscOff = @(Find-SoscOscOffLines (Read-SoscText $mpvConf).Text)
+            if ($oscOff.Count -gt 0 -and @(Find-SoscConflicts $config).Count -eq 0) {
+                Write-SoscWarn (T 'osc_orphan' @($oscOff[0].Content.Trim()))
+                $still = @($pending | Where-Object { Test-Path -LiteralPath (Join-SoscPath $config (($_ -split '\|')[0] -split '/')) })
+                if ($still.Count -gt 0) {
+                    $names = [string]::Join(', ', @($still | ForEach-Object { ($_ -split '\|')[1] }))
+                    if (Confirm-Sosc -Question (T 'ask_restore_osc' @($names)) -Default (-not $script:NonInteractive)) {
+                        Restore-SoscPairs -ConfigDir $config -Pairs $still
                     }
-                    $from = Join-SoscPath $config ($pair[0] -split '/')
-                    $to = Join-SoscPath $config ($pair[1] -split '/')
-                    if (-not (Test-SoscInside -Path $from -Root $config)) { Write-SoscWarn (T 'outside_target' @($from, $config)); continue }
-                    if (-not (Test-SoscInside -Path $to -Root $config)) { Write-SoscWarn (T 'outside_target' @($to, $config)); continue }
-                    if (-not (Test-Path -LiteralPath $from)) { continue }
-                    if (Test-Path -LiteralPath $to) { Write-SoscWarn (T 'restore_skipped' @($pair[0], $pair[1])); continue }
-                    Assert-SoscNoLink -Path $from -Root $config
-                    Assert-SoscNoLink -Path $to -Root $config
-                    New-SoscDirectory (Split-Path -Path $to -Parent)
-                    Move-Item -LiteralPath $from -Destination $to
-                    Write-SoscInfo (T 'moved' @($pair[0], $pair[1]))
                 }
+                if (@(Find-SoscConflicts $config).Count -eq 0) {
+                    if (Confirm-Sosc -Question (T 'ask_comment_osc') -Default (-not $script:NonInteractive)) {
+                        Set-SoscLinesCommented -Path $mpvConf -Lines $oscOff
+                        foreach ($l in $oscOff) { Write-SoscInfo (T 'osc_commented' @($l.Content.Trim())) }
+                    }
+                    else { Write-SoscWarn (T 'osc_left') }
+                }
+            }
+        }
+
+        # Anime4K installed by hand that sosc set aside, and the input.conf
+        # lines it turned off.
+        if ($movedA4k.Count -gt 0) {
+            if (Confirm-Sosc -Question (T 'ask_restore_anime4k' @($script:ShadersDisabledDir)) -Default $true) {
+                Restore-SoscPairs -ConfigDir $config -Pairs $movedA4k
+            }
+        }
+        $inputConf = Join-SoscPath $config 'input.conf'
+        if ($commentedA4k.Count -gt 0 -and (Test-Path -LiteralPath $inputConf -PathType Leaf)) {
+            $off = @(Find-SoscCommentedKeyLines -Text (Read-SoscText $inputConf).Text -Recorded $commentedA4k)
+            if ($off.Count -gt 0 -and (Confirm-Sosc -Question (T 'ask_uncomment') -Default $true)) {
+                $map = @{}
+                foreach ($l in $off) { $map[[int]$l.Index] = $l.Content }
+                Update-SoscLines -Path $inputConf -Map $map
+                Write-SoscInfo (T 'uncommented' @($off.Count))
             }
         }
 
@@ -2354,7 +2968,6 @@ function Uninstall-SoscTarget {
                 foreach ($name in $script:UserChoiceFiles) { Remove-SoscItem -Path (Join-SoscPath $config $name) -Root $config }
             }
         }
-        $mpvConf = Join-SoscPath $config 'mpv.conf'
         if ($deleteChoices -and (Test-Path -LiteralPath $mpvConf -PathType Leaf)) {
             $text = (Read-SoscText $mpvConf).Text
             foreach ($name in $script:UserChoiceFiles) {
@@ -2362,8 +2975,11 @@ function Uninstall-SoscTarget {
             }
         }
 
-        # Folders left empty (sosc may have created them) go too.
-        foreach ($dirName in @('fonts', 'script-opts', 'scripts')) {
+        # Folders left empty (sosc may have created them) go too; shaders only
+        # when the record says sosc created it.
+        $emptyDirs = @('fonts', 'script-opts', 'scripts')
+        if ((& $wasThere 'shaders_preexisting') -eq $false) { $emptyDirs += $script:ShadersDir }
+        foreach ($dirName in $emptyDirs) {
             $dir = Join-SoscPath $config $dirName
             $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
             if ($null -ne $item -and $item.PSIsContainer -and -not (Test-SoscLink $item) -and
@@ -2373,10 +2989,12 @@ function Uninstall-SoscTarget {
         }
         Remove-SoscItem -Path (Join-SoscPath $config $script:OriginalsDir) -Root $config
         Remove-SoscItem -Path (Join-SoscPath $config $script:RecordName) -Root $config
-        $disabledDir = Join-SoscPath $config $script:DisabledDir
-        if ((Test-Path -LiteralPath $disabledDir -PathType Container) -and
-            @(Get-ChildItem -LiteralPath $disabledDir -Recurse -File -Force).Count -eq 0) {
-            Remove-SoscItem -Path $disabledDir -Root $config
+        foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {
+            $dir = Join-SoscPath $config $dirName
+            if ((Test-Path -LiteralPath $dir -PathType Container) -and
+                @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force).Count -eq 0) {
+                Remove-SoscItem -Path $dir -Root $config
+            }
         }
     }
     catch {
@@ -2714,8 +3332,9 @@ function Confirm-SoscElevation {
 }
 
 function Invoke-SoscMain {
-    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false)
+    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '')
     $script:NonInteractive = $Yes
+    $script:SoscAnime4KChoice = $Anime4K
     # Keyboard menus only on a real interactive console; numbers otherwise.
     $script:SoscMenu = $false
     if (-not $Yes -and -not $NoMenu) { $script:SoscMenu = [bool](& $script:SoscConsoleProbe) }
@@ -2810,7 +3429,7 @@ if ($env:SOSC_INSTALL_TEST) { return }
 $savedTls = $null
 try { $savedTls = [System.Net.ServicePointManager]::SecurityProtocol } catch { }
 try {
-    $code = Invoke-SoscMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu)
+    $code = Invoke-SoscMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu) -Anime4K $Anime4K
 }
 finally {
     if ($null -ne $savedTls) { try { [System.Net.ServicePointManager]::SecurityProtocol = $savedTls } catch { } }
@@ -2820,7 +3439,7 @@ finally {
 # exit: through iex, exit would close the user's PowerShell window.
 if ({ }.File) { exit $code }
 $global:LASTEXITCODE = $code
-} -Action $SoscAction -Target $SoscTarget -Yes:$SoscYes -NoMenu:$SoscNoMenu
+} -Action $SoscAction -Target $SoscTarget -Yes:$SoscYes -NoMenu:$SoscNoMenu -Anime4K $SoscAnime4K
 }
 catch {
     # An unexpected error that got this far. Same rule as above: exit only when
@@ -2831,5 +3450,5 @@ catch {
 }
 finally {
     # Through iex the parameters above are variables of the caller's session.
-    if (-not { }.File) { Remove-Variable -Name SoscAction, SoscTarget, SoscYes, SoscNoMenu -Scope 0 -ErrorAction SilentlyContinue }
+    if (-not { }.File) { Remove-Variable -Name SoscAction, SoscTarget, SoscYes, SoscNoMenu, SoscAnime4K -Scope 0 -ErrorAction SilentlyContinue }
 }
