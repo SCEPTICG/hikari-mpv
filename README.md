@@ -8,20 +8,20 @@ A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https
 - **Speed menu**: a button with fixed speeds (0.5× to 2×) instead of a slider.
 - **Subtitle styles**: a menu with three subtitle styles, plus size and height.
 - **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
-- **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+6` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, with a quality that suits your graphics card.
+- **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automático*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
 - **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
 
 The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*).
 
 ## Requirements
 
-- **Windows** 10 or 11. macOS and Linux: coming soon (see [Linux and macOS](#linux-and-macos) for a manual setup in the meantime).
-- A player based on mpv: [mpv](https://mpv.io/installation/), [mpv.net](https://github.com/mpvnet-player/mpv.net), or a bundle built on mpv.net such as [AnimeJaNai](https://github.com/the-database/mpv-upscale-2x_animejanai). If none is installed, the installer offers to install mpv.net with `winget`.
-- Windows PowerShell 5.1 (built into Windows) or PowerShell 7. No administrator rights.
+- **Windows** 10 or 11, **macOS** or **Linux** (the Linux installer is new and still being tested; see [macOS and Linux](#macos-and-linux)).
+- Windows: a player based on mpv: [mpv](https://mpv.io/installation/), [mpv.net](https://github.com/mpvnet-player/mpv.net), or a bundle built on mpv.net such as [AnimeJaNai](https://github.com/the-database/mpv-upscale-2x_animejanai). If none is installed, the installer offers to install mpv.net with `winget`. Windows PowerShell 5.1 (built into Windows) or PowerShell 7. No administrator rights.
+- macOS and Linux: [mpv](https://mpv.io/installation/) (on macOS from Homebrew or mpv.app; on Linux from your distribution, Flatpak or Snap), and `bash`, `curl` and `unzip`, which macOS and most Linux systems already have. No `sudo`.
 
 ## Install
 
-Open PowerShell (Start menu, type *PowerShell*) and run:
+On Windows, open PowerShell (Start menu, type *PowerShell*) and run (for macOS and Linux, see [macOS and Linux](#macos-and-linux)):
 
 ```
 irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
@@ -99,11 +99,11 @@ Pick one or several (or, with `-NoMenu`, type their numbers: `1,3`), or type ano
 For each folder it:
 
 1. Copies the files it may change to `<folder>-respaldo-sosc-<date>` next to it, and shows the size of that copy: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf`, `sosc-installed.txt`, and `scripts-desactivados`, `shaders-desactivados` and `sosc-originales` if they exist. Nothing else in the folder is copied (`cache`, `watch_later`...); in `shaders` sosc only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so `shaders` is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before sosc's first install (the only one with your config as it was before sosc, marked with a `sosc-backup-original.txt` file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly `<folder>-respaldo-sosc-<date>` next to it count: nothing else is touched.
-2. Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom `osc.lua`, `mpv-osc-*`...) to `scripts-desactivados`, together with their `script-opts` and fonts. Nothing is deleted.
+2. Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom `osc.lua`, `mpv-osc-*`...) to `scripts-desactivados`, together with their `script-opts` and fonts. Nothing is deleted. It also offers to move there the `.lua` files in `scripts` that are really the error page of a failed download (first line `404: Not Found`, `Not Found` or an HTML page), for which mpv logs an error at every start; they come back on uninstall.
 3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: sosc's is.
 4. Copies the sosc scripts and `script-opts`. `sosc-palette.conf` and `sosc-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
-5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `sosc-upscale.conf` if it is missing, with the quality that suits your graphics card.
-6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, and `Ctrl+0` to `Ctrl+6` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
+5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `sosc-upscale.conf` if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in *Automático*.
+6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, and `Ctrl+0` to `Ctrl+7` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
 7. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
 8. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
@@ -113,9 +113,39 @@ If uosc goes and your own `mpv.conf` (outside the sosc block) still has `osc=no`
 
 Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
-### Linux and macOS
+### macOS and Linux
 
-Coming soon. Until then, by hand: copy the contents of `portable_config/` into `~/.config/mpv/`, except `mpv.conf` and `input.conf` if you already have your own (then add the `osc=no`, `osd-bar=no` and `include` lines of the repository's `mpv.conf`, and the bindings of its `input.conf`, to yours). Then install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`. For Anime4K, extract the `.glsl` files of [Anime4K_v4.0.zip](https://github.com/bloc97/Anime4K/releases/tag/v4.0.1) into `~/.config/mpv/shaders/` (the `Ctrl+0` to `Ctrl+6` lines of the repository's `input.conf` drive it).
+Open Terminal and run:
+
+```
+curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash
+```
+
+`curl` downloads the installer of the latest release and `bash` runs it. It is the same installer as on Windows, written for the `bash` 3.2 that comes with macOS: the same menus (`↑`/`↓`, `Enter`, `Esc`, `Space`, `Y`/`N`, `S`/`N` in Spanish), messages, backups and rotation, marked blocks, record, set-aside interfaces, Anime4K questions and uninstall (see [How the installer works](#how-the-installer-works)). The questions are read from the terminal even though the script itself comes through the pipe. Messages are in Spanish when `LC_ALL`, `LC_MESSAGES` or `LANG` (the first one set) starts with `es`, in English otherwise. What is different:
+
+- **Config folder**. On macOS, `$MPV_HOME` if it is set, otherwise `~/.config/mpv`, the folder both Homebrew's mpv and mpv.app read. IINA keeps its own settings and is not touched (the installer says so if it finds IINA). On Linux, `$MPV_HOME` or `${XDG_CONFIG_HOME:-~/.config}/mpv` for a native mpv, plus `~/.var/app/io.mpv.Mpv/config/mpv` for the Flatpak and `~/snap/mpv/current/.config/mpv` for the Snap when those are installed; with more than one, you pick in a list.
+- **No mpv**. On macOS with Homebrew it offers to run `brew install mpv` (asking first, never without questions); without Homebrew it explains how to get mpv and stops. On Linux it names the package of the usual distributions (`sudo apt install mpv`, `sudo dnf install mpv`...) and stops: it never runs `sudo` itself.
+- **thumbfast**. It writes the full path of mpv (`mpv_path=/opt/homebrew/bin/mpv`, say) into `script-opts/thumbfast.conf`: an mpv started from Finder or from another app (Seanime...) does not have `/opt/homebrew/bin` in its `PATH`, and the thumbnails would come out black. Not for the Flatpak or Snap, where `mpv` inside the sandbox is the right one.
+- **Graphics card**. The Anime4K quality comes from the chip on macOS (`Apple M… Pro`, `Max` and `Ultra`: *Alta*; the base M chips and Intel Macs: *Rápida*) and from `lspci` on Linux (a dedicated NVIDIA or AMD card: *Alta*; anything else, or no `lspci`: *Rápida*).
+- No AnimeJaNai or mpv.net there, and no administrator questions: run it as your own user. As root (`sudo`) it warns and asks, and without questions it refuses.
+
+Run the same line to update. To uninstall:
+
+```
+curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash -s -- --uninstall
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--install` / `--uninstall` | Skip the first menu. |
+| `--target <config folder>` | Work on that folder instead of choosing from the list (repeat it for several). |
+| `--yes` | No questions: take the default answer to everything (and install when no action is given). Needs `--target` when more than one folder is found. |
+| `--no-menu` | Ask with numbers and typed answers instead of the keyboard menus. |
+| `--anime4k yes` / `--anime4k no` | Answer the Anime4K questions instead of asking, as `-Anime4K` on Windows. |
+
+Options go after `bash -s --`, as above. With no terminal at all (a script, `ssh` without `-t`...) it runs as with `--yes`, and when an answer is really needed (several folders and no `--target`) it stops with a clear message. Exit codes: 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. The whole script is inside one function that its last line calls, so a download cut short runs nothing.
+
+To check it before running it, download `sosc.sh` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/sosc/releases/latest), compare `shasum -a 256 sosc.sh` (`sha256sum sosc.sh` on Linux) with the line for `sosc.sh` in `SHA256SUMS`, and run `bash sosc.sh` (the options above work after it). The same caveat as for `sosc.ps1` applies (see [Checking the installer first](#checking-the-installer-first)). From a copy of this repository, `bash install/sosc.sh` installs the sosc files of that copy.
 
 ## Usage
 
@@ -125,6 +155,7 @@ Coming soon. Until then, by hand: copy the contents of `portable_config/` into `
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
 | `Alt+t` | Subtitle menu (style, size, height) |
 | `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when sosc installed Anime4K) |
+| `Ctrl+7` | Anime4K *Automático*: the mode from each video's resolution |
 | `Ctrl+0` | Anime4K off |
 
 The controls bar has up to four sosc buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed and palettes. The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
@@ -222,11 +253,11 @@ A `sosc-subs.conf` written by mpv 0.39 or newer uses option names that mpv 0.38 
 
 ## Anime4K upscaling
 
-[Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. sosc does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Installed, it stays **off** until you pick a mode.
+[Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. sosc does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Once installed it starts in **Automático** (see below); pick another mode, or *Apagado*, at any time.
 
 The **Escalado** button in the controls bar (sparkles icon, `auto_awesome`) opens a menu with two groups; picking an option applies it straight away and the menu stays open:
 
-- **Modo**: *Apagado* and Anime4K's six official modes. The guide of Anime4K says the right one is the one that looks best; roughly:
+- **Modo**: *Apagado*, *Automático* and Anime4K's six official modes. *Automático* picks the mode from the height of each video, with the chosen quality: C up to 576 lines (480p, 576p), B up to 810 (720p), A+A up to 1100 (1080p), and no shaders for taller videos (1440p, 4K), which do not need upscaling. It works it out again for every file (and whenever the height changes), so a playlist that mixes resolutions gets the right mode for each one. The guide of Anime4K says the right mode is the one that looks best; roughly:
 
   | Mode | For |
   | --- | --- |
@@ -237,16 +268,16 @@ The **Escalado** button in the controls bar (sparkles icon, `auto_awesome`) open
 
 - **Calidad**: *Alta* (Anime4K's *HQ* shader lists, for capable graphics cards) or *Rápida* (its *Fast* lists).
 
-`Ctrl+1` to `Ctrl+6` pick the modes in the same order and `Ctrl+0` turns Anime4K off, as in Anime4K's own instructions; each shows a short message such as *Anime4K: Modo A (Rápido)*. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (*Anime4K no está instalado: ejecuta el instalador*) and the button stays hidden.
+`Ctrl+1` to `Ctrl+6` pick the modes in the same order and `Ctrl+0` turns Anime4K off, as in Anime4K's own instructions; `Ctrl+7` is *Automático*. Each shows a short message such as *Anime4K: Modo A (Rápido)* or *Anime4K: Automático (B, 720p)*. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (*Anime4K no está instalado: ejecuta el instalador*) and the button stays hidden.
 
-The choice is saved to `~~/sosc-upscale.conf`, which `mpv.conf` includes, so the mode is active from the first frame on the next start. With *Apagado* that file sets no `glsl-shaders` at all, so your own `glsl-shaders` line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and *Apagado* puts your list back. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (`;` on Windows, `:` elsewhere). The button needs mpv 0.36 or newer (it is shown through a `user-data` property); with an older mpv use the keys.
+The choice is saved to `~~/sosc-upscale.conf`, which `mpv.conf` includes, so a fixed mode is active from the first frame on the next start. With *Apagado* that file sets no `glsl-shaders` at all, so your own `glsl-shaders` line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and *Apagado* puts your list back. *Automático* cannot know the height before a file is open, so its file only says `mode=auto`: the script sets the shaders when each file loads, and with no mode for a video (too tall, or no video) your own list applies, as with *Apagado*. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (`;` on Windows, `:` elsewhere). The button needs mpv 0.36 or newer (it is shown through a `user-data` property); with an older mpv use the keys.
 
 What the installer does:
 
 - **AnimeJaNai**: nothing. It already upscales with AI and uses `Ctrl+1` to `Ctrl+9` for it.
-- **No Anime4K yet**: it explains what it is and asks *Install Anime4K?* (yes by default; with `-Yes`, yes). If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of sosc; Anime4K is offered again next time, yes by default.
-- **Already installed by sosc**: an update leaves it alone when it is the same version and every shader sosc needs is there; if one is missing or the version changed, it is downloaded and installed again.
-- **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that sosc did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, sosc first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to `shaders-desactivados/` (nothing is deleted), sosc installs its own copy, and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` can be turned off by putting `# sosc: ` in front of them, so the sosc keys can use those keys. A `glsl-shaders=` line with Anime4K shaders in your `mpv.conf` (Anime4K's templates have one) is turned off the same way (yes by default, and with `-Yes`): otherwise that mode would be on at every start, even with *Apagado*. The same happens if sosc installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
+- **No Anime4K yet**: it explains what it is and asks *Install Anime4K?* (yes by default; with `-Yes`, yes). Installed, it starts in *Automático*: `sosc-upscale.conf` is written with `mode=auto` and the quality for your card, even if an earlier one said *Apagado*. If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of sosc; Anime4K is offered again next time, yes by default.
+- **Already installed by sosc**: an update leaves it alone when it is the same version and every shader sosc needs is there; if one is missing or the version changed, it is downloaded and installed again. The mode you chose is kept.
+- **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that sosc did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, sosc first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to `shaders-desactivados/` (nothing is deleted), sosc installs its own copy (in *Automático*), and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` (`CTRL+1` and `Ctrl+1` alike) can be turned off by putting `# sosc: ` in front of them, so the sosc keys can use those keys. A `glsl-shaders=` line with Anime4K shaders in your `mpv.conf` (Anime4K's templates have one; so do `[profile]`s that pick a mode by height, which *Automático* replaces) is turned off the same way (yes by default, and with `-Yes`): otherwise that mode would be on at every start, even with *Apagado*. The same happens if sosc installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
 - `-Anime4K yes` installs it (and takes over one installed by hand) without asking; `-Anime4K no` leaves it out (an Anime4K that sosc installed earlier is left as it is).
 
 The quality is chosen from your graphics card the first time `sosc-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. The line follows [Anime4K's own guide](https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md), which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets *Rápida*:
@@ -257,11 +288,12 @@ The quality is chosen from your graphics card the first time `sosc-upscale.conf`
 | AMD | RX 590; RX 5600, 5700; RX 6600 and up; RX 7600 and up; RX 9060 and up; RX Vega 56/64, Radeon VII | RX 580, 570 and older; RX 5500; RX 6400, 6500; RX 7400; integrated graphics (*Radeon Graphics*, *780M*...) |
 | Intel | Arc A580, A750, A770, B570, B580 (and A770M) | *Arc Graphics* with no model number and Arc 140V (integrated in Core Ultra), Arc A380, laptop Arc below A770M, UHD, Iris, HD |
 | Apple | M Pro, Max and Ultra | M base chips, Intel Macs |
+| Linux (`sosc.sh`, from `lspci`) | a dedicated NVIDIA or AMD card | Intel, AMD integrated, no `lspci` |
 | Other | | anything unknown |
 
 It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use *Rápida* or a mode without `+`.
 
-The modes, qualities and shader lists are defined in `portable_config/scripts/sosc-upscale.lua`. To open the menu from the keyboard, bind `script-binding sosc_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to sosc_upscale set-mode <off|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
+The modes, qualities and shader lists are defined in `portable_config/scripts/sosc-upscale.lua`. To open the menu from the keyboard, bind `script-binding sosc_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to sosc_upscale set-mode <off|auto|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
 
 ## Skip openings and endings
 
@@ -275,7 +307,7 @@ The button follows the active palette (background and border from uosc's `backgr
 
 ## Thumbnails
 
-Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
+Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On macOS the installer always writes it (`mpv_path=/opt/homebrew/bin/mpv`, say): mpv started from Finder or another app does not find `mpv` in its `PATH`, and the thumbnails come out black. On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
 
 ## Tests
 
@@ -289,14 +321,15 @@ lua tests/test_skip.lua
 lua tests/test_subs.lua
 lua tests/test_upscale.lua
 pwsh -NoProfile -File tests/install.Tests.ps1
+bash tests/install.test.sh
 bash tests/make-release.test.sh
 ```
 
-The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs sosc from it.
+The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/sosc.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs sosc from it, through `iex` and through `bash -s` as `curl ... | bash` does.
 
 ## Making a release
 
-The one-line install downloads `https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1`, which only works when every step below is done. For a release `v0.1.0`:
+The one-line installs download `https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1` and `.../sosc.sh`, which only works when every step below is done. For a release `v0.1.0`:
 
 1. Commit everything and tag that commit. The tag must exist before building and point to the current commit, or the script refuses:
 
@@ -305,13 +338,13 @@ The one-line install downloads `https://github.com/SCEPTICG/sosc/releases/latest
    tools/make-release.sh v0.1.0
    ```
 
-   It needs a clean work tree and builds, from that commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.zip` and that zip's SHA256 filled in) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
+   It needs a clean work tree and builds, from that commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.zip` and that zip's SHA256 filled in), `dist/sosc.sh` (the macOS and Linux installer, with the same three values) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
 
 2. Push the tag to the original repository: `git push origin v0.1.0`. The GitHub repository is a mirror of a Forgejo one (see [Contributing](#contributing)), so the tag reaches GitHub through the mirror: wait until `v0.1.0` shows up in GitHub's tag list (or sync the mirror by hand) before the next step.
 
 3. On GitHub, create the release **from that existing tag** (choose `v0.1.0` in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).
 
-4. Attach `dist/sosc.ps1`, `dist/sosc.zip` and `dist/SHA256SUMS` with exactly those names: `sosc.ps1` looks for `sosc.zip` under that tag, and the install line looks for `sosc.ps1`.
+4. Attach `dist/sosc.ps1`, `dist/sosc.sh`, `dist/sosc.zip` and `dist/SHA256SUMS` with exactly those names: `sosc.ps1` and `sosc.sh` look for `sosc.zip` under that tag, and the install lines look for `sosc.ps1` and `sosc.sh`.
 
 5. Publish it as the **Latest** release: not a draft and not a pre-release. `releases/latest/download/...` only sees the release marked Latest.
 
