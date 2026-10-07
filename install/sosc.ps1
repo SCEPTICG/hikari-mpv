@@ -150,6 +150,7 @@ $script:Anime4KBindings = @(
     @{ Key = 'Ctrl+4'; Command = 'script-message-to sosc_upscale set-mode aa' },
     @{ Key = 'Ctrl+5'; Command = 'script-message-to sosc_upscale set-mode bb' },
     @{ Key = 'Ctrl+6'; Command = 'script-message-to sosc_upscale set-mode ca' },
+    @{ Key = 'Ctrl+7'; Command = 'script-message-to sosc_upscale set-mode auto' },
     @{ Key = 'Ctrl+0'; Command = 'script-message-to sosc_upscale set-mode off' }
 )
 $script:ShadersDir = 'shaders'
@@ -364,14 +365,14 @@ $script:SoscStringsEn = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Space \u00b7 Enter \u00b7 Esc'
     answer_yes            = 'Yes'
     answer_no             = 'No'
-    anime4k_intro         = 'Anime4K sharpens and upscales anime on the graphics card. It stays off until you pick a mode in the Escalado menu or press Ctrl+1 to Ctrl+6 (Ctrl+0 turns it off).'
+    anime4k_intro         = 'Anime4K sharpens and upscales anime on the graphics card. It starts in Autom\u00e1tico mode, which picks a mode from the resolution of each video; change it in the Escalado menu or with Ctrl+1 to Ctrl+7 (Ctrl+0 turns it off).'
     anime4k_confirm       = 'Install Anime4K (anime upscaling on the graphics card)?'
     anime4k_done          = 'Anime4K {0} installed ({1} shaders in {2}).'
     anime4k_animejanai    = 'AnimeJaNai already upscales with AI (Ctrl+1 to Ctrl+9): Anime4K is not installed here.'
     anime4k_declined      = 'Anime4K not installed. Run the installer again to install it.'
     anime4k_kept          = 'Anime4K left as it is (-Anime4K no).'
     anime4k_manual        = 'There is already an Anime4K installed by hand in {0} (files: {1}).'
-    anime4k_manage        = 'Let sosc take care of it? Your files go to {0} (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+6 keys.'
+    anime4k_manage        = 'Let sosc take care of it? Your files go to {0} (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+7 keys.'
     anime4k_manual_kept   = 'Your Anime4K is left as it is, with its own keys. The sosc Escalado menu changes the same shaders and does not know what those keys turned on.'
     anime4k_keys_found    = 'input.conf binds these Anime4K keys outside the sosc block:'
     anime4k_comment       = 'Turn those lines off by putting "# sosc: " in front of them, so the sosc keys can use them? They are turned back on when you uninstall.'
@@ -399,6 +400,10 @@ $script:SoscStringsEn = @{
     ask_comment_osc       = 'Turn that line off by putting "# sosc: " in front of it, so mpv shows its own controls?'
     osc_commented         = 'mpv.conf: "{0}" turned off with "# sosc: ".'
     osc_left              = 'Left as it is: remove that line or install an on-screen controller to get controls back.'
+    broken_found          = 'These files in scripts are not scripts but the error page of a failed download (mpv logs an error for each one):'
+    broken_confirm        = 'Move them to {0}? Nothing is deleted, and they come back when you uninstall.'
+    broken_kept           = 'Left in place: mpv keeps logging an error for each one at start-up.'
+    ask_restore_broken    = 'Move back the broken scripts sosc set aside ({0})?'
 }
 
 $script:SoscStringsEs = @{
@@ -507,14 +512,14 @@ $script:SoscStringsEs = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Espacio \u00b7 Intro \u00b7 Esc'
     answer_yes            = 'S\u00ed'
     answer_no             = 'No'
-    anime4k_intro         = 'Anime4K mejora y reescala el anime en la tarjeta gr\u00e1fica. Est\u00e1 apagado hasta que eliges un modo en el men\u00fa Escalado o pulsas Ctrl+1 a Ctrl+6 (Ctrl+0 lo apaga).'
+    anime4k_intro         = 'Anime4K mejora y reescala el anime en la tarjeta gr\u00e1fica. Empieza en modo Autom\u00e1tico, que elige el modo seg\u00fan la resoluci\u00f3n de cada v\u00eddeo; c\u00e1mbialo en el men\u00fa Escalado o con Ctrl+1 a Ctrl+7 (Ctrl+0 lo apaga).'
     anime4k_confirm       = '\u00bfInstalar Anime4K (reescalado de anime en la gr\u00e1fica)?'
     anime4k_done          = 'Anime4K {0} instalado ({1} shaders en {2}).'
     anime4k_animejanai    = 'AnimeJaNai ya reescala con IA (Ctrl+1 a Ctrl+9): aqu\u00ed no se instala Anime4K.'
     anime4k_declined      = 'Anime4K no se instala. Vuelve a ejecutar el instalador para instalarlo.'
     anime4k_kept          = 'Anime4K se deja como est\u00e1 (-Anime4K no).'
     anime4k_manual        = 'Ya hay un Anime4K instalado a mano en {0} (ficheros: {1}).'
-    anime4k_manage        = '\u00bfQuieres que lo gestione sosc? Tus ficheros van a {0} (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el men\u00fa Escalado y los atajos Ctrl+0 a Ctrl+6.'
+    anime4k_manage        = '\u00bfQuieres que lo gestione sosc? Tus ficheros van a {0} (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el men\u00fa Escalado y los atajos Ctrl+0 a Ctrl+7.'
     anime4k_manual_kept   = 'Tu Anime4K se queda como est\u00e1, con sus atajos. El men\u00fa Escalado de sosc cambia los mismos shaders y no sabe lo que hayan activado esos atajos.'
     anime4k_keys_found    = 'input.conf tiene estos atajos de Anime4K fuera del bloque de sosc:'
     anime4k_comment       = '\u00bfDesactivar esas l\u00edneas poni\u00e9ndoles delante "# sosc: ", para que los atajos de sosc puedan usar esas teclas? Se vuelven a activar al desinstalar.'
@@ -542,6 +547,10 @@ $script:SoscStringsEs = @{
     ask_comment_osc       = '\u00bfDesactivar esa l\u00ednea poni\u00e9ndole delante "# sosc: ", para que mpv muestre sus propios controles?'
     osc_commented         = 'mpv.conf: "{0}" desactivada con "# sosc: ".'
     osc_left              = 'Se deja como est\u00e1: quita esa l\u00ednea o instala otra interfaz para recuperar los controles.'
+    broken_found          = 'Estos ficheros de scripts no son scripts sino la p\u00e1gina de error de una descarga fallida (mpv da un error por cada uno):'
+    broken_confirm        = '\u00bfMoverlos a {0}? No se borra nada y vuelven a su sitio al desinstalar.'
+    broken_kept           = 'Se quedan donde est\u00e1n: mpv sigue dando un error por cada uno al arrancar.'
+    ask_restore_broken    = '\u00bfDevolver a su sitio los scripts rotos que sosc apart\u00f3 ({0})?'
 }
 
 function Get-SoscLanguage {
@@ -1941,6 +1950,7 @@ function Read-SoscRecord {
     $values = @{}
     $files = New-Object System.Collections.Generic.List[string]
     $disabled = New-Object System.Collections.Generic.List[string]
+    $broken = New-Object System.Collections.Generic.List[string]
     $moved = New-Object System.Collections.Generic.List[string]
     $commented = New-Object System.Collections.Generic.List[string]
     $commentedMpv = New-Object System.Collections.Generic.List[string]
@@ -1953,9 +1963,11 @@ function Read-SoscRecord {
             if (Test-SoscRecordPath $value) { $files.Add($value) }
             elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
         }
-        elseif ($key -eq 'disabled') {
+        elseif ($key -eq 'disabled' -or $key -eq 'broken') {
             $pair = $value -split '\|'
-            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) { $disabled.Add($value) }
+            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) {
+                if ($key -eq 'disabled') { $disabled.Add($value) } else { $broken.Add($value) }
+            }
             elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
         }
         elseif ($key -eq 'a4k_moved') {
@@ -1976,17 +1988,18 @@ function Read-SoscRecord {
         else { $values[$key] = $value }
     }
     return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray(); Moved = $moved.ToArray()
-        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray() }
+        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray() }
 }
 
 function Write-SoscRecord {
     param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled,
-        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @())
+        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @())
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('# Written by the sosc installer (install/sosc.ps1). Used to update and uninstall; do not edit.' + $eol)
     foreach ($key in $Values.Keys) { [void]$sb.Append($key + '=' + $Values[$key] + $eol) }
     foreach ($d in $Disabled) { [void]$sb.Append('disabled=' + $d + $eol) }
+    foreach ($b in $Broken) { [void]$sb.Append('broken=' + $b + $eol) }
     foreach ($m in $Moved) { [void]$sb.Append('a4k_moved=' + $m + $eol) }
     foreach ($c in $Commented) { [void]$sb.Append('a4k_commented=' + $c + $eol) }
     foreach ($c in $CommentedMpv) { [void]$sb.Append('a4k_commented_mpv=' + $c + $eol) }
@@ -2260,30 +2273,34 @@ function Get-SoscGpuTier {
     return [pscustomobject]@{ Name = $name; Quality = 'fast' }
 }
 
-# sosc-upscale.conf for "Apagado" and the given quality, byte for byte what
-# sosc-upscale.lua writes for that choice (the tests compare both).
+# sosc-upscale.conf for "Apagado" (off) or "Automatico" (auto) and the given
+# quality, byte for byte what sosc-upscale.lua writes for that choice (the
+# tests compare both). Neither mode has glsl-shaders lines.
 function Get-SoscUpscaleConfText {
-    param([string]$Quality)
+    param([string]$Quality, [string]$Mode = 'off')
     if (@('hq', 'fast') -notcontains $Quality) { $Quality = 'fast' }
+    if (@('off', 'auto') -notcontains $Mode) { $Mode = 'off' }
     $lines = @(
-        ('# Generated by sosc-upscale.lua. Mode: off, quality: ' + $Quality),
-        'script-opts-append=sosc_upscale-mode=off',
+        ('# Generated by sosc-upscale.lua. Mode: ' + $Mode + ', quality: ' + $Quality),
+        ('script-opts-append=sosc_upscale-mode=' + $Mode),
         ('script-opts-append=sosc_upscale-quality=' + $Quality)
     )
     return ([string]::Join("`n", $lines) + "`n")
 }
 
-# Writes sosc-upscale.conf when it is missing, with the quality that suits the
-# graphics card; an existing one holds the user's choice and is kept.
+# Writes sosc-upscale.conf with $Mode and the quality that suits the graphics
+# card when it is missing, or always with $Overwrite (sosc has just installed
+# Anime4K here for the first time: it starts in "Automatico"). Otherwise an
+# existing one holds the user's choice and is kept.
 function Initialize-SoscUpscaleConf {
-    param([string]$ConfigDir, [bool]$Announce)
+    param([string]$ConfigDir, [bool]$Announce, [string]$Mode = 'off', [bool]$Overwrite = $false)
     $path = Join-SoscPath $ConfigDir $script:UpscaleConf
-    if (Test-Path -LiteralPath $path -PathType Leaf) {
+    if (-not $Overwrite -and (Test-Path -LiteralPath $path -PathType Leaf)) {
         Write-SoscInfo (T 'kept_user_file' @($script:UpscaleConf))
         return
     }
     $gpu = Get-SoscGpuTier -Names @(& $script:SoscGpuProbe)
-    Write-SoscText -Path $path -Text (Get-SoscUpscaleConfText -Quality $gpu.Quality)
+    Write-SoscText -Path $path -Text (Get-SoscUpscaleConfText -Quality $gpu.Quality -Mode $Mode)
     if ($Announce) {
         $name = $gpu.Name
         if (-not $name) { $name = T 'gpu_unknown' }
@@ -2536,7 +2553,9 @@ function Find-SoscCommentedConfLines {
 # check failed, asked again next time; manual: one installed by hand is left
 # alone; animejanai), Files (record paths of sosc's shaders), Moved
 # ("moved|original" of the hand-installed ones set aside), Commented and
-# CommentedMpv (input.conf and mpv.conf lines turned off) and Version.
+# CommentedMpv (input.conf and mpv.conf lines turned off), Version and Fresh
+# (sosc installed Anime4K in this run and it was not sosc's before: a new
+# install, or one installed by hand taken over).
 # Anime4K is downloaded and checked before anything in the folder is moved or
 # changed, and every change is added to the record before it is made.
 function Invoke-SoscAnime4KStep {
@@ -2548,7 +2567,7 @@ function Invoke-SoscAnime4KStep {
     if ($OldValues.ContainsKey('anime4k')) { $prevState = [string]$OldValues['anime4k'] }
     $own = @($OldFiles | Where-Object { Test-SoscOwnShaderPath $_ })
     $result = [pscustomobject]@{ State = ''; Files = $own; Moved = @($OldMoved); Commented = @($OldCommented)
-        CommentedMpv = @($OldCommentedMpv); Version = '' }
+        CommentedMpv = @($OldCommentedMpv); Version = ''; Fresh = $false }
     if ($OldValues.ContainsKey('anime4k_version')) { $result.Version = [string]$OldValues['anime4k_version'] }
 
     if (Test-SoscAnimeJaNai -Candidate $Candidate -ConfigDir $ConfigDir) {
@@ -2663,6 +2682,7 @@ function Invoke-SoscAnime4KStep {
     $result.State = 'sosc'
     $result.Files = $files
     $result.Version = $script:Anime4KVersion
+    $result.Fresh = (-not $update)
     return $result
 }
 
@@ -2816,6 +2836,31 @@ function Find-SoscConflicts {
     return $found.ToArray()
 }
 
+# A file in scripts/ named *.lua whose first line shows it is the page a failed
+# download saved instead of the script: "404: Not Found" (GitHub raw), "Not
+# Found", or an HTML page. mpv logs an error for each one at start-up.
+function Test-SoscBrokenScript {
+    param([string]$Path)
+    $first = $null
+    try {
+        $reader = New-Object System.IO.StreamReader($Path, $true)
+        try { $first = $reader.ReadLine() } finally { $reader.Dispose() }
+    }
+    catch { return $false }
+    if ($null -eq $first) { return $false }
+    $first = $first.Trim([char[]]@([char]0xFEFF, ' ', "`t", "`r"))
+    return ($first -match '(?i)^(404:?\s*)?Not Found\s*$' -or $first -match '(?i)^<!DOCTYPE|^<html')
+}
+
+# Those files in scripts/ (only at its top level, where mpv loads them).
+function Find-SoscBrokenScripts {
+    param([string]$ConfigDir)
+    $scripts = Join-SoscPath $ConfigDir 'scripts'
+    if (-not (Test-Path -LiteralPath $scripts -PathType Container)) { return @() }
+    return @(Get-ChildItem -LiteralPath $scripts -File -Force -Filter '*.lua' |
+            Where-Object { -not (Test-SoscLink $_) -and (Test-SoscBrokenScript $_.FullName) } | ForEach-Object { $_.FullName })
+}
+
 # Moves a file or folder of the config into scripts-desactivados, keeping its
 # sub-folder (scripts/, script-opts/, fonts/). Returns "moved|original" (relative).
 function Move-SoscToDisabled {
@@ -2912,9 +2957,11 @@ function Install-SoscTarget {
         $oldMoved = @()
         $oldCommented = @()
         $oldCommentedMpv = @()
+        $oldBroken = @()
         if ($null -ne $old) {
             $oldValues = $old.Values; $oldDisabled = @($old.Disabled); $oldFiles = @($old.Files)
             $oldMoved = @($old.Moved); $oldCommented = @($old.Commented); $oldCommentedMpv = @($old.CommentedMpv)
+            $oldBroken = @($old.Broken)
         }
         $first = ($null -eq $old)
         if ($backup) {
@@ -2959,6 +3006,22 @@ function Install-SoscTarget {
             }
             else {
                 Write-SoscWarn (T 'conflicts_kept')
+            }
+        }
+
+        # b2. Scripts that are the error page of a failed download: set aside
+        # (never deleted), and moved back on uninstall.
+        $broken = New-Object System.Collections.Generic.List[string]
+        foreach ($b in $oldBroken) { $broken.Add($b) }
+        $bad = @(Find-SoscBrokenScripts $config)
+        if ($bad.Count -gt 0) {
+            Write-SoscWarn (T 'broken_found')
+            foreach ($b in $bad) { Write-SoscWarn ('  - ' + (Get-SoscRelativePath -Path $b -Root $config)) }
+            if (Confirm-Sosc -Question (T 'broken_confirm' @($script:DisabledDir)) -Default $true) {
+                foreach ($b in $bad) { $broken.Add((Move-SoscToDisabled -Path $b -ConfigDir $config -Stamp $Stamp)) }
+            }
+            else {
+                Write-SoscWarn (T 'broken_kept')
             }
         }
 
@@ -3014,7 +3077,12 @@ function Install-SoscTarget {
         # graphics card when it is new).
         $a4k = Invoke-SoscAnime4KStep -Candidate $Candidate -ConfigDir $config -Artifacts $Artifacts -Stamp $Stamp `
             -OldValues $oldValues -OldFiles $oldFiles -OldMoved $oldMoved -OldCommented $oldCommented -OldCommentedMpv $oldCommentedMpv
-        Initialize-SoscUpscaleConf -ConfigDir $config -Announce (@('sosc', 'manual') -contains $a4k.State)
+        # Anime4K installed by sosc starts in "Automatico" the first time; on
+        # updates the mode the user chose is kept.
+        $upscaleMode = 'off'
+        if ($a4k.State -eq 'sosc') { $upscaleMode = 'auto' }
+        Initialize-SoscUpscaleConf -ConfigDir $config -Announce (@('sosc', 'manual') -contains $a4k.State) -Mode $upscaleMode `
+            -Overwrite ([bool]$a4k.Fresh)
         $a4kBindings = @()
         if ($a4k.State -eq 'sosc') { $a4kBindings = $script:Anime4KBindings }
 
@@ -3055,7 +3123,7 @@ function Install-SoscTarget {
         $values['last_backup'] = $backup
         $allFiles = @($installed.ToArray()) + @($a4k.Files)
         Write-SoscRecord -ConfigDir $config -Values $values -Files $allFiles -Disabled $disabled.ToArray() -Moved @($a4k.Moved) `
-            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv)
+            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray()
     }
     catch {
         $message = $_.Exception.Message
@@ -3113,9 +3181,11 @@ function Uninstall-SoscTarget {
         $movedA4k = @()
         $commentedA4k = @()
         $commentedMpvA4k = @()
+        $brokenPairs = @()
         if ($null -ne $record) {
             $values = $record.Values; $disabled = @($record.Disabled); $recordFiles = @($record.Files)
             $movedA4k = @($record.Moved); $commentedA4k = @($record.Commented); $commentedMpvA4k = @($record.CommentedMpv)
+            $brokenPairs = @($record.Broken)
         }
         if ($backup) {
             $protect = @()
@@ -3190,6 +3260,12 @@ function Uninstall-SoscTarget {
             $names = [string]::Join(', ', @($pending | ForEach-Object { ($_ -split '\|')[1] }))
             if (Confirm-Sosc -Question (T 'ask_restore' @($names)) -Default $removeUosc) {
                 Restore-SoscPairs -ConfigDir $config -Pairs $pending
+            }
+        }
+        if ($brokenPairs.Count -gt 0) {
+            $names = [string]::Join(', ', @($brokenPairs | ForEach-Object { ($_ -split '\|')[1] }))
+            if (Confirm-Sosc -Question (T 'ask_restore_broken' @($names)) -Default $true) {
+                Restore-SoscPairs -ConfigDir $config -Pairs $brokenPairs
             }
         }
 

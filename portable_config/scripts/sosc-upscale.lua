@@ -10,6 +10,7 @@
 --
 -- mpv turns this file name into the script name `sosc_upscale`, so:
 --   input.conf:  Ctrl+1 script-message-to sosc_upscale set-mode a
+--                Ctrl+7 script-message-to sosc_upscale set-mode auto
 --                Ctrl+0 script-message-to sosc_upscale set-mode off
 --                (script-binding sosc_upscale/open-menu opens the menu)
 --   options:     script-opts=sosc_upscale-mode=<id>,sosc_upscale-quality=<id>
@@ -24,6 +25,21 @@
 --     per file (`-append` takes a single item and never splits it), so the
 --     shaders are there from the first frame on any platform.
 -- "Apagado" writes no glsl-shaders line at all: whatever mpv.conf says applies.
+--
+-- "Automático" (mode `auto`) picks a mode from the height of the video:
+--   0 < h <= 576 -> C,  576 < h <= 810 -> B,  810 < h <= 1100 -> A+A,
+--   h > 1100, no video, a still image or cover art, or a height not known
+--   yet -> no Anime4K shaders,
+-- at the saved quality. The height is only known once a file is open, so the
+-- .conf cannot hold the shaders: for `auto` it writes no glsl-shaders line at
+-- all (like "Apagado") and only saves `mode=auto`, never the mode it picked.
+-- The script sets the list at run time instead: on every file-loaded and
+-- whenever `height` or `video-params/h` changes, it works out the mode again
+-- and sets that list with set_property_native (nothing is set when the list is
+-- already the right one). "No shaders" puts back mpv.conf's own list, as
+-- "Apagado" does. This is the robust way round: a stale or hand-edited
+-- sosc-upscale.conf can never leave the wrong chain on for a file, and an
+-- unknown height (audio, images still loading) simply waits for the next change.
 --
 -- The shader lists are the ones of Anime4K's official mpv templates
 -- (md/Template/GLSL_*_High-end and _Low-end, input.conf, Ctrl+1..6), in the
@@ -42,14 +58,24 @@ local MENU_TYPE = 'sosc-upscale'
 local AVAILABLE_PROP = 'user-data/sosc_upscale/available'
 
 -- Short descriptions after Anime4K's GLSL_Instructions_Advanced.md ("Modes").
+-- `short` is how "Automático" names the mode it picked.
 local MODES = {
 	{id = 'off', name = 'Apagado', hint = 'sin Anime4K'},
-	{id = 'a', name = 'Modo A', hint = '1080p borroso o comprimido'},
-	{id = 'b', name = 'Modo B', hint = '720p, bordes dentados'},
-	{id = 'c', name = 'Modo C', hint = 'SD (480p) limpio, imágenes'},
-	{id = 'aa', name = 'Modo A+A', hint = 'como A, más nítido, más lento'},
-	{id = 'bb', name = 'Modo B+B', hint = 'como B, más nítido, más lento'},
-	{id = 'ca', name = 'Modo C+A', hint = 'como C, más nítido, más lento'},
+	{id = 'auto', name = 'Automático', hint = 'C, B o A+A según la resolución'},
+	{id = 'a', name = 'Modo A', short = 'A', hint = '1080p borroso o comprimido'},
+	{id = 'b', name = 'Modo B', short = 'B', hint = '720p, bordes dentados'},
+	{id = 'c', name = 'Modo C', short = 'C', hint = 'SD (480p) limpio, imágenes'},
+	{id = 'aa', name = 'Modo A+A', short = 'A+A', hint = 'como A, más nítido, más lento'},
+	{id = 'bb', name = 'Modo B+B', short = 'B+B', hint = 'como B, más nítido, más lento'},
+	{id = 'ca', name = 'Modo C+A', short = 'C+A', hint = 'como C, más nítido, más lento'},
+}
+
+-- What "Automático" picks: the first rule whose `max` the height does not
+-- exceed. Taller videos get no shaders.
+local AUTO_RULES = {
+	{max = 576, mode = 'c'},
+	{max = 810, mode = 'b'},
+	{max = 1100, mode = 'aa'},
 }
 
 local QUALITIES = {
@@ -121,11 +147,36 @@ local function required_shaders()
 	return list
 end
 
--- The `~~/shaders/...` paths of a mode at a quality: an empty list for "Apagado",
--- nil when the table is broken (unknown ids or a bad file name).
+-- The mode "Automático" picks for a video of that height, nil for none.
+local function auto_mode_for(height)
+	if type(height) ~= 'number' or height <= 0 then return nil end
+	for _, rule in ipairs(AUTO_RULES) do
+		if height <= rule.max then return mode_by_id[rule.mode] end
+	end
+	return nil
+end
+
+-- Height of the current video, nil when there is none or it is not known yet.
+-- A still image or cover art (an audio file's album art) is not a video:
+-- "Automático" leaves it without shaders.
+local function video_height()
+	if mp.get_property_native('current-tracks/video/image') == true
+		or mp.get_property_native('current-tracks/video/albumart') == true then
+		return nil
+	end
+	for _, prop in ipairs({'height', 'video-params/h'}) do
+		local h = mp.get_property_native(prop)
+		if type(h) == 'number' and h > 0 then return h end
+	end
+	return nil
+end
+
+-- The `~~/shaders/...` paths of a mode at a quality: an empty list for "Apagado"
+-- and "Automático" (neither has a fixed list), nil when the table is broken
+-- (unknown ids or a bad file name).
 local function chain_paths(mode, quality)
 	if not mode or not quality then return nil end
-	if mode.id == 'off' then return {} end
+	if mode.id == 'off' or mode.id == 'auto' then return {} end
 	local names = CHAINS[quality.id] and CHAINS[quality.id][mode.id]
 	if not names or #names == 0 then return nil end
 	local paths = {}
@@ -200,12 +251,15 @@ end
 
 local opts = {mode = DEFAULTS.mode, quality = DEFAULTS.quality}
 options.read_options(opts, script_name)
+-- `target`: the mode whose shaders are on (the one "Automático" picked, or the
+-- fixed mode), nil when none are.
 local active = {mode = pick(mode_by_id, opts.mode, 'mode'), quality = pick(quality_by_id, opts.quality, 'quality')}
 local installed = false
 
--- What "Apagado" puts back: the list mpv had at start-up when the saved mode
--- was "Apagado" (so the .conf set nothing and this is mpv.conf's list), an
--- empty list otherwise (mpv.conf's list was cleared by the .conf).
+-- What "Apagado" (and "Automático" without a mode) puts back: the list mpv
+-- had at start-up when the saved mode was "Apagado" or "Automático" (so the
+-- .conf set nothing and this is mpv.conf's list), an empty list otherwise
+-- (mpv.conf's list was cleared by the .conf).
 local baseline = {}
 local function capture_baseline()
 	baseline = {}
@@ -230,11 +284,26 @@ local function set_shaders(list)
 	mp.set_property_native('glsl-shaders', list)
 end
 
+-- The mode whose shaders a choice turns on now: itself for a fixed mode, the
+-- one picked from the height for "Automático", nil for none.
+local function target_of(mode)
+	if mode.id == 'off' then return nil end
+	if mode.id == 'auto' then return auto_mode_for(video_height()) end
+	return mode
+end
+
 local function apply(mode, quality)
 	local paths = chain_paths(mode, quality)
 	if not paths then return false end
-	if mode.id == 'off' then set_shaders(baseline) else set_shaders(paths) end
-	active.mode, active.quality = mode, quality
+	local target = target_of(mode)
+	if target then
+		local target_paths = chain_paths(target, quality)
+		if not target_paths then return false end
+		set_shaders(target_paths)
+	else
+		set_shaders(baseline)
+	end
+	active.mode, active.quality, active.target = mode, quality, target
 	return true
 end
 
@@ -250,8 +319,18 @@ local function save()
 	return ok
 end
 
+-- "Automático" says what it picked and for which height: "Anime4K:
+-- Automático (B, 720p)".
+local function auto_detail()
+	local height = video_height()
+	if not height then return 'sin vídeo' end
+	local target = auto_mode_for(height)
+	return (target and target.short or 'sin shaders') .. ', ' .. math.floor(height) .. 'p'
+end
+
 local function osd_text(mode, quality)
 	if mode.id == 'off' then return 'Anime4K: apagado' end
+	if mode.id == 'auto' then return 'Anime4K: ' .. mode.name .. ' (' .. auto_detail() .. ')' end
 	return 'Anime4K: ' .. mode.name .. ' (' .. quality.osd .. ')'
 end
 
@@ -274,9 +353,11 @@ local function menu_data()
 		items[#items + 1] = {title = title, selectable = false, muted = true, italic = true}
 		for _, entry in ipairs(list) do
 			local usable = installed or (message == 'set-mode' and entry.id == 'off')
+			local hint = entry.hint
+			if entry.id == 'auto' and entry == current and installed then hint = 'ahora: ' .. auto_detail() end
 			items[#items + 1] = {
 				title = entry.name,
-				hint = entry.hint,
+				hint = hint,
 				active = entry == current,
 				selectable = usable,
 				muted = not usable or nil,
@@ -336,23 +417,45 @@ local function set_quality(id)
 	end
 	if apply(active.mode, quality) then
 		save()
-		if active.mode.id ~= 'off' then mp.osd_message(osd_text(active.mode, quality), 2) end
+		if active.mode.id == 'auto' then
+			mp.osd_message('Anime4K: ' .. active.mode.name .. ' (' .. quality.osd .. ')', 2)
+		elseif active.mode.id ~= 'off' then
+			mp.osd_message(osd_text(active.mode, quality), 2)
+		end
 		send_menu('update-menu')
 	end
+end
+
+-- "Automático": a new file, or a new height, may need another mode. Nothing
+-- is saved: the .conf keeps `mode=auto`.
+local function on_video_change()
+	if active.mode.id ~= 'auto' or not installed then return end
+	apply(active.mode, active.quality)
 end
 
 mp.register_script_message('set-mode', set_mode)
 mp.register_script_message('set-quality', set_quality)
 mp.add_key_binding(nil, 'open-menu', open_menu)
+mp.register_event('file-loaded', on_video_change)
+mp.observe_property('height', 'native', on_video_change)
+mp.observe_property('video-params/h', 'native', on_video_change)
+mp.observe_property('current-tracks/video/image', 'native', on_video_change)
 
 -- Start-up: the included .conf already set the shaders for the first frame.
 -- Setting them again from the table only happens when they differ (the table
 -- was edited), and never for "Apagado", so mpv.conf's own list stays untouched.
+-- "Automático" starts like "Apagado" and picks a mode once a video is open.
 -- Without the shader files, a saved mode is dropped for this session (mpv would
 -- fail to load every shader) but stays saved for when they are back.
-if active.mode.id == 'off' then capture_baseline() end
+if active.mode.id == 'off' or active.mode.id == 'auto' then capture_baseline() end
 refresh_installed()
-if active.mode.id ~= 'off' then
+if active.mode.id == 'auto' then
+	if installed then
+		apply(active.mode, active.quality)
+	else
+		msg.warn('Anime4K shaders not found in ' .. SHADER_DIR .. ': upscaling is off')
+	end
+elseif active.mode.id ~= 'off' then
 	if installed then
 		apply(active.mode, active.quality)
 	else
@@ -363,7 +466,8 @@ end
 
 if SOSC_UPSCALE_TEST then
 	return {
-		MODES = MODES, QUALITIES = QUALITIES, CHAINS = CHAINS, DEFAULTS = DEFAULTS,
+		MODES = MODES, QUALITIES = QUALITIES, CHAINS = CHAINS, DEFAULTS = DEFAULTS, AUTO_RULES = AUTO_RULES,
+		auto_mode_for = auto_mode_for, video_height = video_height, on_video_change = on_video_change,
 		mode_by_id = mode_by_id, quality_by_id = quality_by_id,
 		required_shaders = required_shaders, chain_paths = chain_paths,
 		shaders_installed = shaders_installed, persist_content = persist_content,
