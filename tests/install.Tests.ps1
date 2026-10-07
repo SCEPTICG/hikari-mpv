@@ -2359,6 +2359,41 @@ Test-Case 'Anime4K starts in Automatico when sosc installs it; the mode is kept 
     finally { $script:SoscGpuProbe = $saved }
 }
 
+Test-Case 'broken scripts (the error page of a failed download) are set aside and come back on uninstall' {
+    $d = New-TestDir 'broken-scripts'
+    $f = P @($d, 'probe')
+    $cases = @(
+        @("404: Not Found", $true), @("404: Not Found`n", $true), @("Not Found", $true), @("404 Not Found`r`n", $true),
+        @("<!DOCTYPE html>`n<html>", $true), @("<html><body>", $true), @("<!doctype html>", $true),
+        @("-- a script`n404: Not Found", $false), @("local x = 1", $false), @("", $false), @("Not Found here", $false))
+    foreach ($c in $cases) {
+        Set-TestFile $f $c[0]
+        Assert-Equal (Test-SoscBrokenScript $f) $c[1] ('first line: ' + $c[0])
+    }
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'aniskip.lua')) "404: Not Found"
+    Set-TestFile (P @($cfg, 'scripts', 'page.lua')) "<!DOCTYPE html>`n<html></html>`n"
+    Set-TestFile (P @($cfg, 'scripts', 'good.lua')) "-- fine`n"
+    Set-TestFile (P @($cfg, 'scripts', 'notes.txt')) "404: Not Found"
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261007-110000' 'no')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'aniskip.lua')))) 'aniskip set aside'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'aniskip.lua'))) '404: Not Found' 'moved, not deleted'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'page.lua'))) 'html page set aside'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'good.lua'))) 'good script kept'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'notes.txt'))) 'not a .lua: kept'
+    Assert-Equal @((Read-SoscRecord $cfg).Broken).Count 2 'recorded'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*error page of a failed download*' }).Count -eq 1) 'reported'
+    # Update: nothing new, record kept.
+    [void](Invoke-TestInstall $cand $art '20261007-110100' 'no')
+    Assert-Equal @((Read-SoscRecord $cfg).Broken).Count 2 'kept on update'
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261007-110200')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'aniskip.lua'))) '404: Not Found' 'aniskip back'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'page.lua'))) 'page back'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados')))) 'empty scripts-desactivados removed'
+}
+
 Test-Case 'Anime4K: an Anime4K line in mpv.conf is turned off on a fresh install too (-Yes)' {
     $d = New-TestDir 'a4k-confline'
     $art = New-FakeArtifacts (P @($d, 'dl'))

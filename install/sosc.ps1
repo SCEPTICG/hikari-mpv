@@ -400,6 +400,10 @@ $script:SoscStringsEn = @{
     ask_comment_osc       = 'Turn that line off by putting "# sosc: " in front of it, so mpv shows its own controls?'
     osc_commented         = 'mpv.conf: "{0}" turned off with "# sosc: ".'
     osc_left              = 'Left as it is: remove that line or install an on-screen controller to get controls back.'
+    broken_found          = 'These files in scripts are not scripts but the error page of a failed download (mpv logs an error for each one):'
+    broken_confirm        = 'Move them to {0}? Nothing is deleted, and they come back when you uninstall.'
+    broken_kept           = 'Left in place: mpv keeps logging an error for each one at start-up.'
+    ask_restore_broken    = 'Move back the broken scripts sosc set aside ({0})?'
 }
 
 $script:SoscStringsEs = @{
@@ -543,6 +547,10 @@ $script:SoscStringsEs = @{
     ask_comment_osc       = '\u00bfDesactivar esa l\u00ednea poni\u00e9ndole delante "# sosc: ", para que mpv muestre sus propios controles?'
     osc_commented         = 'mpv.conf: "{0}" desactivada con "# sosc: ".'
     osc_left              = 'Se deja como est\u00e1: quita esa l\u00ednea o instala otra interfaz para recuperar los controles.'
+    broken_found          = 'Estos ficheros de scripts no son scripts sino la p\u00e1gina de error de una descarga fallida (mpv da un error por cada uno):'
+    broken_confirm        = '\u00bfMoverlos a {0}? No se borra nada y vuelven a su sitio al desinstalar.'
+    broken_kept           = 'Se quedan donde est\u00e1n: mpv sigue dando un error por cada uno al arrancar.'
+    ask_restore_broken    = '\u00bfDevolver a su sitio los scripts rotos que sosc apart\u00f3 ({0})?'
 }
 
 function Get-SoscLanguage {
@@ -1942,6 +1950,7 @@ function Read-SoscRecord {
     $values = @{}
     $files = New-Object System.Collections.Generic.List[string]
     $disabled = New-Object System.Collections.Generic.List[string]
+    $broken = New-Object System.Collections.Generic.List[string]
     $moved = New-Object System.Collections.Generic.List[string]
     $commented = New-Object System.Collections.Generic.List[string]
     $commentedMpv = New-Object System.Collections.Generic.List[string]
@@ -1954,9 +1963,11 @@ function Read-SoscRecord {
             if (Test-SoscRecordPath $value) { $files.Add($value) }
             elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
         }
-        elseif ($key -eq 'disabled') {
+        elseif ($key -eq 'disabled' -or $key -eq 'broken') {
             $pair = $value -split '\|'
-            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) { $disabled.Add($value) }
+            if ($pair.Count -eq 2 -and (Test-SoscRecordPath $pair[0]) -and (Test-SoscRecordPath $pair[1])) {
+                if ($key -eq 'disabled') { $disabled.Add($value) } else { $broken.Add($value) }
+            }
             elseif (-not $NoWarn) { Write-SoscWarn (T 'record_bad' @($line)) }
         }
         elseif ($key -eq 'a4k_moved') {
@@ -1977,17 +1988,18 @@ function Read-SoscRecord {
         else { $values[$key] = $value }
     }
     return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray(); Moved = $moved.ToArray()
-        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray() }
+        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray() }
 }
 
 function Write-SoscRecord {
     param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled,
-        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @())
+        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @())
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('# Written by the sosc installer (install/sosc.ps1). Used to update and uninstall; do not edit.' + $eol)
     foreach ($key in $Values.Keys) { [void]$sb.Append($key + '=' + $Values[$key] + $eol) }
     foreach ($d in $Disabled) { [void]$sb.Append('disabled=' + $d + $eol) }
+    foreach ($b in $Broken) { [void]$sb.Append('broken=' + $b + $eol) }
     foreach ($m in $Moved) { [void]$sb.Append('a4k_moved=' + $m + $eol) }
     foreach ($c in $Commented) { [void]$sb.Append('a4k_commented=' + $c + $eol) }
     foreach ($c in $CommentedMpv) { [void]$sb.Append('a4k_commented_mpv=' + $c + $eol) }
@@ -2824,6 +2836,31 @@ function Find-SoscConflicts {
     return $found.ToArray()
 }
 
+# A file in scripts/ named *.lua whose first line shows it is the page a failed
+# download saved instead of the script: "404: Not Found" (GitHub raw), "Not
+# Found", or an HTML page. mpv logs an error for each one at start-up.
+function Test-SoscBrokenScript {
+    param([string]$Path)
+    $first = $null
+    try {
+        $reader = New-Object System.IO.StreamReader($Path, $true)
+        try { $first = $reader.ReadLine() } finally { $reader.Dispose() }
+    }
+    catch { return $false }
+    if ($null -eq $first) { return $false }
+    $first = $first.Trim([char[]]@([char]0xFEFF, ' ', "`t", "`r"))
+    return ($first -match '(?i)^(404:?\s*)?Not Found\s*$' -or $first -match '(?i)^<!DOCTYPE|^<html')
+}
+
+# Those files in scripts/ (only at its top level, where mpv loads them).
+function Find-SoscBrokenScripts {
+    param([string]$ConfigDir)
+    $scripts = Join-SoscPath $ConfigDir 'scripts'
+    if (-not (Test-Path -LiteralPath $scripts -PathType Container)) { return @() }
+    return @(Get-ChildItem -LiteralPath $scripts -File -Force -Filter '*.lua' |
+            Where-Object { -not (Test-SoscLink $_) -and (Test-SoscBrokenScript $_.FullName) } | ForEach-Object { $_.FullName })
+}
+
 # Moves a file or folder of the config into scripts-desactivados, keeping its
 # sub-folder (scripts/, script-opts/, fonts/). Returns "moved|original" (relative).
 function Move-SoscToDisabled {
@@ -2920,9 +2957,11 @@ function Install-SoscTarget {
         $oldMoved = @()
         $oldCommented = @()
         $oldCommentedMpv = @()
+        $oldBroken = @()
         if ($null -ne $old) {
             $oldValues = $old.Values; $oldDisabled = @($old.Disabled); $oldFiles = @($old.Files)
             $oldMoved = @($old.Moved); $oldCommented = @($old.Commented); $oldCommentedMpv = @($old.CommentedMpv)
+            $oldBroken = @($old.Broken)
         }
         $first = ($null -eq $old)
         if ($backup) {
@@ -2967,6 +3006,22 @@ function Install-SoscTarget {
             }
             else {
                 Write-SoscWarn (T 'conflicts_kept')
+            }
+        }
+
+        # b2. Scripts that are the error page of a failed download: set aside
+        # (never deleted), and moved back on uninstall.
+        $broken = New-Object System.Collections.Generic.List[string]
+        foreach ($b in $oldBroken) { $broken.Add($b) }
+        $bad = @(Find-SoscBrokenScripts $config)
+        if ($bad.Count -gt 0) {
+            Write-SoscWarn (T 'broken_found')
+            foreach ($b in $bad) { Write-SoscWarn ('  - ' + (Get-SoscRelativePath -Path $b -Root $config)) }
+            if (Confirm-Sosc -Question (T 'broken_confirm' @($script:DisabledDir)) -Default $true) {
+                foreach ($b in $bad) { $broken.Add((Move-SoscToDisabled -Path $b -ConfigDir $config -Stamp $Stamp)) }
+            }
+            else {
+                Write-SoscWarn (T 'broken_kept')
             }
         }
 
@@ -3068,7 +3123,7 @@ function Install-SoscTarget {
         $values['last_backup'] = $backup
         $allFiles = @($installed.ToArray()) + @($a4k.Files)
         Write-SoscRecord -ConfigDir $config -Values $values -Files $allFiles -Disabled $disabled.ToArray() -Moved @($a4k.Moved) `
-            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv)
+            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray()
     }
     catch {
         $message = $_.Exception.Message
@@ -3126,9 +3181,11 @@ function Uninstall-SoscTarget {
         $movedA4k = @()
         $commentedA4k = @()
         $commentedMpvA4k = @()
+        $brokenPairs = @()
         if ($null -ne $record) {
             $values = $record.Values; $disabled = @($record.Disabled); $recordFiles = @($record.Files)
             $movedA4k = @($record.Moved); $commentedA4k = @($record.Commented); $commentedMpvA4k = @($record.CommentedMpv)
+            $brokenPairs = @($record.Broken)
         }
         if ($backup) {
             $protect = @()
@@ -3203,6 +3260,12 @@ function Uninstall-SoscTarget {
             $names = [string]::Join(', ', @($pending | ForEach-Object { ($_ -split '\|')[1] }))
             if (Confirm-Sosc -Question (T 'ask_restore' @($names)) -Default $removeUosc) {
                 Restore-SoscPairs -ConfigDir $config -Pairs $pending
+            }
+        }
+        if ($brokenPairs.Count -gt 0) {
+            $names = [string]::Join(', ', @($brokenPairs | ForEach-Object { ($_ -split '\|')[1] }))
+            if (Confirm-Sosc -Question (T 'ask_restore_broken' @($names)) -Default $true) {
+                Restore-SoscPairs -ConfigDir $config -Pairs $brokenPairs
             }
         }
 
