@@ -28,7 +28,8 @@
 --
 -- "Automático" (mode `auto`) picks a mode from the height of the video:
 --   0 < h <= 576 -> C,  576 < h <= 810 -> B,  810 < h <= 1100 -> A+A,
---   h > 1100, no video or a height not known yet -> no Anime4K shaders,
+--   h > 1100, no video, a still image or cover art, or a height not known
+--   yet -> no Anime4K shaders,
 -- at the saved quality. The height is only known once a file is open, so the
 -- .conf cannot hold the shaders: for `auto` it writes no glsl-shaders line at
 -- all (like "Apagado") and only saves `mode=auto`, never the mode it picked.
@@ -156,7 +157,13 @@ local function auto_mode_for(height)
 end
 
 -- Height of the current video, nil when there is none or it is not known yet.
+-- A still image or cover art (an audio file's album art) is not a video:
+-- "Automático" leaves it without shaders.
 local function video_height()
+	if mp.get_property_native('current-tracks/video/image') == true
+		or mp.get_property_native('current-tracks/video/albumart') == true then
+		return nil
+	end
 	for _, prop in ipairs({'height', 'video-params/h'}) do
 		local h = mp.get_property_native(prop)
 		if type(h) == 'number' and h > 0 then return h end
@@ -432,6 +439,7 @@ mp.add_key_binding(nil, 'open-menu', open_menu)
 mp.register_event('file-loaded', on_video_change)
 mp.observe_property('height', 'native', on_video_change)
 mp.observe_property('video-params/h', 'native', on_video_change)
+mp.observe_property('current-tracks/video/image', 'native', on_video_change)
 
 -- Start-up: the included .conf already set the shaders for the first frame.
 -- Setting them again from the table only happens when they differ (the table

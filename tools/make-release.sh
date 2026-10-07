@@ -130,9 +130,10 @@ git show "HEAD:install/sosc.sh" | awk \
 
 changed="$(git show "HEAD:install/sosc.sh" | diff - dist/sosc.sh.tmp | grep -c '^>' || true)"
 [[ "$changed" == 3 ]] || { cleanup_sh; die "expected 3 changed lines in sosc.sh, got $changed"; }
-# The last line must still be the call to main: a download cut short runs nothing.
+# The last line must still be the call to main, in braces: a download cut short
+# (even inside that line) runs nothing.
 # shellcheck disable=SC2016 # the line itself, not an expansion.
-[[ "$(tail -n 1 dist/sosc.sh.tmp)" == 'main "$@"' ]] || { cleanup_sh; die "dist/sosc.sh does not end with the call to main"; }
+[[ "$(tail -n 1 dist/sosc.sh.tmp)" == '{ main "$@"; }' ]] || { cleanup_sh; die "dist/sosc.sh does not end with the call to main"; }
 bash -n dist/sosc.sh.tmp || { cleanup_sh; die "dist/sosc.sh does not parse"; }
 
 mv dist/sosc.ps1.tmp dist/sosc.ps1

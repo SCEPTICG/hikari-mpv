@@ -163,7 +163,7 @@ for pair in UoscVersion:UOSC_VERSION UoscUrl:UOSC_URL UoscSha256:UOSC_SHA256 Thu
 done
 check 'uosc, thumbfast and Anime4K: same versions, URLs and SHA256 as sosc.ps1' $same_pins
 check 'release markers are empty in the repository' test "$(sh_value SOSC_VERSION)|$(sh_value SOSC_RELEASE_URL)|$(sh_value SOSC_RELEASE_SHA256)" = 'dev||'
-check 'the last line calls main' test "$(tail -n 1 "$repo/install/sosc.sh")" = 'main "$@"'
+check 'the last line calls main, in braces' test "$(tail -n 1 "$repo/install/sosc.sh")" = '{ main "$@"; }'
 # Without its last line the script only defines functions: no output, no
 # variable set, nothing touched (what a download cut short would run).
 mkdir -p "$tmp/cut-home"
@@ -250,6 +250,9 @@ check 'clean install: no backup of a folder that did not exist' test -z "$(ls -d
 check 'clean install: downloads verified, once each' test "$(sort "$fake/downloads.log" | uniq -d | wc -l | tr -d ' ')/$(wc -l <"$fake/downloads.log" | tr -d ' ')" = 0/3
 check 'clean install: temporary folder removed' test -z "$(ls -A "$tmp/tmpdir")"
 check 'clean install: no temporary files left in the folder' test -z "$(find "$cfg" -name '*.sosc-tmp.*')"
+perm() { ls -l "$1" | cut -c1-10; }
+check 'clean install: a new mpv.conf gets the permissions of the umask (not the 600 of mktemp)' \
+    test "$(perm "$cfg/mpv.conf")" = "$(f="$tmp/perm-probe"; : >"$f"; perm "$f")"
 
 # --- update: choices respected ------------------------------------------------
 
@@ -282,6 +285,7 @@ cfg="$h/.config/mpv"
 mkdir -p "$cfg/script-opts"
 printf 'volume=50\r\nalang=ja\r\n# no final line break\r\nsub-auto=fuzzy' >"$cfg/mpv.conf"
 printf 'Alt+p cycle pause\nq quit\n' >"$cfg/input.conf"
+chmod 640 "$cfg/input.conf"
 printf 'timeline_style=line\n' >"$cfg/script-opts/uosc.conf"
 cp "$cfg/mpv.conf" "$tmp/b-mpv"; cp "$cfg/input.conf" "$tmp/b-input"; cp "$cfg/script-opts/uosc.conf" "$tmp/b-uosc"
 run "$h" --yes
@@ -296,6 +300,7 @@ check 'byte test: uninstall exit 0' test "$rc" = 0
 check 'byte test: mpv.conf byte for byte (CRLF, no final line break)' same "$tmp/b-mpv" "$cfg/mpv.conf"
 check 'byte test: input.conf byte for byte' same "$tmp/b-input" "$cfg/input.conf"
 check 'byte test: uosc.conf byte for byte' same "$tmp/b-uosc" "$cfg/script-opts/uosc.conf"
+check 'byte test: input.conf keeps its permissions (640)' test "$(perm "$cfg/input.conf")" = '-rw-r-----'
 check 'byte test: sosc, uosc, thumbfast and Anime4K gone' test ! -e "$cfg/scripts" -a ! -e "$cfg/shaders" -a ! -e "$cfg/fonts" -a ! -e "$cfg/script-opts/thumbfast.conf"
 check 'byte test: record and sosc-originales gone' test ! -e "$cfg/sosc-installed.txt" -a ! -e "$cfg/sosc-originales"
 check 'byte test: saved choices kept by default' test -f "$cfg/sosc-palette.conf" -a -f "$cfg/sosc-upscale.conf"
@@ -663,9 +668,12 @@ printf -- '-- modernx\n' >"$cfg/scripts/ModernX.lua"
 printf 'x=1\n' >"$cfg/script-opts/modernx.conf"
 printf 'font' >"$cfg/fonts/modernx.ttf"
 printf -- '-- fine\n' >"$cfg/scripts/autoload.lua"
+printf '\377\376\200 NOT UTF-8\n' >"$cfg/scripts/latin.lua"
 run "$h" --yes --anime4k no
 check 'conflict: ModernX (any case), its conf and font set aside' test ! -e "$cfg/scripts/ModernX.lua" -a -f "$cfg/scripts-desactivados/ModernX.lua" -a -f "$cfg/scripts-desactivados/script-opts/modernx.conf" -a -f "$cfg/scripts-desactivados/fonts/modernx.ttf"
 check 'conflict: other scripts left' test -f "$cfg/scripts/autoload.lua"
+check 'a script with bytes that are not UTF-8 is not "broken", and tr does not complain' \
+    test -f "$cfg/scripts/latin.lua" -a -z "$(grep -i 'byte sequence' "$out")"
 run "$h" --uninstall --yes
 check 'conflict: given back on uninstall (uosc was sosc'"'"'s)' test -f "$cfg/scripts/ModernX.lua" -a -f "$cfg/script-opts/modernx.conf" -a -f "$cfg/fonts/modernx.ttf" -a ! -e "$cfg/scripts-desactivados"
 

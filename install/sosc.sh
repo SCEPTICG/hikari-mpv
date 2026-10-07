@@ -513,7 +513,9 @@ read_line() {
     [ -n "$REPLY_LINE" ]
 }
 
-lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# ASCII only, byte by byte: with LC_ALL=C, BSD tr does not complain ("Illegal
+# byte sequence") about bytes that are not UTF-8 (a broken script, a key name).
+lower() { printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
 
 # Sets TRIMMED to $1 without leading and trailing blanks.
 trim() {
@@ -952,11 +954,18 @@ sha256_of() {
 }
 
 # Writes stdin to $1 through a temporary file next to it and a rename, so a
-# failure never leaves half a file. The file keeps its permissions; a link is
-# written through (dotfile managers link mpv.conf), not replaced.
+# failure never leaves half a file. The temporary file is made by mktemp (a
+# new file with an unpredictable name, never an existing file or link). The
+# file keeps its permissions (a new one gets the usual ones for the umask); a
+# link is written through (dotfile managers link mpv.conf), not replaced.
 write_file() {
-    local path=$1 tmp="$1.sosc-tmp.$$"
-    if [ -f "$path" ]; then cp -p "$path" "$tmp" 2>/dev/null || :; fi
+    local path=$1 tmp
+    tmp=$(mktemp "$1.sosc-tmp.XXXXXX") || return 1
+    if [ -f "$path" ]; then
+        cp -p "$path" "$tmp" 2>/dev/null || :
+    else
+        chmod "$(printf '%o' $((0666 & ~0$(umask))))" "$tmp" 2>/dev/null || :
+    fi
     if ! cat >"$tmp"; then rm -f "$tmp"; return 1; fi
     if [ -L "$path" ]; then
         cat "$tmp" >"$path" || { rm -f "$tmp"; return 1; }
@@ -2969,4 +2978,5 @@ main() {
     return 0
 }
 
-main "$@"
+# Braces: a download cut anywhere in this line is a syntax error, never a call.
+{ main "$@"; }

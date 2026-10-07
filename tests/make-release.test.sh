@@ -122,7 +122,7 @@ check 'sosc.sh version marker' grep -qFx "    SOSC_VERSION='1.2.3'" dist/sosc.sh
 check 'sosc.sh URL marker' grep -qFx "    SOSC_RELEASE_URL='$url'" dist/sosc.sh
 check 'sosc.sh hash marker is the zip hash' grep -qFx "    SOSC_RELEASE_SHA256='$zip_sha'" dist/sosc.sh
 check 'sosc.sh: only those three lines changed' test "$(diff install/sosc.sh dist/sosc.sh | grep -c '^[<>]')" = 6
-check 'sosc.sh: the last line still calls main' test "$(tail -n 1 dist/sosc.sh)" = 'main "$@"'
+check 'sosc.sh: the last line still calls main' test "$(tail -n 1 dist/sosc.sh)" = '{ main "$@"; }'
 
 unzip -Z1 dist/sosc.zip | grep -v '/$' | sort >"$tmp/zip.txt"
 git ls-files portable_config LICENSE README.md | sort >"$tmp/want.txt"
@@ -254,6 +254,17 @@ home2="$tmp/home-cut"
 mkdir -p "$home2"
 head -c 30000 dist/sosc.sh | (cd "$tmp" && HOME="$home2" SOSC_LANG=en "$bash_bin" -s -- --yes) >/dev/null 2>&1
 check 'a download cut short does nothing' test -z "$(ls -A "$home2")"
+# Cut inside the last line, byte by byte ("{ main", "{ main ", "{ main \"$@\"; "...):
+# a syntax error every time, main never runs. Only the final line break can go.
+size=$(wc -c <dist/sosc.sh | tr -d ' ')
+cut_ran=''
+for n in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17; do
+    head -c $((size - n)) dist/sosc.sh | (cd "$tmp" && HOME="$home2" SOSC_LANG=en "$bash_bin" -s -- --help) >"$tmp/cut.txt" 2>&1
+    if grep -q 'Usage' "$tmp/cut.txt" || [ -n "$(ls -A "$home2")" ]; then cut_ran="$cut_ran $n"; fi
+done
+check 'a download cut inside the last line never calls main' test -z "$cut_ran"
+head -c $((size - 1)) dist/sosc.sh | (cd "$tmp" && HOME="$home2" SOSC_LANG=en "$bash_bin" -s -- --help) >"$tmp/cut.txt" 2>&1
+check 'without only its final line break it still runs (the check above can see main)' grep -q 'Usage' "$tmp/cut.txt"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ $failed -eq 0 ]]

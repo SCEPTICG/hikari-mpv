@@ -400,6 +400,35 @@ test('auto: each new file or height picks again; tall or no video puts mpv.conf 
 	os.remove(path)
 end)
 
+test('auto: a still image or cover art gets no shaders', function()
+	local path = tmp_path()
+	load(nil, SHADERS, {'~~/shaders/mine.glsl'})
+	mock.expand[CONF] = path
+	mock.props['height'] = 720
+	mock.messages['set-mode']('auto')
+	eq(joined(last_set()), OFFICIAL.fast[2], 'a 720p video: B')
+	-- An image (720 px tall) opened next.
+	mock.props['current-tracks/video/image'] = true
+	mock.events['file-loaded']()
+	eq(last_set()[1], '~~/shaders/mine.glsl', 'image: mpv.conf list back')
+	eq(#last_set(), 1, 'only that one')
+	eq(mock.osd[#mock.osd], 'Anime4K: Automático (B, 720p)', 'no new OSD on file change')
+	-- An audio file with its cover art (480 px tall).
+	mock.props['current-tracks/video/image'] = nil
+	mock.props['current-tracks/video/albumart'] = true
+	mock.set('height', 480)
+	eq(last_set()[1], '~~/shaders/mine.glsl', 'cover art: still no Anime4K')
+	-- Back to a real video.
+	mock.props['current-tracks/video/albumart'] = false
+	mock.set('height', 480)
+	eq(joined(last_set()), OFFICIAL.fast[3], 'a 480p video: C')
+	local s = load()
+	mock.props['current-tracks/video/image'] = true
+	mock.props['height'] = 1080
+	eq(s.video_height(), nil, 'video_height is nil for an image')
+	os.remove(path)
+end)
+
 test('auto: quality hq vs fast', function()
 	local path = tmp_path()
 	load(opt('auto', 'fast'), SHADERS, {})
