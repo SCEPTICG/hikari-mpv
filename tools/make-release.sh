@@ -8,16 +8,20 @@
 #   dist/sosc.ps1     install/sosc.ps1 of the current commit with its three release
 #                     markers filled in: the version, the URL of this release's
 #                     sosc.zip and that zip's SHA256
-#   dist/SHA256SUMS   SHA256 of both files
+#   dist/sosc.sh      install/sosc.sh (macOS and Linux) of the current commit,
+#                     with the same three markers filled in
+#   dist/SHA256SUMS   SHA256 of the three files
 #
 # The tag vX.Y.Z must already exist and point to the current commit. Then push
 # the tag, create the GitHub release of SCEPTICG/sosc from it, attach
-# dist/sosc.ps1, dist/sosc.zip and dist/SHA256SUMS with those names and publish
-# it as Latest (see README, "Making a release"). dist/sosc.ps1 only installs the
-# sosc.zip published under that same tag, and only if its SHA256 matches.
+# dist/sosc.ps1, dist/sosc.sh, dist/sosc.zip and dist/SHA256SUMS with those names
+# and publish it as Latest (see README, "Making a release"). dist/sosc.ps1 and
+# dist/sosc.sh only install the sosc.zip published under that same tag, and only
+# if its SHA256 matches.
 #
-# Needs: git, a SHA256 tool (sha256sum or shasum), awk and PowerShell 7 (pwsh in
-# PATH, $PWSH, or ~/.local/opt/powershell/pwsh) to check that the result parses.
+# Needs: git, a SHA256 tool (sha256sum or shasum), awk, bash, and PowerShell 7
+# (pwsh in PATH, $PWSH, or ~/.local/opt/powershell/pwsh) to check that the
+# results parse.
 set -euo pipefail
 
 die() { printf 'make-release: %s\n' "$*" >&2; exit 1; }
@@ -64,12 +68,12 @@ fi
 # portable_config/ with scripts/sosc-*.lua, script-opts/*.conf and the two
 # choice files. LICENSE and README.md go along for whoever opens the zip.
 for f in portable_config/scripts/sosc-palettes.lua portable_config/sosc-palette.conf \
-    portable_config/sosc-subs.conf portable_config/script-opts LICENSE README.md install/sosc.ps1; do
+    portable_config/sosc-subs.conf portable_config/script-opts LICENSE README.md install/sosc.ps1 install/sosc.sh; do
     git cat-file -e "HEAD:$f" 2>/dev/null || die "$f is not in the commit"
 done
 
 mkdir -p dist
-rm -f dist/sosc.zip dist/sosc.ps1 dist/SHA256SUMS dist/sosc.ps1.tmp
+rm -f dist/sosc.zip dist/sosc.ps1 dist/sosc.sh dist/SHA256SUMS dist/sosc.ps1.tmp dist/sosc.sh.tmp
 
 git archive --format=zip -o dist/sosc.zip HEAD -- portable_config LICENSE README.md
 zip_sha="$(sha256 dist/sosc.zip)"
@@ -107,16 +111,43 @@ SOSC_PARSE_FILE="$root/dist/sosc.ps1.tmp" "$pwsh_bin" -NoProfile -NonInteractive
     if (@($errors).Count -gt 0) { foreach ($e in $errors) { [Console]::Error.WriteLine($e.ToString()) }; exit 1 }
     exit 0' || { rm -f dist/sosc.ps1.tmp dist/sosc.zip; die "dist/sosc.ps1 does not parse"; }
 
+# The same three markers in install/sosc.sh (indented, inside sosc_defaults).
+cleanup_sh() { rm -f dist/sosc.ps1.tmp dist/sosc.sh.tmp dist/sosc.zip; }
+git show "HEAD:install/sosc.sh" | awk \
+    -v m1="    SOSC_VERSION='dev'" -v r1="    SOSC_VERSION='$version'" \
+    -v m2="    SOSC_RELEASE_URL=''" -v r2="    SOSC_RELEASE_URL='$url'" \
+    -v m3="    SOSC_RELEASE_SHA256=''" -v r3="    SOSC_RELEASE_SHA256='$zip_sha'" '
+    $0 == m1 { print r1; c1++; next }
+    $0 == m2 { print r2; c2++; next }
+    $0 == m3 { print r3; c3++; next }
+    { print }
+    END {
+        if (c1 != 1 || c2 != 1 || c3 != 1) {
+            printf "make-release: sosc.sh release markers found %d, %d and %d times (each must be there exactly once)\n", c1, c2, c3 > "/dev/stderr"
+            exit 1
+        }
+    }' >dist/sosc.sh.tmp || { cleanup_sh; die "could not fill in the release markers of install/sosc.sh"; }
+
+changed="$(git show "HEAD:install/sosc.sh" | diff - dist/sosc.sh.tmp | grep -c '^>' || true)"
+[[ "$changed" == 3 ]] || { cleanup_sh; die "expected 3 changed lines in sosc.sh, got $changed"; }
+# The last line must still be the call to main: a download cut short runs nothing.
+# shellcheck disable=SC2016 # the line itself, not an expansion.
+[[ "$(tail -n 1 dist/sosc.sh.tmp)" == 'main "$@"' ]] || { cleanup_sh; die "dist/sosc.sh does not end with the call to main"; }
+bash -n dist/sosc.sh.tmp || { cleanup_sh; die "dist/sosc.sh does not parse"; }
+
 mv dist/sosc.ps1.tmp dist/sosc.ps1
+mv dist/sosc.sh.tmp dist/sosc.sh
 ps1_sha="$(sha256 dist/sosc.ps1)"
-printf '%s  sosc.ps1\n%s  sosc.zip\n' "$ps1_sha" "$zip_sha" >dist/SHA256SUMS
+sh_sha="$(sha256 dist/sosc.sh)"
+printf '%s  sosc.ps1\n%s  sosc.sh\n%s  sosc.zip\n' "$ps1_sha" "$sh_sha" "$zip_sha" >dist/SHA256SUMS
 
 cat <<EOF
 sosc $tag built from commit $commit:
   dist/sosc.ps1   $ps1_sha
+  dist/sosc.sh    $sh_sha
   dist/sosc.zip   $zip_sha
   dist/SHA256SUMS
-sosc.ps1 installs from $url
+sosc.ps1 and sosc.sh install from $url
 Nothing was uploaded. Next: git push origin $tag, create the GitHub release
-from that tag, attach the three files with these names, publish it as Latest.
+from that tag, attach the four files with these names, publish it as Latest.
 EOF
