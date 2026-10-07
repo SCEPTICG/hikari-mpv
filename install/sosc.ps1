@@ -150,6 +150,7 @@ $script:Anime4KBindings = @(
     @{ Key = 'Ctrl+4'; Command = 'script-message-to sosc_upscale set-mode aa' },
     @{ Key = 'Ctrl+5'; Command = 'script-message-to sosc_upscale set-mode bb' },
     @{ Key = 'Ctrl+6'; Command = 'script-message-to sosc_upscale set-mode ca' },
+    @{ Key = 'Ctrl+7'; Command = 'script-message-to sosc_upscale set-mode auto' },
     @{ Key = 'Ctrl+0'; Command = 'script-message-to sosc_upscale set-mode off' }
 )
 $script:ShadersDir = 'shaders'
@@ -364,14 +365,14 @@ $script:SoscStringsEn = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Space \u00b7 Enter \u00b7 Esc'
     answer_yes            = 'Yes'
     answer_no             = 'No'
-    anime4k_intro         = 'Anime4K sharpens and upscales anime on the graphics card. It stays off until you pick a mode in the Escalado menu or press Ctrl+1 to Ctrl+6 (Ctrl+0 turns it off).'
+    anime4k_intro         = 'Anime4K sharpens and upscales anime on the graphics card. It starts in Autom\u00e1tico mode, which picks a mode from the resolution of each video; change it in the Escalado menu or with Ctrl+1 to Ctrl+7 (Ctrl+0 turns it off).'
     anime4k_confirm       = 'Install Anime4K (anime upscaling on the graphics card)?'
     anime4k_done          = 'Anime4K {0} installed ({1} shaders in {2}).'
     anime4k_animejanai    = 'AnimeJaNai already upscales with AI (Ctrl+1 to Ctrl+9): Anime4K is not installed here.'
     anime4k_declined      = 'Anime4K not installed. Run the installer again to install it.'
     anime4k_kept          = 'Anime4K left as it is (-Anime4K no).'
     anime4k_manual        = 'There is already an Anime4K installed by hand in {0} (files: {1}).'
-    anime4k_manage        = 'Let sosc take care of it? Your files go to {0} (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+6 keys.'
+    anime4k_manage        = 'Let sosc take care of it? Your files go to {0} (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+7 keys.'
     anime4k_manual_kept   = 'Your Anime4K is left as it is, with its own keys. The sosc Escalado menu changes the same shaders and does not know what those keys turned on.'
     anime4k_keys_found    = 'input.conf binds these Anime4K keys outside the sosc block:'
     anime4k_comment       = 'Turn those lines off by putting "# sosc: " in front of them, so the sosc keys can use them? They are turned back on when you uninstall.'
@@ -507,14 +508,14 @@ $script:SoscStringsEs = @{
     multi_help_short      = '\u2191/\u2193 \u00b7 Espacio \u00b7 Intro \u00b7 Esc'
     answer_yes            = 'S\u00ed'
     answer_no             = 'No'
-    anime4k_intro         = 'Anime4K mejora y reescala el anime en la tarjeta gr\u00e1fica. Est\u00e1 apagado hasta que eliges un modo en el men\u00fa Escalado o pulsas Ctrl+1 a Ctrl+6 (Ctrl+0 lo apaga).'
+    anime4k_intro         = 'Anime4K mejora y reescala el anime en la tarjeta gr\u00e1fica. Empieza en modo Autom\u00e1tico, que elige el modo seg\u00fan la resoluci\u00f3n de cada v\u00eddeo; c\u00e1mbialo en el men\u00fa Escalado o con Ctrl+1 a Ctrl+7 (Ctrl+0 lo apaga).'
     anime4k_confirm       = '\u00bfInstalar Anime4K (reescalado de anime en la gr\u00e1fica)?'
     anime4k_done          = 'Anime4K {0} instalado ({1} shaders en {2}).'
     anime4k_animejanai    = 'AnimeJaNai ya reescala con IA (Ctrl+1 a Ctrl+9): aqu\u00ed no se instala Anime4K.'
     anime4k_declined      = 'Anime4K no se instala. Vuelve a ejecutar el instalador para instalarlo.'
     anime4k_kept          = 'Anime4K se deja como est\u00e1 (-Anime4K no).'
     anime4k_manual        = 'Ya hay un Anime4K instalado a mano en {0} (ficheros: {1}).'
-    anime4k_manage        = '\u00bfQuieres que lo gestione sosc? Tus ficheros van a {0} (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el men\u00fa Escalado y los atajos Ctrl+0 a Ctrl+6.'
+    anime4k_manage        = '\u00bfQuieres que lo gestione sosc? Tus ficheros van a {0} (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el men\u00fa Escalado y los atajos Ctrl+0 a Ctrl+7.'
     anime4k_manual_kept   = 'Tu Anime4K se queda como est\u00e1, con sus atajos. El men\u00fa Escalado de sosc cambia los mismos shaders y no sabe lo que hayan activado esos atajos.'
     anime4k_keys_found    = 'input.conf tiene estos atajos de Anime4K fuera del bloque de sosc:'
     anime4k_comment       = '\u00bfDesactivar esas l\u00edneas poni\u00e9ndoles delante "# sosc: ", para que los atajos de sosc puedan usar esas teclas? Se vuelven a activar al desinstalar.'
@@ -2260,30 +2261,34 @@ function Get-SoscGpuTier {
     return [pscustomobject]@{ Name = $name; Quality = 'fast' }
 }
 
-# sosc-upscale.conf for "Apagado" and the given quality, byte for byte what
-# sosc-upscale.lua writes for that choice (the tests compare both).
+# sosc-upscale.conf for "Apagado" (off) or "Automatico" (auto) and the given
+# quality, byte for byte what sosc-upscale.lua writes for that choice (the
+# tests compare both). Neither mode has glsl-shaders lines.
 function Get-SoscUpscaleConfText {
-    param([string]$Quality)
+    param([string]$Quality, [string]$Mode = 'off')
     if (@('hq', 'fast') -notcontains $Quality) { $Quality = 'fast' }
+    if (@('off', 'auto') -notcontains $Mode) { $Mode = 'off' }
     $lines = @(
-        ('# Generated by sosc-upscale.lua. Mode: off, quality: ' + $Quality),
-        'script-opts-append=sosc_upscale-mode=off',
+        ('# Generated by sosc-upscale.lua. Mode: ' + $Mode + ', quality: ' + $Quality),
+        ('script-opts-append=sosc_upscale-mode=' + $Mode),
         ('script-opts-append=sosc_upscale-quality=' + $Quality)
     )
     return ([string]::Join("`n", $lines) + "`n")
 }
 
-# Writes sosc-upscale.conf when it is missing, with the quality that suits the
-# graphics card; an existing one holds the user's choice and is kept.
+# Writes sosc-upscale.conf with $Mode and the quality that suits the graphics
+# card when it is missing, or always with $Overwrite (sosc has just installed
+# Anime4K here for the first time: it starts in "Automatico"). Otherwise an
+# existing one holds the user's choice and is kept.
 function Initialize-SoscUpscaleConf {
-    param([string]$ConfigDir, [bool]$Announce)
+    param([string]$ConfigDir, [bool]$Announce, [string]$Mode = 'off', [bool]$Overwrite = $false)
     $path = Join-SoscPath $ConfigDir $script:UpscaleConf
-    if (Test-Path -LiteralPath $path -PathType Leaf) {
+    if (-not $Overwrite -and (Test-Path -LiteralPath $path -PathType Leaf)) {
         Write-SoscInfo (T 'kept_user_file' @($script:UpscaleConf))
         return
     }
     $gpu = Get-SoscGpuTier -Names @(& $script:SoscGpuProbe)
-    Write-SoscText -Path $path -Text (Get-SoscUpscaleConfText -Quality $gpu.Quality)
+    Write-SoscText -Path $path -Text (Get-SoscUpscaleConfText -Quality $gpu.Quality -Mode $Mode)
     if ($Announce) {
         $name = $gpu.Name
         if (-not $name) { $name = T 'gpu_unknown' }
@@ -2536,7 +2541,9 @@ function Find-SoscCommentedConfLines {
 # check failed, asked again next time; manual: one installed by hand is left
 # alone; animejanai), Files (record paths of sosc's shaders), Moved
 # ("moved|original" of the hand-installed ones set aside), Commented and
-# CommentedMpv (input.conf and mpv.conf lines turned off) and Version.
+# CommentedMpv (input.conf and mpv.conf lines turned off), Version and Fresh
+# (sosc installed Anime4K in this run and it was not sosc's before: a new
+# install, or one installed by hand taken over).
 # Anime4K is downloaded and checked before anything in the folder is moved or
 # changed, and every change is added to the record before it is made.
 function Invoke-SoscAnime4KStep {
@@ -2548,7 +2555,7 @@ function Invoke-SoscAnime4KStep {
     if ($OldValues.ContainsKey('anime4k')) { $prevState = [string]$OldValues['anime4k'] }
     $own = @($OldFiles | Where-Object { Test-SoscOwnShaderPath $_ })
     $result = [pscustomobject]@{ State = ''; Files = $own; Moved = @($OldMoved); Commented = @($OldCommented)
-        CommentedMpv = @($OldCommentedMpv); Version = '' }
+        CommentedMpv = @($OldCommentedMpv); Version = ''; Fresh = $false }
     if ($OldValues.ContainsKey('anime4k_version')) { $result.Version = [string]$OldValues['anime4k_version'] }
 
     if (Test-SoscAnimeJaNai -Candidate $Candidate -ConfigDir $ConfigDir) {
@@ -2663,6 +2670,7 @@ function Invoke-SoscAnime4KStep {
     $result.State = 'sosc'
     $result.Files = $files
     $result.Version = $script:Anime4KVersion
+    $result.Fresh = (-not $update)
     return $result
 }
 
@@ -3014,7 +3022,12 @@ function Install-SoscTarget {
         # graphics card when it is new).
         $a4k = Invoke-SoscAnime4KStep -Candidate $Candidate -ConfigDir $config -Artifacts $Artifacts -Stamp $Stamp `
             -OldValues $oldValues -OldFiles $oldFiles -OldMoved $oldMoved -OldCommented $oldCommented -OldCommentedMpv $oldCommentedMpv
-        Initialize-SoscUpscaleConf -ConfigDir $config -Announce (@('sosc', 'manual') -contains $a4k.State)
+        # Anime4K installed by sosc starts in "Automatico" the first time; on
+        # updates the mode the user chose is kept.
+        $upscaleMode = 'off'
+        if ($a4k.State -eq 'sosc') { $upscaleMode = 'auto' }
+        Initialize-SoscUpscaleConf -ConfigDir $config -Announce (@('sosc', 'manual') -contains $a4k.State) -Mode $upscaleMode `
+            -Overwrite ([bool]$a4k.Fresh)
         $a4kBindings = @()
         if ($a4k.State -eq 'sosc') { $a4kBindings = $script:Anime4KBindings }
 
