@@ -189,6 +189,8 @@ sosc_text_en() {
         broken_confirm) s='Move them to %s? Nothing is deleted, and they come back when you uninstall.' ;;
         broken_kept) s='Left in place: mpv keeps logging an error for each one at start-up.' ;;
         moved) s='Moved %s -> %s' ;;
+        shaders_moved) s='Moved %s Anime4K shaders from shaders to %s.' ;;
+        shaders_restored) s='Moved %s Anime4K shaders back from %s to shaders.' ;;
         downloading) s='Downloading %s...' ;;
         download_failed) s='Could not download %s.' ;;
         hash_bad) s='The download of %s does not match its expected SHA256 (expected %s, got %s). Nothing was installed from it.' ;;
@@ -339,6 +341,8 @@ sosc_text_es() {
         broken_confirm) s='¿Moverlos a %s? No se borra nada y vuelven a su sitio al desinstalar.' ;;
         broken_kept) s='Se quedan donde están: mpv sigue dando un error por cada uno al arrancar.' ;;
         moved) s='Movido %s -> %s' ;;
+        shaders_moved) s='Movidos %s shaders de Anime4K de shaders a %s.' ;;
+        shaders_restored) s='Devueltos %s shaders de Anime4K de %s a shaders.' ;;
         downloading) s='Descargando %s...' ;;
         download_failed) s='No se ha podido descargar %s.' ;;
         hash_bad) s='La descarga de %s no coincide con su SHA256 esperado (esperado %s, obtenido %s). No se ha instalado nada de ella.' ;;
@@ -453,12 +457,22 @@ T() {
     printf -- "$fmt" "$@"
 }
 
+# The system's preferred languages on macOS ("es-ES", ...), one per line.
+sosc_apple_languages() { defaults read -g AppleLanguages 2>/dev/null; }
+
 # es when LC_ALL, LC_MESSAGES or LANG (the first one set, as the C library
-# does) starts with "es"; en otherwise. SOSC_LANG=es|en wins (tests).
+# does) starts with "es"; en otherwise. On macOS the system language comes
+# before LANG: terminals often set LANG=en_US.UTF-8 on a Mac set to Spanish.
+# SOSC_LANG=es|en wins (tests).
 sosc_language() {
     case ${SOSC_LANG:-} in es | en) printf '%s' "$SOSC_LANG"; return 0 ;; esac
-    local v=${LC_ALL:-}
+    local v=${LC_ALL:-} first
     [ -n "$v" ] || v=${LC_MESSAGES:-}
+    if [ -z "$v" ] && [ "$(sosc_uname)" = Darwin ]; then
+        # First entry of the list: the line after "(", without blanks or quotes.
+        first=$(sosc_apple_languages | tr -d ' \t"' | grep -v '^($' | head -n 1)
+        case $first in es*) printf es; return 0 ;; ?*) printf en; return 0 ;; esac
+    fi
     [ -n "$v" ] || v=${LANG:-}
     case $v in es*) printf es ;; *) printf en ;; esac
 }
@@ -1789,7 +1803,8 @@ uncomment_found() { # on the loaded file
 }
 
 # Moves an Anime4K shader installed by hand into shaders-desactivados, after
-# adding it to the record. Appends "moved|original" to A4K_MOVED.
+# adding it to the record. Appends "moved|original" to A4K_MOVED. Prints
+# nothing: the caller sums them up in one line.
 move_shader_aside() {
     local p=$1 rel name dest destrel
     rel=$(rel_path "$p" "$CFG")
@@ -1800,7 +1815,6 @@ move_shader_aside() {
     destrel=$(rel_path "$dest" "$CFG")
     add_record_entries "$CFG" "a4k_moved=$destrel|$rel" || return 1
     mv "$p" "$dest" || return 1
-    info "$(T moved "$rel" "$destrel")"
     A4K_MOVED[${#A4K_MOVED[@]}]="$destrel|$rel"
 }
 
@@ -1877,6 +1891,7 @@ anime4k_step() {
     local answer
     if [ "$take_over" = 1 ]; then
         for f in "${MANUAL_A4K[@]}"; do move_shader_aside "$f" || return 1; done
+        info "$(T shaders_moved "${#MANUAL_A4K[@]}" "$SHADERS_DISABLED_DIR")"
         if [ -f "$CFG/input.conf" ]; then
             load_file "$CFG/input.conf"
             find_lines input.conf anime4k_key_line || return 1
@@ -2401,9 +2416,11 @@ install_steps() {
 
 # Moves set-aside items back ("moved|original" entries, relative to the
 # folder), checked again (the record is not trusted): clean paths inside the
-# folder, nothing overwritten.
+# folder, nothing overwritten. With RESTORE_QUIET=1 it prints no line per item
+# and only counts them in RESTORED.
 restore_pairs() {
     local entry from to
+    RESTORED=0
     for entry in ${1+"$@"}; do
         if ! pair_ok "$entry"; then warn "$(T record_bad "$entry")"; continue; fi
         from="$CFG/${entry%%|*}"
@@ -2413,7 +2430,8 @@ restore_pairs() {
         if [ -e "$to" ] || [ -L "$to" ]; then warn "$(T restore_skipped "${entry%%|*}" "${entry#*|}")"; continue; fi
         mkdir -p "${to%/*}" || return 1
         mv "$from" "$to" || return 1
-        info "$(T moved "${entry%%|*}" "${entry#*|}")"
+        RESTORED=$((RESTORED + 1))
+        [ "${RESTORE_QUIET:-0}" = 1 ] || info "$(T moved "${entry%%|*}" "${entry#*|}")"
     done
 }
 
@@ -2558,7 +2576,10 @@ uninstall_steps() {
 
     # Anime4K installed by hand that sosc set aside, and the lines it turned off.
     if [ "${#moved[@]}" -gt 0 ]; then
-        if confirm "$(T ask_restore_anime4k "$SHADERS_DISABLED_DIR")" yes; then restore_pairs "${moved[@]}" || return 1; fi
+        if confirm "$(T ask_restore_anime4k "$SHADERS_DISABLED_DIR")" yes; then
+            RESTORE_QUIET=1 restore_pairs "${moved[@]}" || return 1
+            info "$(T shaders_restored "$RESTORED" "$SHADERS_DISABLED_DIR")"
+        fi
     fi
     if [ "${#commented[@]}" -gt 0 ] && [ -f "$CFG/input.conf" ]; then
         load_file "$CFG/input.conf"

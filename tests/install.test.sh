@@ -108,6 +108,7 @@ sosc_fetch() {
     [ -n "$f" ] && [ -f "$f" ] && cp "$f" "$2"
 }
 sosc_uname() { printf '%s' "${SOSC_TEST_OS:-Darwin}"; }
+sosc_apple_languages() { [ -z "${SOSC_TEST_APPLE_LANGS:-}" ] || printf '%b\n' "$SOSC_TEST_APPLE_LANGS"; }
 sosc_cpu_brand() { printf '%s' "${SOSC_TEST_CHIP-Apple M5}"; }
 sosc_lspci() { [ -z "${SOSC_TEST_LSPCI:-}" ] || printf '%b\n' "$SOSC_TEST_LSPCI"; }
 sosc_find_mpv() {
@@ -513,6 +514,14 @@ h=$(newhome spanish)
 check 'LANG=es_ES.UTF-8: messages in Spanish' has "$out" 'Instalando sosc en'
 (export LANG=en_US.UTF-8; SOSC_LANG='' run "$h" --yes --anime4k no)
 check 'LANG=en_US.UTF-8: messages in English' has "$out" 'Installing sosc into'
+# macOS set to Spanish with LANG=en_US.UTF-8 in the terminal (the usual case):
+# the system language wins over LANG, LC_ALL still wins over both.
+(export LANG=en_US.UTF-8 SOSC_TEST_APPLE_LANGS='(\n    "es-ES"\n)'; SOSC_LANG='' run "$h" --yes --anime4k no)
+check 'macOS in Spanish, LANG=en_US: messages in Spanish' has "$out" 'Instalando sosc en'
+(export LANG=es_ES.UTF-8 SOSC_TEST_APPLE_LANGS='(\n    "en-GB",\n    "es-ES"\n)'; SOSC_LANG='' run "$h" --yes --anime4k no)
+check 'macOS in English, LANG=es_ES: messages in English' has "$out" 'Installing sosc into'
+(export LANG=es_ES.UTF-8 SOSC_TEST_OS=Linux SOSC_TEST_APPLE_LANGS='(\n    "en-GB"\n)'; SOSC_LANG='' run "$h" --yes --anime4k no)
+check 'Linux: the macOS language list is not read' has "$out" 'Instalando sosc en'
 
 # --- chip and card -> quality ---------------------------------------------------
 
@@ -526,6 +535,17 @@ for c in 'Apple M5|fast' 'Apple M1|fast' 'Apple M3|fast' 'Apple M4 Pro|hq' 'Appl
     got=$(quality Darwin "${c%|*}")
     check "chip '${c%|*}' -> ${c#*|}" test "${got%%|*}" = "${c#*|}"
 done
+# Language straight from sosc_language (run unsets LC_ALL and LC_MESSAGES).
+lang_of() { # lang_of <LC_ALL> <LC_MESSAGES> <LANG> <os> <AppleLanguages output>
+    env -u SOSC_LANG LC_ALL="$1" LC_MESSAGES="$2" LANG="$3" "$under" -c '. "$1"; T_OS=$2 T_LANGS=$3; sosc_uname() { printf "%s" "$T_OS"; }; sosc_apple_languages() { printf "%b\n" "$T_LANGS"; }; sosc_language' _ "$lib" "$4" "$5" 2>/dev/null
+}
+es_mac='(\n    "es-ES"\n)'
+check 'language: macOS in Spanish, LANG=en_US -> es' test "$(lang_of '' '' en_US.UTF-8 Darwin "$es_mac")" = es
+check 'language: macOS in Spanish, LC_ALL=en_US -> en (LC_ALL wins)' test "$(lang_of en_US.UTF-8 '' es_ES.UTF-8 Darwin "$es_mac")" = en
+check 'language: macOS in Spanish, LC_MESSAGES=en_US -> en' test "$(lang_of '' en_US.UTF-8 '' Darwin "$es_mac")" = en
+check 'language: macOS without a language list -> LANG' test "$(lang_of '' '' es_ES.UTF-8 Darwin '')" = es
+check 'language: es-419 first -> es' test "$(lang_of '' '' en_US.UTF-8 Darwin '(\n    "es-419",\n    "en-US"\n)')" = es
+check 'language: Linux ignores the macOS list' test "$(lang_of '' '' en_US.UTF-8 Linux "$es_mac")" = en
 check 'chip: the name is shown as read' test "$(quality Darwin 'Apple M5')" = 'fast|Apple M5'
 nv='00:02.0 VGA compatible controller: Intel Corporation UHD Graphics 630\n01:00.0 VGA compatible controller: NVIDIA Corporation GA106 [GeForce RTX 3060]'
 check 'lspci: NVIDIA next to Intel -> hq, named' test "$(quality Linux "$nv")" = 'hq|NVIDIA Corporation GA106 [GeForce RTX 3060]'
