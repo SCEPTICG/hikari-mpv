@@ -167,18 +167,46 @@ function New-FakeUoscZip {
     return $zip
 }
 
-# Prepares fake uosc/thumbfast downloads with matching hashes; returns artifacts.
+# A zip like Anime4K's release: flat, every shader sosc needs and a few more.
+# -Hostile adds entries that must never be extracted (other names, folders,
+# paths going up); -Missing leaves one required shader out.
+function New-FakeAnime4KZip {
+    param([string]$Dir, [switch]$Hostile, [string]$Missing = '')
+    New-Item -ItemType Directory -Path $Dir -Force | Out-Null
+    $zip = P @($Dir, 'Anime4K_v4.0.zip')
+    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip }
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
+    try {
+        $names = @($script:Anime4KRequired) + @('Anime4K_Thin_HQ.glsl', 'Anime4K_Darken_Fast.glsl')
+        if ($Hostile) { $names += @('evil.lua', 'sub/Anime4K_Nested.glsl', '../Anime4K_Up.glsl', 'Anime4K_x.glsl.lua', 'README.md') }
+        foreach ($n in $names) {
+            if ($n -eq $Missing) { continue }
+            $entry = $archive.CreateEntry($n)
+            $w = New-Object System.IO.StreamWriter($entry.Open())
+            try { $w.Write('// fake ' + $n) } finally { $w.Dispose() }
+        }
+    }
+    finally { $archive.Dispose() }
+    return $zip
+}
+
+# Prepares fake uosc/thumbfast/Anime4K downloads with matching hashes; returns artifacts.
 function New-FakeArtifacts {
     param([string]$Dir)
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     $zip = New-FakeUoscZip $Dir
     $thumb = P @($Dir, 'thumbfast-src.lua')
     Set-TestFile $thumb '-- fake thumbfast'
+    $a4k = New-FakeAnime4KZip (P @($Dir, 'a4k'))
     $script:UoscSha256 = Get-SoscFileSha256 $zip
     $script:ThumbfastSha256 = Get-SoscFileSha256 $thumb
+    $script:Anime4KSha256 = Get-SoscFileSha256 $a4k
     $script:FakeDownloads = @{}
     $script:FakeDownloads[$script:UoscUrl] = $zip
     $script:FakeDownloads[$script:ThumbfastUrl] = $thumb
+    $script:FakeDownloads[$script:Anime4KUrl] = $a4k
     $work = P @($Dir, 'work')
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     return (Get-SoscArtifacts -TempDir $work)
@@ -186,6 +214,9 @@ function New-FakeArtifacts {
 
 $OriginalUoscSha = $script:UoscSha256
 $OriginalThumbSha = $script:ThumbfastSha256
+$OriginalAnime4KSha = $script:Anime4KSha256
+# The graphics card the tests see unless they say otherwise.
+$script:SoscGpuProbe = { @('Intel(R) UHD Graphics 620') }
 $Source = Get-SoscSource -TempDir $TestRoot
 
 # ---------------------------------------------------------------------------
@@ -456,7 +487,7 @@ Test-Case 'incomplete or repeated block is refused' {
 
 Test-Case 'mpv.conf block: options, includes last, [default] after a profile' {
     $b = Get-SoscMpvConfBlock "sub-font=Arial`n"
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|include="~~/sosc-palette.conf"|include="~~/sosc-subs.conf"' 'lines'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|include="~~/sosc-palette.conf"|include="~~/sosc-subs.conf"|include="~~/sosc-upscale.conf"' 'lines'
     Assert-True (-not ($b.Lines -contains 'border=no')) 'no border=no'
     $b = Get-SoscMpvConfBlock "vo=gpu`n[anime]`nprofile-cond=1`n"
     Assert-Equal $b.Lines[0] '[default]' 'default section'
@@ -491,7 +522,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
     [void](Update-SoscManagedFile -Path $p -Kind 'mpv')
     $t = Get-TestText $p
     Assert-True ($t.StartsWith("a=1`nsub-font-size=50`n" + $BlockB + "`n")) ('user lines first, block after: ' + $t)
-    Assert-True ($t.EndsWith('include="~~/sosc-subs.conf"' + "`n" + $BlockE + "`n")) 'block last, LF kept'
+    Assert-True ($t.EndsWith('include="~~/sosc-upscale.conf"' + "`n" + $BlockE + "`n")) 'block last, LF kept'
     Assert-Equal @([regex]::Matches($t, [regex]::Escape($BlockB))).Count 1 'one block'
     [void](Update-SoscManagedFile -Path $p -Kind 'mpv')
     Assert-Equal (Get-TestText $p) $t 'idempotent once at the end'
@@ -702,6 +733,10 @@ Test-Case 'download URLs: HTTPS and GitHub only' {
 Test-Case 'pinned versions and hashes' {
     Assert-Equal $OriginalUoscSha '4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882' 'uosc sha'
     Assert-Equal $OriginalThumbSha 'a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf' 'thumbfast sha'
+    Assert-Equal $OriginalAnime4KSha '139cd282086457c5adc79caf7b75b8b825091d71c9b54958c18745fea62d7ed7' 'Anime4K sha'
+    Assert-Equal $script:Anime4KUrl 'https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip' 'Anime4K url'
+    Assert-True ($script:Anime4KUrl.Contains('/v' + $script:Anime4KVersion + '/')) 'Anime4K url has version'
+    Assert-SoscDownloadUrl $script:Anime4KUrl
     Assert-True ($script:UoscUrl.Contains('/' + $script:UoscVersion + '/')) 'uosc url has version'
     Assert-True ($script:ThumbfastUrl.Contains($script:ThumbfastCommit)) 'thumbfast url has commit'
 }
@@ -884,7 +919,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True ($thumbConf.Contains('mpv_path=' + $exe)) 'mpv_path'
     $mpvAfter = Get-TestText (P @($cfg, 'mpv.conf'))
     Assert-True ($mpvAfter.StartsWith($mpvConf)) 'user mpv.conf lines untouched'
-    Assert-True ($mpvAfter.EndsWith('include="~~/sosc-subs.conf"' + "`r`n" + $BlockE + "`r`n")) 'block at the end, CRLF'
+    Assert-True ($mpvAfter.EndsWith('include="~~/sosc-upscale.conf"' + "`r`n" + $BlockE + "`r`n")) 'block at the end, CRLF'
     Assert-True (-not $mpvAfter.Contains('border=no')) 'no border=no'
     Assert-True (-not $mpvAfter.Contains('alang')) 'no personal language lines'
     $inputAfter = Get-TestText (P @($cfg, 'input.conf'))
@@ -967,7 +1002,7 @@ Test-Case 'uninstall answers can remove the saved choices and warn about include
     $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $cfg -Portable $false
     [void](Install-SoscTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-140000')
     $script:NonInteractive = $false
-    function Read-SoscLine { param([string]$Prompt) if ($Prompt -like '*palette and subtitle*') { return 'y' } return '' }
+    function Read-SoscLine { param([string]$Prompt) if ($Prompt -like '*palette, subtitle and upscaling*') { return 'y' } return '' }
     try { [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261005-140100') }
     finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'sosc-palette.conf')))) 'palette deleted'
@@ -1014,7 +1049,8 @@ Test-Case 'interactive: menu, no player found, typed folder, then uninstall from
     $cfg = P @($d, 'Mis cosas', 'mpv config')
     New-Item -ItemType Directory -Path (P @($d, 'Mis cosas')) | Out-Null
     $script:Answers = New-Object System.Collections.Generic.Queue[string]
-    foreach ($a in @('9', '1', '2', $cfg)) { $script:Answers.Enqueue($a) }
+    # The last answer takes the default for Anime4K (install it).
+    foreach ($a in @('9', '1', '2', $cfg, '')) { $script:Answers.Enqueue($a) }
     function New-SoscEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
     function Read-SoscLine { param([string]$Prompt) return $script:Answers.Dequeue() }
     $script:NonInteractive = $false
@@ -1031,7 +1067,7 @@ Test-Case 'interactive: menu, no player found, typed folder, then uninstall from
         Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'uosc removed by default'
         # Detected player: pick it by number, then exit from the menu.
         Set-TestFile (P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
-        foreach ($a in @('1', '1')) { $script:Answers.Enqueue($a) }
+        foreach ($a in @('1', '1', '')) { $script:Answers.Enqueue($a) }
         $code = Invoke-SoscMain -Action '' -Target @() -Yes $false
         Assert-Equal $code 0 'install by number'
         $net = P @($script:FakeEnvBase, 'Roaming', 'mpv.net')
@@ -1098,7 +1134,7 @@ Test-Case 'winget output never ends up as a target (it used to crash with Strict
         # Whole flow: menu -> install -> winget -> install into %APPDATA%\mpv.net.
         Remove-Item -LiteralPath $exeDir -Recurse -Force
         [void](New-FakeArtifacts (P @($d, 'dl')))
-        foreach ($a in @('1', '1', '')) { $script:Answers.Enqueue($a) }
+        foreach ($a in @('1', '1', '', '')) { $script:Answers.Enqueue($a) }
         $code = Invoke-SoscMain -Action '' -Target @() -Yes $false
         Assert-Equal $code 0 'exit code'
         Assert-True (Test-Path -LiteralPath (P @($base, 'Roaming', 'mpv.net', 'scripts', 'sosc-skip.lua'))) 'installed for mpv.net'
@@ -1137,7 +1173,7 @@ Test-Case 'uninstall finishes when sosc-originales was deleted by hand' {
     Assert-Equal @(Get-ChildItem -LiteralPath (P @($cfg, 'script-opts')) -Filter 'sosc-*').Count 0 'sosc options gone'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'uosc.conf'))) 'uosc.conf left (the earlier one is in the backup)'
     $left = @(Get-ChildItem -LiteralPath $cfg -Recurse -Force -File | ForEach-Object { Get-SoscRelativePath -Path $_.FullName -Root $cfg } | Sort-Object)
-    Assert-Equal ([string]::Join(',', $left)) 'mpv.conf,script-opts/uosc.conf,sosc-palette.conf,sosc-subs.conf' 'only the user files and the saved choices are left'
+    Assert-Equal ([string]::Join(',', $left)) 'mpv.conf,script-opts/uosc.conf,sosc-palette.conf,sosc-subs.conf,sosc-upscale.conf' 'only the user files and the saved choices are left'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "volume=50`n" 'mpv.conf as before'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'input.conf')))) 'input.conf created by sosc removed'
 }
@@ -1898,6 +1934,671 @@ Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {
 }
 
 # ---------------------------------------------------------------------------
+# v0.1.1: Anime4K, graphics card, backup rotation, osc=no left behind
+# ---------------------------------------------------------------------------
+
+# Installs into $Cfg with -Yes semantics and the given -Anime4K choice.
+function Invoke-TestInstall {
+    param($Cand, $Art, [string]$Stamp, [string]$Choice = '')
+    $saved = $script:SoscAnime4KChoice
+    $script:SoscAnime4KChoice = $Choice
+    try { return (Install-SoscTarget -Candidate $Cand -Source $Source -Artifacts $Art -Stamp $Stamp) }
+    finally { $script:SoscAnime4KChoice = $saved }
+}
+
+function Get-TestShaders {
+    param([string]$Dir)
+    if (-not (Test-Path -LiteralPath $Dir)) { return '' }
+    return [string]::Join(',', @(Get-ChildItem -LiteralPath $Dir -File -Force | ForEach-Object { $_.Name } | Sort-Object))
+}
+
+$OfficialA4kKeys = "CTRL+1 no-osd change-list glsl-shaders set `"~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Restore_CNN_M.glsl`"; show-text `"Anime4K: Mode A (Fast)`"`r`n" +
+    "CTRL+2 no-osd change-list glsl-shaders set `"~~/shaders/Anime4K_Restore_CNN_Soft_M.glsl`"; show-text `"Anime4K: Mode B (Fast)`"`r`n" +
+    "CTRL+0 no-osd change-list glsl-shaders clr `"`"; show-text `"GLSL shaders cleared`"`r`n"
+
+Test-Case 'repository input.conf and mpv.conf carry the same keys and includes as the installer' {
+    $in = Get-TestText (P @($RepoRoot, 'portable_config', 'input.conf'))
+    foreach ($b in @($script:InputBindings) + @($script:Anime4KBindings)) {
+        Assert-True ($in -match ('(?m)^' + [regex]::Escape($b.Key) + '\s+' + [regex]::Escape($b.Command) + '\s*$')) ($b.Key + ' in input.conf')
+    }
+    $conf = Get-TestText (P @($RepoRoot, 'portable_config', 'mpv.conf'))
+    foreach ($l in $script:MpvConfLines) { Assert-True ($conf -match ('(?m)^' + [regex]::Escape($l) + '\s*$')) ($l + ' in mpv.conf') }
+}
+
+Test-Case 'graphics card: Alta from GTX 1080 / RTX 2070 / RX 590 up (Anime4K guide), Rapida for the rest' {
+    $hq = @('NVIDIA GeForce GTX 1080', 'NVIDIA GeForce GTX 1080 Ti', 'NVIDIA TITAN Xp', 'NVIDIA TITAN RTX',
+        'NVIDIA GeForce RTX 2070', 'NVIDIA GeForce RTX 2070 SUPER', 'NVIDIA GeForce RTX 2080 Ti', 'NVIDIA GeForce RTX 3060',
+        'NVIDIA GeForce RTX 3060 Laptop GPU', 'NVIDIA GeForce RTX 3070', 'NVIDIA GeForce RTX 4060', 'NVIDIA GeForce RTX 4070 Laptop GPU',
+        'NVIDIA GeForce RTX 4090', 'NVIDIA GeForce RTX 5060 Ti', 'NVIDIA GeForce RTX 5090', 'Quadro RTX 4000', 'NVIDIA RTX A4000',
+        'NVIDIA RTX 4000 Ada Generation', 'NVIDIA RTX PRO 6000 Blackwell Workstation Edition',
+        'Radeon RX 590 Series', 'AMD Radeon RX 590 GME', 'AMD Radeon RX 5600 XT', 'AMD Radeon RX 5700 XT', 'AMD Radeon RX 6600',
+        'AMD Radeon RX 6600M', 'AMD Radeon RX 6650 XT', 'AMD Radeon RX 7600', 'AMD Radeon RX 7900 XTX', 'AMD Radeon RX 9060 XT',
+        'AMD Radeon RX 9070 XT', 'Radeon RX Vega', 'Radeon RX Vega 56', 'AMD Radeon VII',
+        'Intel(R) Arc(TM) A580 Graphics', 'Intel(R) Arc(TM) A750 Graphics', 'Intel(R) Arc(TM) A770 Graphics',
+        'Intel(R) Arc(TM) A770M Graphics', 'Intel(R) Arc(TM) B570 Graphics', 'Intel(R) Arc(TM) B580 Graphics',
+        'Apple M1 Pro', 'Apple M2 Max', 'Apple M3 Ultra', 'Apple M4 Pro')
+    $fast = @('NVIDIA GeForce GTX 1070', 'NVIDIA GeForce GTX 1070 Ti', 'NVIDIA GeForce GTX 1060 6GB', 'NVIDIA GeForce GTX 1660 SUPER',
+        'NVIDIA GeForce GTX 1650', 'NVIDIA GeForce GTX 1050 Ti', 'NVIDIA GeForce GTX 980', 'NVIDIA GeForce GTX 960M',
+        'NVIDIA GeForce GTX TITAN X', 'NVIDIA GeForce RTX 2050', 'NVIDIA GeForce RTX 2060', 'NVIDIA GeForce RTX 2060 SUPER',
+        'NVIDIA GeForce RTX 3050', 'NVIDIA GeForce RTX 3050 Ti Laptop GPU', 'NVIDIA GeForce RTX 4050 Laptop GPU',
+        'NVIDIA GeForce RTX 5050', 'NVIDIA RTX A2000 12GB', 'NVIDIA RTX A500 Laptop GPU', 'NVIDIA RTX 2000 Ada Generation',
+        'NVIDIA Quadro P4000', 'NVIDIA GeForce MX450', 'NVIDIA GeForce GT 1030',
+        'AMD Radeon RX 580 Series', 'AMD Radeon RX 570', 'AMD Radeon RX 550X', 'AMD Radeon RX 460', 'AMD Radeon RX 5500 XT',
+        'AMD Radeon RX 6400', 'AMD Radeon RX 6500 XT', 'AMD Radeon RX 7400', 'AMD Radeon(TM) Graphics',
+        'AMD Radeon(TM) RX Vega 10 Graphics', 'AMD Radeon 780M Graphics', 'AMD Radeon Pro 5500M',
+        'Intel(R) Arc(TM) Graphics', 'Intel(R) Arc(TM) 140V GPU (16GB)', 'Intel(R) Arc(TM) A380 Graphics',
+        'Intel(R) Arc(TM) A370M Graphics', 'Intel(R) Arc(TM) A730M Graphics', 'Intel(R) Iris(R) Xe Graphics',
+        'Intel(R) UHD Graphics 630', 'Intel(R) UHD Graphics 620', 'Intel(R) HD Graphics 4600', 'Intel Iris Plus Graphics 655',
+        'Apple M1', 'Apple M3', 'Apple M4', 'Microsoft Basic Display Adapter', 'Some Unknown GPU', '')
+    foreach ($n in $hq) { Assert-Equal (Get-SoscGpuQuality $n) 'hq' $n }
+    foreach ($n in $fast) { Assert-Equal (Get-SoscGpuQuality $n) 'fast' $n }
+}
+
+Test-Case 'graphics card: the most capable one decides; virtual adapters only as a last resort' {
+    $t = Get-SoscGpuTier @('Intel(R) UHD Graphics 630', 'NVIDIA GeForce RTX 4070 Laptop GPU')
+    Assert-Equal $t.Name 'NVIDIA GeForce RTX 4070 Laptop GPU' 'dedicated wins'
+    Assert-Equal $t.Quality 'hq' 'quality'
+    $t = Get-SoscGpuTier @('Intel(R) Arc(TM) Graphics', 'NVIDIA GeForce GTX 1060 6GB', 'AMD Radeon RX 6600')
+    Assert-Equal $t.Name 'AMD Radeon RX 6600' 'the capable one decides, whatever the order'
+    Assert-Equal $t.Quality 'hq' 'quality of the best'
+    $t = Get-SoscGpuTier @('Intel(R) UHD Graphics 630', 'NVIDIA GeForce RTX 3050 Laptop GPU')
+    Assert-Equal $t.Quality 'fast' 'no capable card: fast'
+    $t = Get-SoscGpuTier @('Parsec Virtual Display Adapter', 'Intel(R) UHD Graphics 630')
+    Assert-Equal $t.Name 'Intel(R) UHD Graphics 630' 'real card named'
+    Assert-Equal $t.Quality 'fast' 'fast'
+    $t = Get-SoscGpuTier @()
+    Assert-Equal $t.Name '' 'no name'
+    Assert-Equal $t.Quality 'fast' 'unknown is fast'
+    Assert-Equal @(Get-SoscGpuNames).Count @(Get-SoscGpuNames).Count 'reading the cards never throws'
+}
+
+Test-Case 'sosc-upscale.conf: same bytes as the script, quality from the card, never overwritten' {
+    Assert-Equal (Get-SoscUpscaleConfText 'fast') (Get-TestText (P @($RepoRoot, 'portable_config', 'sosc-upscale.conf'))) 'fast = shipped default'
+    Assert-Equal (Get-SoscUpscaleConfText 'hq') ((Get-TestText (P @($RepoRoot, 'portable_config', 'sosc-upscale.conf'))) -replace 'fast', 'hq') 'hq'
+    Assert-Equal (Get-SoscUpscaleConfText 'x;rm') (Get-SoscUpscaleConfText 'fast') 'unknown quality'
+    $d = New-TestDir 'upscale-conf'
+    $saved = $script:SoscGpuProbe
+    $script:InfoLog = New-Object System.Collections.Generic.List[string]
+    function Write-SoscInfo { param([string]$Message) $script:InfoLog.Add($Message) }
+    try {
+        $script:SoscGpuProbe = { @('Intel(R) UHD Graphics 620', 'NVIDIA GeForce RTX 3070') }
+        Initialize-SoscUpscaleConf -ConfigDir $d -Announce $true
+        Assert-Equal (Get-TestText (P @($d, 'sosc-upscale.conf'))) (Get-SoscUpscaleConfText 'hq') 'hq written'
+        Assert-Equal @($script:InfoLog | Where-Object { $_ -eq ('Graphics card: NVIDIA GeForce RTX 3070 ' + [char]0x2192 + ' quality High') }).Count 1 'one line about the card'
+        Set-TestFile (P @($d, 'sosc-upscale.conf')) "# mine`n"
+        $script:SoscGpuProbe = { @('Intel(R) UHD Graphics 620') }
+        Initialize-SoscUpscaleConf -ConfigDir $d -Announce $true
+        Assert-Equal (Get-TestText (P @($d, 'sosc-upscale.conf'))) "# mine`n" 'user choice kept'
+        $e = New-TestDir 'upscale-conf-quiet'
+        $script:InfoLog.Clear()
+        Initialize-SoscUpscaleConf -ConfigDir $e -Announce $false
+        Assert-Equal (Get-TestText (P @($e, 'sosc-upscale.conf'))) (Get-SoscUpscaleConfText 'fast') 'fast written'
+        Assert-Equal @($script:InfoLog | Where-Object { $_ -like 'Graphics card*' }).Count 0 'no card line without Anime4K'
+    }
+    finally { $script:SoscGpuProbe = $saved; Remove-Item Function:\Write-SoscInfo }
+    Set-SoscLanguage 'es'
+    try { Assert-Equal (T 'gpu_line' @('X', (T 'quality_fast'))) ('Gr' + [char]0x00E1 + 'fica: X ' + [char]0x2192 + ' calidad R' + [char]0x00E1 + 'pida') 'Spanish line' }
+    finally { Set-SoscLanguage 'en' }
+}
+
+Test-Case 'Anime4K: installed with -Yes, update only reinstalls it when a shader is missing, uninstall removes only its shaders' {
+    $d = New-TestDir 'a4k-e2e'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'shaders', 'FSRCNNX_x2_8-0-4-1.glsl')) '// user shader'
+    Set-TestFile (P @($cfg, 'mpv.conf')) "glsl-shaders=`"~~/shaders/FSRCNNX_x2_8-0-4-1.glsl`"`n"
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    $script:FakeLog = New-Object System.Collections.Generic.List[string]
+    $savedDl = $script:SoscDownloader
+    $script:SoscDownloader = { param([string]$Url, [string]$OutFile) $script:FakeLog.Add($Url); & $savedDl $Url $OutFile }
+    try {
+        [void](Invoke-TestInstall $cand $art '20261006-100000')
+        $expected = [string]::Join(',', @(@($script:Anime4KRequired) + @('Anime4K_Darken_Fast.glsl', 'Anime4K_Thin_HQ.glsl', 'FSRCNNX_x2_8-0-4-1.glsl') | Sort-Object))
+        Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) $expected 'Anime4K next to the user shader'
+        $rec = Read-SoscRecord $cfg
+        Assert-Equal $rec.Values['anime4k'] 'sosc' 'state'
+        Assert-Equal $rec.Values['anime4k_version'] '4.0.1' 'version'
+        Assert-Equal $rec.Values['shaders_preexisting'] 'yes' 'shaders existed'
+        Assert-Equal @($rec.Files | Where-Object { $_ -like 'shaders/*' }).Count 16 'shaders in the record'
+        Assert-True (-not (@($rec.Files) -contains 'shaders/FSRCNNX_x2_8-0-4-1.glsl')) 'user shader not recorded'
+        $input = Get-TestText (P @($cfg, 'input.conf'))
+        Assert-True ($input.Contains('Ctrl+1  script-message-to sosc_upscale set-mode a')) 'Ctrl+1'
+        Assert-True ($input.Contains('Ctrl+0  script-message-to sosc_upscale set-mode off')) 'Ctrl+0'
+        Assert-True ((Get-TestText (P @($cfg, 'mpv.conf'))).Contains('include="~~/sosc-upscale.conf"')) 'include'
+        Assert-Equal (Get-TestText (P @($cfg, 'sosc-upscale.conf'))) (Get-SoscUpscaleConfText 'fast') 'conf for an Intel UHD'
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 1 'downloaded once'
+
+        # Update of the same version with every shader there: nothing is
+        # downloaded or copied (a new run, so nothing cached).
+        $art2 = [pscustomobject]@{ UoscDir = $art.UoscDir; ThumbfastFile = $art.ThumbfastFile; TempDir = (New-TestDir 'a4k-e2e-run2'); Anime4KDir = '' }
+        Set-TestFile (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl')) 'changed'
+        Set-TestFile (P @($cfg, 'sosc-upscale.conf')) "# my choice`n"
+        [void](Invoke-TestInstall $cand $art2 '20261006-100100')
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 1 'not downloaded again'
+        Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl'))) 'changed' 'not copied again'
+        Assert-Equal (Get-TestText (P @($cfg, 'sosc-upscale.conf'))) "# my choice`n" 'choice kept on update'
+        Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), 'Ctrl\+1')).Count 1 'one Ctrl+1'
+        Assert-Equal @((Read-SoscRecord $cfg).Files | Where-Object { $_ -like 'shaders/*' }).Count 16 'shaders still recorded'
+        # A required shader missing: downloaded and installed again.
+        Remove-Item -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_S.glsl'))
+        [void](Invoke-TestInstall $cand $art2 '20261006-100110')
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 2 'downloaded for the missing shader'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_S.glsl'))) 'missing shader back'
+        Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl'))) '// fake Anime4K_Thin_HQ.glsl' 'refreshed'
+        # Another version in the record: installed again too.
+        $recPath = P @($cfg, 'sosc-installed.txt')
+        Set-TestFile $recPath ((Get-TestText $recPath) -replace 'anime4k_version=4\.0\.1', 'anime4k_version=4.0.0')
+        [void](Invoke-TestInstall $cand $art2 '20261006-100120')
+        Assert-Equal (Read-SoscRecord $cfg).Values['anime4k_version'] '4.0.1' 'version updated'
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 2 'cached in the same run'
+        Assert-Equal @($script:SoscWarnings | Where-Object { $_ -like '*mpv.conf turns Anime4K on*' }).Count 0 'FSRCNNX line is not Anime4K'
+
+        # -Anime4K no on an update: left as it is, still recorded.
+        [void](Invoke-TestInstall $cand $art '20261006-100200' 'no')
+        Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'sosc' 'still managed'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl'))) 'still there'
+
+        [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-100300')
+        Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) 'FSRCNNX_x2_8-0-4-1.glsl' 'only the user shader is left'
+        Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "glsl-shaders=`"~~/shaders/FSRCNNX_x2_8-0-4-1.glsl`"`n" 'mpv.conf as before'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-upscale.conf'))) 'choice kept by default'
+    }
+    finally { $script:SoscDownloader = $savedDl }
+
+    # A folder without shaders: sosc creates it and removes it again.
+    $cfg2 = P @($d, 'mpv2')
+    $cand2 = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg2 -Portable $false
+    [void](Invoke-TestInstall $cand2 $art '20261006-100400')
+    Assert-Equal (Read-SoscRecord $cfg2).Values['shaders_preexisting'] 'no' 'shaders created by sosc'
+    [void](Uninstall-SoscTarget -Candidate $cand2 -Stamp '20261006-100500')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg2, 'shaders')))) 'empty shaders folder removed'
+}
+
+Test-Case 'Anime4K: -Anime4K no, declined answers, -Anime4K yes and AnimeJaNai' {
+    $d = New-TestDir 'a4k-choice'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $script:FakeDownloads.Remove($script:Anime4KUrl)
+    $cfg = P @($d, 'mpv')
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-110000' 'no')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'shaders')))) 'nothing installed, nothing downloaded'
+    Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'declined' 'declined'
+    Assert-True (-not (Get-TestText (P @($cfg, 'input.conf'))).Contains('Ctrl+1')) 'no Anime4K keys'
+    Assert-Equal (Get-TestText (P @($cfg, 'sosc-upscale.conf'))) (Get-SoscUpscaleConfText 'fast') 'conf still written (mpv.conf includes it)'
+    # -Yes after a "no": the default is now no.
+    [void](Invoke-TestInstall $cand $art '20261006-110100')
+    Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'declined' 'still declined with -Yes'
+    # Interactive: asked again (default no); answering yes installs it.
+    $script:FakeDownloads[$script:Anime4KUrl] = (New-FakeAnime4KZip (P @($d, 'a4k2')))
+    $script:Anime4KSha256 = Get-SoscFileSha256 $script:FakeDownloads[$script:Anime4KUrl]
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine { param([string]$Prompt) $script:Prompts.Add($Prompt); if ($Prompt -like 'Install Anime4K*') { return 'y' } return '' }
+    $script:NonInteractive = $false
+    try { [void](Invoke-TestInstall $cand $art '20261006-110200') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-True (@($script:Prompts | Where-Object { $_ -like 'Install Anime4K*`[y/N`]*' }).Count -eq 1) ('asked with default no: ' + [string]::Join(' | ', $script:Prompts))
+    Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'sosc' 'installed after yes'
+    # -Anime4K yes on a fresh folder, no question.
+    $cfg3 = P @($d, 'mpv3')
+    $cand3 = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $cfg3 -Portable $false
+    [void](Invoke-TestInstall $cand3 $art '20261006-110300' 'yes')
+    Assert-Equal (Read-SoscRecord $cfg3).Values['anime4k'] 'sosc' 'forced yes'
+    # AnimeJaNai: never, not even with -Anime4K yes; also recognised by its scripts.
+    $script:FakeDownloads.Remove($script:Anime4KUrl)
+    $art2 = [pscustomobject]@{ UoscDir = $art.UoscDir; ThumbfastFile = $art.ThumbfastFile; TempDir = (New-TestDir 'a4k-choice-tmp'); Anime4KDir = '' }
+    $aj = P @($d, 'aj', 'portable_config')
+    $candAj = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'AnimeJaNai' -Exe '' -ConfigDir $aj -Portable $true
+    [void](Invoke-TestInstall $candAj $art2 '20261006-110400' 'yes')
+    Assert-Equal (Read-SoscRecord $aj).Values['anime4k'] 'animejanai' 'AnimeJaNai skipped'
+    Assert-True (-not (Test-Path -LiteralPath (P @($aj, 'shaders')))) 'no shaders for AnimeJaNai'
+    Assert-True (-not (Get-TestText (P @($aj, 'input.conf'))).Contains('Ctrl+1')) 'Ctrl+1 left to AnimeJaNai'
+    $ajLike = P @($d, 'aj-like')
+    Set-TestFile (P @($ajLike, 'scripts', 'animejanai_v2.lua')) '--'
+    $candLike = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $ajLike -Portable $false
+    [void](Invoke-TestInstall $candLike $art2 '20261006-110500')
+    Assert-Equal (Read-SoscRecord $ajLike).Values['anime4k'] 'animejanai' 'AnimeJaNai scripts recognised'
+}
+
+Test-Case 'Anime4K installed by hand: left alone with -Yes, taken over with -Anime4K yes and given back on uninstall' {
+    $d = New-TestDir 'a4k-manual'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_M.glsl')) '// mine'
+    Set-TestFile (P @($cfg, 'shaders', 'Anime4K_Upscale_CNN_x2_M.glsl')) '// mine too'
+    Set-TestFile (P @($cfg, 'shaders', 'other.glsl')) '// other'
+    $inputConf = "# my keys`r`n" + $OfficialA4kKeys + "Ctrl+3 cycle sub`r`n"
+    Set-TestFile (P @($cfg, 'input.conf')) $inputConf
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+
+    [void](Invoke-TestInstall $cand $art '20261006-120000')
+    Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) 'Anime4K_Restore_CNN_M.glsl,Anime4K_Upscale_CNN_x2_M.glsl,other.glsl' 'nothing added or moved'
+    Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'manual' 'state manual'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*installed by hand*' }).Count -ge 1) 'warned'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*does not know what those keys*' }).Count -eq 1) 'key clash explained'
+    Assert-True ((Get-TestText (P @($cfg, 'input.conf'))).StartsWith($inputConf)) 'input.conf untouched'
+    Assert-True (-not (Get-TestText (P @($cfg, 'input.conf'))).Contains('set-mode')) 'no sosc Anime4K keys'
+    Assert-Equal (Get-TestText (P @($cfg, 'sosc-upscale.conf'))) (Get-SoscUpscaleConfText 'fast') 'conf written'
+
+    # Interactive update: not asked again (the user already said no).
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine { param([string]$Prompt) $script:Prompts.Add($Prompt); return 'y' }
+    $script:NonInteractive = $false
+    try { [void](Invoke-TestInstall $cand $art '20261006-120100') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-Equal @($script:Prompts | Where-Object { $_ -like '*take care of it*' }).Count 0 'not asked again'
+
+    [void](Invoke-TestInstall $cand $art '20261006-120200' 'yes')
+    $shaders = Get-TestShaders (P @($cfg, 'shaders'))
+    Assert-True ($shaders.Contains('other.glsl') -and $shaders.Contains('Anime4K_Clamp_Highlights.glsl')) 'sosc copy installed, other shader kept'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_M.glsl'))) '// fake Anime4K_Restore_CNN_M.glsl' 'sosc copy in place'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders-desactivados', 'Anime4K_Restore_CNN_M.glsl'))) '// mine' 'user copy set aside'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders-desactivados', 'Anime4K_Upscale_CNN_x2_M.glsl'))) '// mine too' 'both set aside'
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal $rec.Values['anime4k'] 'sosc' 'managed now'
+    Assert-Equal @($rec.Moved).Count 2 'moves recorded'
+    Assert-Equal @($rec.Commented).Count 3 'commented lines recorded'
+    $in = Get-TestText (P @($cfg, 'input.conf'))
+    Assert-True ($in.Contains("`r`n# sosc: CTRL+1 no-osd change-list glsl-shaders set")) 'Ctrl+1 line turned off'
+    Assert-True ($in.Contains("`r`n# sosc: CTRL+0 no-osd change-list glsl-shaders clr")) 'Ctrl+0 line turned off'
+    Assert-True ($in.Contains("`r`nCtrl+3 cycle sub`r`n")) 'other Ctrl+3 binding untouched'
+    Assert-True ($in.Contains('Ctrl+1  script-message-to sosc_upscale set-mode a')) 'sosc Ctrl+1'
+    Assert-True ($in -notmatch 'set-mode c\r?\n') 'Ctrl+3 is the user''s: left alone'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like 'Ctrl+3 is already bound*' }).Count -eq 1) 'Ctrl+3 reported'
+
+    # Backup has the set-aside copies; update keeps the record.
+    [void](Invoke-TestInstall $cand $art '20261006-120300')
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal @($rec.Moved).Count 2 'moves kept on update'
+    Assert-Equal @($rec.Commented).Count 3 'comments kept on update'
+    Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), '# sosc: ')).Count 3 'not commented twice'
+
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-120400')
+    Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) 'Anime4K_Restore_CNN_M.glsl,Anime4K_Upscale_CNN_x2_M.glsl,other.glsl' 'user shaders back, sosc ones gone'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_M.glsl'))) '// mine' 'the user''s own copy'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'shaders-desactivados')))) 'empty shaders-desactivados removed'
+    Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputConf 'input.conf exactly as before'
+}
+
+Test-Case 'Anime4K installed by hand, interactive: take it over, keep the keys commented choice' {
+    $d = New-TestDir 'a4k-manual-int'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl')) '// mine'
+    Set-TestFile (P @($cfg, 'input.conf')) $OfficialA4kKeys
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine {
+        param([string]$Prompt)
+        $script:Prompts.Add($Prompt)
+        if ($Prompt -like '*take care of it*') { return 'y' }
+        if ($Prompt -like 'Turn those lines off*') { return 'n' }
+        return ''
+    }
+    $script:NonInteractive = $false
+    try { [void](Invoke-TestInstall $cand $art '20261006-130000') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-True (@($script:Prompts | Where-Object { $_ -like '*take care of it*`[y/N`]*' }).Count -eq 1) 'asked, default no'
+    Assert-True (@($script:Prompts | Where-Object { $_ -like 'Turn those lines off*`[Y/n`]*' }).Count -eq 1) 'asked about the keys, default yes'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders-desactivados', 'Anime4K_Clamp_Highlights.glsl'))) '// mine' 'set aside'
+    $in = Get-TestText (P @($cfg, 'input.conf'))
+    Assert-True ($in.StartsWith($OfficialA4kKeys)) 'keys left on (answered no)'
+    Assert-True (-not $in.Contains('Ctrl+1  script-message-to')) 'so sosc does not bind them'
+    Assert-True ($in.Contains('Ctrl+4  script-message-to sosc_upscale set-mode aa')) 'free keys are bound'
+    Assert-Equal @((Read-SoscRecord $cfg).Commented).Count 0 'nothing recorded as commented'
+}
+
+# Anime4K's official Windows template (md/Template/GLSL_Windows_High-end): its
+# mpv.conf has no final line break and turns mode A (HQ) on at start-up.
+$TemplateMpvConf = "# Optimized shaders for higher-end GPU: Mode A (HQ)`r`nglsl-shaders=`"~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Restore_CNN_VL.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_VL.glsl;~~/shaders/Anime4K_AutoDownscalePre_x2.glsl;~~/shaders/Anime4K_AutoDownscalePre_x4.glsl;~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl`""
+
+function New-ManualAnime4K {
+    param([string]$Cfg)
+    foreach ($n in $script:Anime4KRequired) { Set-TestFile (P @($Cfg, 'shaders', $n)) ('// mine ' + $n) }
+    Set-TestFile (P @($Cfg, 'mpv.conf')) $TemplateMpvConf
+    Set-TestFile (P @($Cfg, 'input.conf')) ("# Optimized shaders for higher-end GPU`r`n" + $OfficialA4kKeys)
+}
+
+Test-Case 'Anime4K by hand from the official template: its mpv.conf line is turned off and given back byte for byte' {
+    $d = New-TestDir 'a4k-template'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    New-ManualAnime4K $cfg
+    $mpvBefore = Get-TestBytes (P @($cfg, 'mpv.conf'))
+    $inputBefore = Get-TestBytes (P @($cfg, 'input.conf'))
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-190000' 'yes')
+    $mpv = Get-TestText (P @($cfg, 'mpv.conf'))
+    Assert-True ($mpv.StartsWith("# Optimized shaders for higher-end GPU: Mode A (HQ)`r`n# sosc: glsl-shaders=`"~~/shaders/Anime4K_Clamp_Highlights.glsl;")) 'template line turned off'
+    Assert-Equal @(Find-SoscAnime4KConfLines $mpv).Count 0 'no Anime4K line left on'
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal @($rec.CommentedMpv).Count 1 'recorded'
+    Assert-Equal $rec.CommentedMpv[0] ($TemplateMpvConf -split "`r`n")[1] 'the line itself'
+    Assert-Equal @($rec.Commented).Count 3 'input.conf keys recorded'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like 'mpv.conf turns Anime4K on*' }).Count -eq 1) 'reported'
+
+    # Update: not turned off twice, record kept.
+    [void](Invoke-TestInstall $cand $art '20261006-190100' 'yes')
+    $mpv2 = Get-TestText (P @($cfg, 'mpv.conf'))
+    Assert-Equal @([regex]::Matches($mpv2, '# sosc: ')).Count 1 'one prefix'
+    Assert-True (-not $mpv2.Contains('# sosc: # sosc:')) 'never twice'
+    Assert-Equal @((Read-SoscRecord $cfg).CommentedMpv).Count 1 'still recorded once'
+
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-190200')
+    Assert-Equal ([Convert]::ToBase64String((Get-TestBytes (P @($cfg, 'mpv.conf'))))) ([Convert]::ToBase64String($mpvBefore)) 'mpv.conf byte for byte'
+    Assert-Equal ([Convert]::ToBase64String((Get-TestBytes (P @($cfg, 'input.conf'))))) ([Convert]::ToBase64String($inputBefore)) 'input.conf byte for byte'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_VL.glsl'))) '// mine Anime4K_Restore_CNN_VL.glsl' 'own shaders back'
+
+    # Interactive, "no" to the mpv.conf question: left on, not recorded.
+    $cfg2 = P @($d, 'mpv2')
+    New-ManualAnime4K $cfg2
+    $cand2 = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg2 -Portable $false
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine {
+        param([string]$Prompt)
+        $script:Prompts.Add($Prompt)
+        if ($Prompt -like '*take care of it*') { return 'y' }
+        if ($Prompt -like '*even with Apagado*') { return 'n' }
+        return ''
+    }
+    $script:NonInteractive = $false
+    try { [void](Invoke-TestInstall $cand2 $art '20261006-190300') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-True (@($script:Prompts | Where-Object { $_ -like '*even with Apagado*`[Y/n`]*' }).Count -eq 1) 'asked, yes by default'
+    Assert-True ((Get-TestText (P @($cfg2, 'mpv.conf'))).StartsWith($TemplateMpvConf)) 'left on'
+    Assert-Equal @((Read-SoscRecord $cfg2).CommentedMpv).Count 0 'nothing recorded'
+}
+
+Test-Case 'Anime4K: an Anime4K line in mpv.conf is turned off on a fresh install too (-Yes)' {
+    $d = New-TestDir 'a4k-confline'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $conf = "volume=50`n  glsl-shaders-append = `"~~/shaders/Anime4K_Clamp_Highlights.glsl`" # mine`n# glsl-shaders=`"~~/shaders/Anime4K_Thin_HQ.glsl`"`nglsl-shaders=`"~~/shaders/FSRCNNX.glsl`"`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) $conf
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-191000')
+    $mpv = Get-TestText (P @($cfg, 'mpv.conf'))
+    Assert-True ($mpv.StartsWith("volume=50`n# sosc:   glsl-shaders-append = `"~~/shaders/Anime4K_Clamp_Highlights.glsl`" # mine`n# glsl-shaders=`"~~/shaders/Anime4K_Thin_HQ.glsl`"`nglsl-shaders=`"~~/shaders/FSRCNNX.glsl`"`n")) ('only the Anime4K line: ' + $mpv)
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-191100')
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $conf 'given back'
+}
+
+Test-Case 'Anime4K by hand: a failed download moves and changes nothing, the rest is installed' {
+    $d = New-TestDir 'a4k-dlfail'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $script:FakeDownloads.Remove($script:Anime4KUrl)
+    $script:DlCount = 0
+    $savedDl = $script:SoscDownloader
+    $script:SoscDownloader = { param([string]$Url, [string]$OutFile) if ($Url -eq $script:Anime4KUrl) { $script:DlCount++ }; & $savedDl $Url $OutFile }
+    try {
+        $cfgs = @((P @($d, 'mpv')), (P @($d, 'mpv2')))
+        $i = 0
+        foreach ($cfg in $cfgs) {
+            New-ManualAnime4K $cfg
+            $mpvBefore = Get-TestText (P @($cfg, 'mpv.conf'))
+            $inputBefore = Get-TestText (P @($cfg, 'input.conf'))
+            $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+            $i++
+            [void](Invoke-TestInstall $cand $art ('20261006-19200' + $i) 'yes')
+            Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'shaders-desactivados')))) 'nothing moved'
+            Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl'))) '// mine Anime4K_Clamp_Highlights.glsl' 'own shaders in place'
+            Assert-True ((Get-TestText (P @($cfg, 'mpv.conf'))).StartsWith($mpvBefore)) 'mpv.conf line not turned off'
+            Assert-True ((Get-TestText (P @($cfg, 'input.conf'))).StartsWith($inputBefore)) 'input.conf keys not turned off'
+            Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-palettes.lua'))) 'sosc installed'
+            $rec = Read-SoscRecord $cfg
+            Assert-Equal $rec.Values['anime4k'] 'failed' 'state failed'
+            Assert-Equal (@($rec.Moved).Count + @($rec.Commented).Count + @($rec.CommentedMpv).Count) 0 'nothing recorded'
+        }
+        Assert-Equal $script:DlCount 1 'tried once per run, not once per folder'
+    }
+    finally { $script:SoscDownloader = $savedDl }
+}
+
+Test-Case 'Anime4K by hand: what was moved or turned off is in the record even if the install fails later' {
+    $d = New-TestDir 'a4k-latefail'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    New-ManualAnime4K $cfg
+    $mpvBefore = Get-TestBytes (P @($cfg, 'mpv.conf'))
+    $inputBefore = Get-TestBytes (P @($cfg, 'input.conf'))
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    function Update-SoscManagedFile { throw 'disk full' }
+    try { Assert-Throws { Invoke-TestInstall $cand $art '20261006-193000' 'yes' } '*disk full*' 'later failure' }
+    finally { Remove-Item Function:\Update-SoscManagedFile }
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal @($rec.Moved).Count $script:Anime4KRequired.Count 'moves recorded'
+    Assert-Equal @($rec.Commented).Count 3 'keys recorded'
+    Assert-Equal @($rec.CommentedMpv).Count 1 'mpv.conf line recorded'
+    Assert-Equal @($rec.Files | Where-Object { $_ -like 'shaders/*' }).Count 16 'sosc shaders recorded'
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-193100')
+    Assert-Equal ([Convert]::ToBase64String((Get-TestBytes (P @($cfg, 'mpv.conf'))))) ([Convert]::ToBase64String($mpvBefore)) 'mpv.conf back'
+    Assert-Equal ([Convert]::ToBase64String((Get-TestBytes (P @($cfg, 'input.conf'))))) ([Convert]::ToBase64String($inputBefore)) 'input.conf back'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Upscale_CNN_x2_M.glsl'))) '// mine Anime4K_Upscale_CNN_x2_M.glsl' 'own shaders back'
+    Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) ([string]::Join(',', @($script:Anime4KRequired | Sort-Object))) 'sosc shaders gone'
+}
+
+Test-Case 'record entries added on the way: a record is started when there is none and kept valid' {
+    $d = New-TestDir 'rec-add'
+    Add-SoscRecordEntries -ConfigDir $d -Entries @('a4k_commented_mpv=glsl-shaders="~~/shaders/Anime4K_A.glsl"', 'file=shaders/Anime4K_A.glsl')
+    $rec = Read-SoscRecord $d
+    Assert-Equal @($rec.CommentedMpv).Count 1 'commented'
+    Assert-Equal @($rec.Files).Count 1 'file'
+    Set-TestFile (P @($d, 'sosc-installed.txt')) "anime4k=sosc"
+    Add-SoscRecordEntries -ConfigDir $d -Entries @("a4k_commented=Ctrl+1`tcycle pause")
+    $rec = Read-SoscRecord $d
+    Assert-Equal $rec.Values['anime4k'] 'sosc' 'value kept, line break added'
+    Assert-Equal $rec.Commented[0] "Ctrl+1`tcycle pause" 'a tab is allowed'
+    Assert-True (-not (Test-SoscRecordableLine ('x' * 4001))) 'too long'
+    Assert-True (-not (Test-SoscRecordableLine "a`rb")) 'control character'
+}
+
+Test-Case 'block removal gives back a missing final line break, only when the block is still last' {
+    $text = Set-SoscBlockText -Text "a=1`r`nb=2" -BlockLines @('x') -Name 'mpv.conf'
+    Assert-Equal (Remove-SoscBlockText -Text $text -Name 'mpv.conf' -NoFinalEol) "a=1`r`nb=2" 'as before'
+    Assert-Equal (Remove-SoscBlockText -Text $text -Name 'mpv.conf') "a=1`r`nb=2`r`n" 'without the flag the line break stays'
+    Assert-Equal (Remove-SoscBlockText -Text ($text + "c=3") -Name 'mpv.conf' -NoFinalEol) "a=1`r`nb=2`r`nc=3" 'lines after the block: untouched'
+    $d = New-TestDir 'final-eol'
+    Set-TestFile (P @($d, 'f.conf')) 'a=1'
+    Assert-Equal (Get-SoscFinalEolState (P @($d, 'f.conf'))) 'no' 'no line break'
+    Set-TestFile (P @($d, 'f.conf')) "a=1`n"
+    Assert-Equal (Get-SoscFinalEolState (P @($d, 'f.conf'))) 'yes' 'line break'
+    Assert-Equal (Get-SoscFinalEolState (P @($d, 'none.conf'))) 'yes' 'missing file'
+}
+
+Test-Case 'name patterns end at the end of the name (\z)' {
+    Assert-True (Test-SoscOwnShaderPath 'shaders/Anime4K_Clamp_Highlights.glsl') 'plain name'
+    Assert-True (-not (Test-SoscOwnShaderPath "shaders/Anime4K_Clamp_Highlights.glsl`n")) 'no final line break'
+    Assert-True (-not ("Anime4K_A.glsl`n" -cmatch $script:Anime4KPattern)) 'pattern'
+    Assert-True (-not (Test-SoscRecordPath "a/..`n")) 'record path'
+    Assert-True (Test-SoscAnime4KConfLine 'glsl-shaders-set="~~/shaders/Anime4K_A.glsl"') 'set'
+    Assert-True (-not (Test-SoscAnime4KConfLine '# glsl-shaders="~~/shaders/Anime4K_A.glsl"')) 'commented'
+    Assert-True (-not (Test-SoscAnime4KConfLine 'glsl-shaders="~~/shaders/FSRCNNX.glsl"')) 'other shaders'
+}
+
+Test-Case 'Anime4K zip: only Anime4K_*.glsl at its root is taken; a zip without the needed shaders is refused' {
+    $d = New-TestDir 'a4k-zip'
+    $zip = New-FakeAnime4KZip (P @($d, 'z')) -Hostile
+    $dest = P @($d, 'out', 'anime4k')
+    Expand-SoscAnime4K -Zip $zip -Destination $dest
+    $names = @(Get-ChildItem -LiteralPath (P @($d, 'out')) -Recurse -Force | ForEach-Object { $_.Name })
+    Assert-True (-not ($names -contains 'evil.lua')) 'no other files'
+    Assert-True (-not ($names -contains 'Anime4K_Nested.glsl')) 'nothing from folders'
+    Assert-True (-not ($names -contains 'Anime4K_Up.glsl')) 'nothing from ../'
+    Assert-True (-not ($names -contains 'Anime4K_x.glsl.lua')) 'exact extension'
+    Assert-True (-not (Test-Path -LiteralPath (P @($d, 'out', 'sub')))) 'no folder created'
+    Assert-Equal @(Get-ChildItem -LiteralPath $dest -File).Count ($script:Anime4KRequired.Count + 2) 'only the shaders'
+    $bad = New-FakeAnime4KZip (P @($d, 'z2')) -Missing 'Anime4K_Restore_CNN_VL.glsl'
+    Assert-Throws { Expand-SoscAnime4K -Zip $bad -Destination (P @($d, 'out2')) } '*Anime4K_Restore_CNN_VL.glsl*' 'missing shader'
+    # A wrong hash: never extracted, nothing installed.
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $script:Anime4KSha256 = 'c' * 64
+    $cfg = P @($d, 'mpv')
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-140000')
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like 'Could not get Anime4K*SHA256*run the installer again*' }).Count -eq 1) ('warned: ' + [string]::Join(' | ', $script:SoscWarnings))
+    Assert-True (-not (Test-Path -LiteralPath (P @($art.TempDir, 'anime4k')))) 'not extracted'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'shaders')))) 'no shaders'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-upscale.lua'))) 'the rest of sosc installed'
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal $rec.Values['anime4k'] 'failed' 'state failed'
+    Assert-Equal $rec.Values['anime4k_version'] '' 'no version'
+    Assert-True (-not (Get-TestText (P @($cfg, 'input.conf'))).Contains('set-mode')) 'no Anime4K keys'
+    # Next time it is offered again, yes by default.
+    $script:Anime4KSha256 = Get-SoscFileSha256 $script:FakeDownloads[$script:Anime4KUrl]
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine { param([string]$Prompt) $script:Prompts.Add($Prompt); return '' }
+    $script:NonInteractive = $false
+    $art2 = [pscustomobject]@{ UoscDir = $art.UoscDir; ThumbfastFile = $art.ThumbfastFile; TempDir = (New-TestDir 'a4k-zip-run2'); Anime4KDir = '' }
+    try { [void](Invoke-TestInstall $cand $art2 '20261006-140100') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-True (@($script:Prompts | Where-Object { $_ -like 'Install Anime4K*`[Y/n`]*' }).Count -eq 1) ('asked, default yes: ' + [string]::Join(' | ', $script:Prompts))
+    Assert-Equal (Read-SoscRecord $cfg).Values['anime4k'] 'sosc' 'installed now'
+}
+
+Test-Case 'hostile record entries for Anime4K are ignored' {
+    $d = New-TestDir 'a4k-hostile'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $top = P @($d, 'top')
+    $cfg = P @($top, 'cfg')
+    Set-TestFile (P @($top, 'Anime4K_Evil.glsl')) 'keep'
+    Set-TestFile (P @($cfg, 'shaders', 'mine.glsl')) 'keep'
+    Set-TestFile (P @($cfg, 'shaders-desactivados', 'Anime4K_X.glsl')) 'aside'
+    Set-TestFile (P @($cfg, 'input.conf')) "# sosc: Ctrl+9 cycle pause`n# sosc: Ctrl+1 cycle pause`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) "# sosc: volume=50`n# sosc: glsl-shaders=`"~~/shaders/Anime4K_A.glsl`"`n"
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-150000' 'no')
+    $hostile = @(
+        'file=shaders/../../Anime4K_Evil.glsl', 'file=shaders/mine.glsl', 'file=../Anime4K_Evil.glsl',
+        'a4k_moved=shaders-desactivados/Anime4K_X.glsl|scripts/x.lua', 'a4k_moved=shaders-desactivados/Anime4K_X.glsl|../Anime4K_X.glsl',
+        'a4k_moved=scripts/a.lua|shaders/a.glsl', 'a4k_moved=a|b|c'
+    )
+    $recPath = P @($cfg, 'sosc-installed.txt')
+    Set-TestFile $recPath ((Get-TestText $recPath) + [string]::Join("`r`n", $hostile) + "`r`na4k_commented=Ctrl+9 cycle pause`r`na4k_commented=Ctrl+1 cycle pause`r`na4k_commented_mpv=volume=50`r`n")
+    $rec = Read-SoscRecord $cfg
+    Assert-Equal @($rec.Moved).Count 0 'no hostile move kept'
+    Assert-Equal @($rec.Commented).Count 2 'comment entries read (checked again before use)'
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-150100')
+    Assert-Equal (Get-TestText (P @($top, 'Anime4K_Evil.glsl'))) 'keep' 'outside file kept'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'mine.glsl'))) 'keep' 'user shader kept'
+    Assert-Equal (Get-TestText (P @($cfg, 'shaders-desactivados', 'Anime4K_X.glsl'))) 'aside' 'nothing moved'
+    Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) "# sosc: Ctrl+9 cycle pause`n# sosc: Ctrl+1 cycle pause`n" 'lines that are not Anime4K keys stay commented'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "# sosc: volume=50`n# sosc: glsl-shaders=`"~~/shaders/Anime4K_A.glsl`"`n" 'mpv.conf: only recorded Anime4K lines come back'
+}
+
+Test-Case 'backups: only the 3 newest of this folder are kept, plus the first one; nothing else is touched' {
+    $d = New-TestDir 'rotate'
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'mpv.conf')) 'x=1'
+    $mk = { param([string]$Name) Set-TestFile (P @($d, $Name, 'mpv.conf')) 'old' }
+    foreach ($n in @('mpv-respaldo-sosc-20250101-000000', 'mpv-respaldo-sosc-20250201-000000', 'mpv-respaldo-sosc-20250301-000000',
+            'mpv-respaldo-sosc-20250301-000000-2', 'mpv-respaldo-sosc-20250301-000000-10',
+            'mpvnet-respaldo-sosc-20240101-000000', 'mpv-respaldo-sosc-2025', 'mpv-respaldo-sosc-20240101-000000-copia', 'otra')) { & $mk $n }
+    Set-TestFile (P @($d, 'mpv-respaldo-sosc-20230101-000000')) 'a file, not a folder'
+    $b = New-SoscBackup -ConfigDir $cfg -Stamp '20261006-160000'
+    Remove-SoscOldBackups -ConfigDir $cfg -Protect @((P @($d, 'mpv-respaldo-sosc-20250101-000000')), '::bad path::')
+    $left = @(Get-ChildItem -LiteralPath $d -Force | ForEach-Object { $_.Name } | Sort-Object)
+    $want = @('mpv', 'mpv-respaldo-sosc-20230101-000000', 'mpv-respaldo-sosc-20250101-000000', 'mpv-respaldo-sosc-20250301-000000-10',
+        'mpv-respaldo-sosc-20250301-000000-2', 'mpv-respaldo-sosc-2025', 'mpv-respaldo-sosc-20240101-000000-copia',
+        'mpv-respaldo-sosc-20261006-160000', 'mpvnet-respaldo-sosc-20240101-000000', 'otra') | Sort-Object
+    Assert-Equal ([string]::Join(',', $left)) ([string]::Join(',', $want)) 'kept'
+    Assert-True (@($script:SoscWarnings).Count -eq 0) 'no warnings'
+    # Through an install: the record's first backup survives every update.
+    $d2 = New-TestDir 'rotate-install'
+    $art = New-FakeArtifacts (P @($d2, 'dl'))
+    $cfg2 = P @($d2, 'mpv')
+    Set-TestFile (P @($cfg2, 'mpv.conf')) "volume=50`n"
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d2) -Kind 'mpv' -Exe '' -ConfigDir $cfg2 -Portable $false
+    $first = Invoke-TestInstall $cand $art '20261006-170000' 'no'
+    foreach ($i in 1..5) { [void](Invoke-TestInstall $cand $art ('20261006-17000' + $i) 'no') }
+    $backups = @(Get-ChildItem -LiteralPath $d2 -Directory | Where-Object { $_.Name -like 'mpv-respaldo-sosc-*' } | ForEach-Object { $_.Name } | Sort-Object)
+    Assert-Equal ([string]::Join(',', $backups)) 'mpv-respaldo-sosc-20261006-170000,mpv-respaldo-sosc-20261006-170003,mpv-respaldo-sosc-20261006-170004,mpv-respaldo-sosc-20261006-170005' 'first + 3 newest'
+    Assert-Equal (Get-TestText (P @($first, 'mpv.conf'))) "volume=50`n" 'first backup has the config from before sosc'
+    $linked = $true
+    try { New-Item -ItemType SymbolicLink -Path (P @($d2, 'mpv-respaldo-sosc-20000101-000000')) -Target (P @($d2, 'dl')) | Out-Null }
+    catch { $linked = $false }
+    if ($linked) {
+        Remove-SoscOldBackups -ConfigDir $cfg2 -Keep 1
+        Assert-True (Test-Path -LiteralPath (P @($d2, 'dl', 'thumbfast-src.lua'))) 'a link is never followed or removed'
+        Assert-True (Test-Path -LiteralPath (P @($d2, 'mpv-respaldo-sosc-20000101-000000'))) 'link left'
+    }
+}
+
+Test-Case 'backups: the one from before the first install is marked and kept for good, also after uninstalling' {
+    $d = New-TestDir 'rotate-mark'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`n"
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    $first = Invoke-TestInstall $cand $art '20261006-200000' 'no'
+    Assert-True (Test-Path -LiteralPath (P @($first, 'sosc-backup-original.txt'))) 'marked'
+    [void](Invoke-TestInstall $cand $art '20261006-200001' 'no')
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-200002')
+    # Installed again without a record: an original already exists, so no new mark.
+    $again = Invoke-TestInstall $cand $art '20261006-200003' 'no'
+    Assert-True (-not (Test-Path -LiteralPath (P @($again, 'sosc-backup-original.txt')))) 'only one original'
+    Assert-True ((Read-SoscRecord $cfg).Values['first_backup'] -ne $first) 'the record no longer names it'
+    foreach ($i in 4..9) { [void](Invoke-TestInstall $cand $art ('20261006-20000' + $i) 'no') }
+    Assert-True (Test-Path -LiteralPath $first) 'original kept by its mark'
+    Assert-Equal (Get-TestText (P @($first, 'mpv.conf'))) "volume=50`n" 'with the config from before sosc'
+    $backups = @(Get-ChildItem -LiteralPath $d -Directory | Where-Object { $_.Name -like 'mpv-respaldo-sosc-*' } | ForEach-Object { $_.Name } | Sort-Object)
+    Assert-Equal ([string]::Join(',', $backups)) 'mpv-respaldo-sosc-20261006-200000,mpv-respaldo-sosc-20261006-200003,mpv-respaldo-sosc-20261006-200007,mpv-respaldo-sosc-20261006-200008,mpv-respaldo-sosc-20261006-200009' 'original, first of the second install (record) and the 3 newest'
+    # Updates never mark (there is a record).
+    foreach ($b in $backups) {
+        if ($b -ne 'mpv-respaldo-sosc-20261006-200000') { Assert-True (-not (Test-Path -LiteralPath (P @($d, $b, 'sosc-backup-original.txt')))) ($b + ' not marked') }
+    }
+}
+
+Test-Case 'uninstall without uosc: an osc=no of the user is reported; -Yes only warns' {
+    $d = New-TestDir 'osc-orphan'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $conf = "osc=no # mine`nvolume=50`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) $conf
+    $cand = New-SoscCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261006-180000' 'no')
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-180100')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'uosc removed (default)'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like '*"osc=no # mine"*no on-screen controls*' }).Count -eq 1) 'warned'
+    Assert-True (@($script:SoscWarnings | Where-Object { $_ -like 'Left as it is*' }).Count -eq 1) 'and left as it is'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $conf 'line untouched with -Yes'
+
+    # Interactive: turn it off.
+    [void](Invoke-TestInstall $cand $art '20261006-180200' 'no')
+    function Read-SoscLine { param([string]$Prompt) if ($Prompt -like 'Turn that line off*`[Y/n`]*') { return '' } return '' }
+    $script:NonInteractive = $false
+    try { [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-180300') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "# sosc: osc=no # mine`nvolume=50`n" 'turned off'
+
+    # An interface set aside and not given back: offered again first.
+    Set-TestFile (P @($cfg, 'mpv.conf')) "osc=false`n"
+    Set-TestFile (P @($cfg, 'scripts', 'modernz.lua')) '-- modernz'
+    [void](Invoke-TestInstall $cand $art '20261006-180400' 'no')
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-SoscLine {
+        param([string]$Prompt)
+        $script:Prompts.Add($Prompt)
+        if ($Prompt -like 'Move back the interfaces*so there are controls*') { return 'y' }
+        if ($Prompt -like 'Move back the interfaces*') { return 'n' }
+        return ''
+    }
+    $script:NonInteractive = $false
+    try { [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-180500') }
+    finally { Remove-Item Function:\Read-SoscLine; $script:NonInteractive = $true }
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'modernz.lua'))) 'interface back'
+    Assert-Equal @($script:Prompts | Where-Object { $_ -like 'Turn that line off*' }).Count 0 'no need to turn osc=no off'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "osc=false`n" 'osc=false kept for modernz'
+
+    # uosc kept: nothing to say.
+    Set-TestFile (P @($cfg, 'mpv.conf')) "no-osc`n"
+    Remove-Item -LiteralPath (P @($cfg, 'scripts', 'modernz.lua'))
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'main.lua')) '-- mine'
+    [void](Invoke-TestInstall $cand $art '20261006-180600' 'no')
+    $script:SoscWarnings.Clear()
+    [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261006-180700')
+    Assert-Equal @($script:SoscWarnings | Where-Object { $_ -like '*on-screen controls*' }).Count 0 'uosc there before: kept, no warning'
+}
+
+# ---------------------------------------------------------------------------
 # Run without a file: irm | iex, and [scriptblock]::Create for options. Each of
 # these starts a real pwsh and dot-sources tests/iex-harness.ps1 from -Command,
 # so the installer runs in the global scope of a fresh session, as at a prompt.
@@ -1926,6 +2627,7 @@ function New-TestRelease {
     $uosc = New-FakeUoscZip $Dir
     $thumb = P @($Dir, 'thumbfast-src.lua')
     Set-TestFile $thumb '-- fake thumbfast'
+    $a4k = New-FakeAnime4KZip (P @($Dir, 'a4k'))
     $scriptPath = P @($Dir, 'sosc.ps1')
     $replace = [ordered]@{}
     $replace["`$script:SoscVersion = 'dev'"] = "`$script:SoscVersion = '9.9.9'"
@@ -1933,11 +2635,13 @@ function New-TestRelease {
     $replace["`$script:SoscReleaseSha256 = ''"] = "`$script:SoscReleaseSha256 = '" + $ZipSha256 + "'"
     $replace["`$script:UoscSha256 = '" + $OriginalUoscSha + "'"] = "`$script:UoscSha256 = '" + (Get-SoscFileSha256 $uosc) + "'"
     $replace["`$script:ThumbfastSha256 = '" + $OriginalThumbSha + "'"] = "`$script:ThumbfastSha256 = '" + (Get-SoscFileSha256 $thumb) + "'"
+    $replace["`$script:Anime4KSha256 = '" + $OriginalAnime4KSha + "'"] = "`$script:Anime4KSha256 = '" + (Get-SoscFileSha256 $a4k) + "'"
     New-ReleaseScript -Path $scriptPath -Replace $replace
     $map = @{}
     $map[$TestReleaseUrl] = $Zip
     $map[$script:UoscUrl] = $uosc
     $map[$script:ThumbfastUrl] = $thumb
+    $map[$script:Anime4KUrl] = $a4k
     return [pscustomobject]@{ Script = $scriptPath; Downloads = $map }
 }
 
@@ -2024,7 +2728,8 @@ Test-Case 'release through iex: its zip comes from the downloader, is checked an
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('1', '2', $cfg) -TempDir $tmp
     Assert-SessionClean $run 0
     Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
-    Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl))) 'downloads, release zip first'
+    Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl, $script:Anime4KUrl))) 'downloads, release zip first, Anime4K when the folder needs it'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl'))) 'Anime4K installed (default answer)'
     foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
         Assert-Equal (Get-TestText (P @($cfg, 'scripts', $f.Name))) (Get-TestText $f.FullName) $f.Name
     }

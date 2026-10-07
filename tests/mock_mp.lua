@@ -16,6 +16,7 @@ M.overlays = {}      -- every mp.create_osd_overlay object, in creation order
 M.sections = {}      -- input section name -> {bindings, flags, enabled, enable_flags}
 M.clock = 0          -- what mp.get_time returns; move it with M.advance
 M.timers = {}        -- pending mp.add_timeout timers
+M.native_sets = {}   -- every mp.set_property_native call, as {name, value}
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -52,6 +53,7 @@ function M.install(script_name)
 	M.props, M.events, M.backups = {}, {}, {}
 	M.observers, M.overlays, M.sections = {}, {}, {}
 	M.clock, M.timers = 0, {}
+	M.native_sets = {}
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
@@ -76,6 +78,11 @@ function M.install(script_name)
 			function timer:kill() self.active = false end
 			table.insert(M.timers, timer)
 			return timer
+		end,
+		set_property_native = function(name, value)
+			table.insert(M.native_sets, {name, value})
+			M.props[name] = value
+			return true
 		end,
 		get_property_native = function(name, def)
 			local v = M.props[name]

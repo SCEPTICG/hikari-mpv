@@ -6,6 +6,7 @@
 # dist/sosc.ps1 run through iex, its sosc.zip served by a fake downloader. Only
 # the uosc and thumbfast hashes of that copy are swapped for fake files, so
 # nothing is downloaded; the release URL and hash of the zip are the real ones.
+# Anime4K is swapped the same way (a fake zip with the shader names sosc needs).
 # Exit code 0 when everything passes. Needs git, unzip, python3 and pwsh.
 set -uo pipefail
 
@@ -118,23 +119,36 @@ echo 'icons' >"$fake/uosc/fonts/uosc_icons.otf"
 (cd "$fake/uosc" && python3 -c 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],"w"); [z.write(p) for p in sys.argv[2:]]; z.close()' \
     "$fake/uosc.zip" scripts/uosc/main.lua fonts/uosc_icons.otf)
 echo '-- fake thumbfast' >"$fake/thumbfast.lua"
+# Anime4K: every name the installer requires, flat, like the real zip.
+mapfile -t a4k_names < <(sed -n "/^\$script:Anime4KRequired = @(/,/^)/p" dist/sosc.ps1 | grep -o "Anime4K_[A-Za-z0-9_]*\.glsl")
+python3 - "$fake/anime4k.zip" "${a4k_names[@]}" <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1], 'w')
+for name in sys.argv[2:]:
+    z.writestr(name, '// fake ' + name)
+z.close()
+PY
 uosc_url="$(sed -n "s/^\$script:UoscUrl = '\(.*\)'\$/\1/p" dist/sosc.ps1)"
 thumb_url="$(sed -n "s/^\$script:ThumbfastUrl = '\(.*\)'\$/\1/p" dist/sosc.ps1)"
+a4k_url="$(sed -n "s/^\$script:Anime4KUrl = '\(.*\)'\$/\1/p" dist/sosc.ps1)"
 sed -e "s/^\(\$script:UoscSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/uosc.zip" | cut -d' ' -f1)'/" \
     -e "s/^\(\$script:ThumbfastSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/thumbfast.lua" | cut -d' ' -f1)'/" \
+    -e "s/^\(\$script:Anime4KSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/anime4k.zip" | cut -d' ' -f1)'/" \
     dist/sosc.ps1 >"$tmp/sosc-test.ps1"
-check 'test copy differs from dist/sosc.ps1 only in the uosc and thumbfast hashes' \
-    test "$(diff dist/sosc.ps1 "$tmp/sosc-test.ps1" | grep -c '^>')" = 2
-python3 - "$tmp/dl.json" "$url" "$work/dist/sosc.zip" "$uosc_url" "$fake/uosc.zip" "$thumb_url" "$fake/thumbfast.lua" <<'EOF'
+check 'Anime4K: 14 required shaders found in dist/sosc.ps1' test "${#a4k_names[@]}" = 14
+check 'test copy differs from dist/sosc.ps1 only in the uosc, thumbfast and Anime4K hashes' \
+    test "$(diff dist/sosc.ps1 "$tmp/sosc-test.ps1" | grep -c '^>')" = 3
+python3 - "$tmp/dl.json" "$url" "$work/dist/sosc.zip" "$uosc_url" "$fake/uosc.zip" "$thumb_url" "$fake/thumbfast.lua" "$a4k_url" "$fake/anime4k.zip" <<'EOF'
 import json, sys
 a = sys.argv
-json.dump({a[2]: a[3], a[4]: a[5], a[6]: a[7]}, open(a[1], 'w'))
+json.dump({a[2]: a[3], a[4]: a[5], a[6]: a[7], a[8]: a[9]}, open(a[1], 'w'))
 EOF
 
 cfg="$tmp/target/mpv"
 mkdir -p "$tmp/target" "$tmp/tmpdir"
-# Install, "type the config folder myself" (no player here), the folder.
-printf '1\n2\n%s\n' "$cfg" | TMPDIR="$tmp/tmpdir" SOSC_LANG=en "$pwsh_bin" -NoProfile -Command \
+# Install, "type the config folder myself" (no player here), the folder, then
+# yes to Anime4K.
+printf '1\n2\n%s\ny\n' "$cfg" | TMPDIR="$tmp/tmpdir" SOSC_LANG=en "$pwsh_bin" -NoProfile -Command \
     ". '$repo/tests/iex-harness.ps1' -Script '$tmp/sosc-test.ps1' -Report '$tmp/report.json' -Downloads '$tmp/dl.json' -Mode iex" \
     >"$tmp/install.txt" 2>&1
 if [[ -f "$tmp/report.json" ]]; then ok 'iex run returned (no exit)'; else fail 'iex run returned (no exit)'; cat "$tmp/install.txt"; fi
@@ -160,6 +174,8 @@ done
 check 'installed sosc files are the committed ones' $all_same
 check 'record says 1.2.3' grep -q '^sosc_version=1.2.3' "$cfg/sosc-installed.txt"
 check 'mpv.conf has the sosc block and nothing personal' bash -c "grep -q '^include=\"~~/sosc-subs.conf\"' '$cfg/mpv.conf' && ! grep -qE 'alang|slang|border=no' '$cfg/mpv.conf'"
+check 'Anime4K installed from its (fake) zip' test -f "$cfg/shaders/Anime4K_Clamp_Highlights.glsl"
+check 'sosc-upscale.conf written' grep -q '^script-opts-append=sosc_upscale-mode=off' "$cfg/sosc-upscale.conf"
 check 'temporary folder removed' test -z "$(ls -A "$tmp/tmpdir")"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"

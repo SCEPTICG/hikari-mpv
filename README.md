@@ -8,9 +8,10 @@ A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https
 - **Speed menu**: a button with fixed speeds (0.5× to 2×) instead of a slider.
 - **Subtitle styles**: a menu with three subtitle styles, plus size and height.
 - **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
+- **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+6` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, with a quality that suits your graphics card.
 - **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*).
+The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*).
 
 ## Requirements
 
@@ -29,8 +30,8 @@ irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
 `irm` downloads the installer of the latest release and `iex` runs it. A menu opens: choose *Install or update*, then the player (or players) to install sosc for. The installer:
 
 - finds mpv, mpv.net and AnimeJaNai and the config folder each one reads;
-- backs up the files it may change, next to that folder (`<folder>-respaldo-sosc-<date>`);
-- downloads sosc, uosc and thumbfast from GitHub, always the same versions, and checks every download against its SHA256 before using it;
+- backs up the files it may change, next to that folder (`<folder>-respaldo-sosc-<date>`; it keeps the three newest and the one from before the first install);
+- downloads sosc, uosc and thumbfast (and Anime4K, if you want it) from GitHub, always the same versions, and checks every download against its SHA256 before using it;
 - sets aside other on-screen controllers that would clash with uosc (nothing is deleted);
 - copies the scripts and their settings, and adds a marked block to `mpv.conf` and `input.conf`, leaving the rest of both files as it is.
 
@@ -42,7 +43,7 @@ If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windo
 [Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
 ```
 
-- **Update**: run the same line again and choose *Install or update*. Your saved palette and subtitle choices are kept.
+- **Update**: run the same line again and choose *Install or update*. Your saved palette, subtitle and upscaling choices are kept.
 - **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes sosc and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
 
 ### Options
@@ -59,6 +60,7 @@ If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windo
 | `-Target <config folder>` | Work on that folder (several separated by `;`) instead of choosing from the list. |
 | `-Yes` | No questions: take the default answer to everything. Needs `-Action`, and `-Target` when more than one folder is found. |
 | `-NoMenu` | Ask with numbers and typed answers instead of the keyboard menus. |
+| `-Anime4K yes` / `-Anime4K no` | Answer the Anime4K questions instead of asking: install it (and take over an Anime4K installed by hand), or leave it out. See [Anime4K upscaling](#anime4k-upscaling). |
 
 Exit codes (in `$LASTEXITCODE`): 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. For example:
 
@@ -96,21 +98,24 @@ Pick one or several (or, with `-NoMenu`, type their numbers: `1,3`), or type ano
 
 For each folder it:
 
-1. Copies the files it may change to `<folder>-respaldo-sosc-<date>` next to it, and shows the size of that copy: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `sosc-palette.conf`, `sosc-subs.conf`, `sosc-installed.txt`, and `scripts-desactivados` and `sosc-originales` if they exist. Nothing else in the folder is touched, so nothing else is copied (`shaders`, `cache`, `watch_later`...). Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone.
+1. Copies the files it may change to `<folder>-respaldo-sosc-<date>` next to it, and shows the size of that copy: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf`, `sosc-installed.txt`, and `scripts-desactivados`, `shaders-desactivados` and `sosc-originales` if they exist. Nothing else in the folder is copied (`cache`, `watch_later`...); in `shaders` sosc only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so `shaders` is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before sosc's first install (the only one with your config as it was before sosc, marked with a `sosc-backup-original.txt` file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly `<folder>-respaldo-sosc-<date>` next to it count: nothing else is touched.
 2. Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom `osc.lua`, `mpv-osc-*`...) to `scripts-desactivados`, together with their `script-opts` and fonts. Nothing is deleted.
 3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: sosc's is.
 4. Copies the sosc scripts and `script-opts`. `sosc-palette.conf` and `sosc-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
-5. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the two `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
-6. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
-7. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
+5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `sosc-upscale.conf` if it is missing, with the quality that suits your graphics card.
+6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, and `Ctrl+0` to `Ctrl+6` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
+7. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
+8. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
-Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside and whether to delete your saved choices.
+Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as sosc left them), and whether to delete your saved choices. A file that had no line break at its end gets it back that way.
+
+If uosc goes and your own `mpv.conf` (outside the sosc block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# sosc: ` in front of it. With `-Yes` it only warns.
 
 Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
 
 ### Linux and macOS
 
-Coming soon. Until then, by hand: copy the contents of `portable_config/` into `~/.config/mpv/`, except `mpv.conf` and `input.conf` if you already have your own (then add the `osc=no`, `osd-bar=no` and `include` lines of the repository's `mpv.conf`, and the bindings of its `input.conf`, to yours). Then install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`.
+Coming soon. Until then, by hand: copy the contents of `portable_config/` into `~/.config/mpv/`, except `mpv.conf` and `input.conf` if you already have your own (then add the `osc=no`, `osd-bar=no` and `include` lines of the repository's `mpv.conf`, and the bindings of its `input.conf`, to yours). Then install [uosc](https://github.com/tomasklaen/uosc#install) and put [thumbfast.lua](https://github.com/po5/thumbfast) in `scripts/`. For Anime4K, extract the `.glsl` files of [Anime4K_v4.0.zip](https://github.com/bloc97/Anime4K/releases/tag/v4.0.1) into `~/.config/mpv/shaders/` (the `Ctrl+0` to `Ctrl+6` lines of the repository's `input.conf` drive it).
 
 ## Usage
 
@@ -119,8 +124,10 @@ Coming soon. Until then, by hand: copy the contents of `portable_config/` into `
 | `Alt+p` | Palette menu |
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
 | `Alt+t` | Subtitle menu (style, size, height) |
+| `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when sosc installed Anime4K) |
+| `Ctrl+0` | Anime4K off |
 
-The controls bar has three sosc buttons before *fullscreen*: subtitles (text icon), speed and palettes. The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
+The controls bar has up to four sosc buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed and palettes. The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
 
 ## Configuration
 
@@ -132,7 +139,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
 | `script-opts/sosc-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
 | `script-opts/sosc-title.conf` | Stream titles: on/off and tidying of release names. |
-| `sosc-palette.conf`, `sosc-subs.conf` | Your chosen palette and subtitle style, saved by the menus. Kept on update. |
+| `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
 Updating sosc replaces the `script-opts` files above with sosc's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `sosc-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked sosc block is.
 
@@ -213,6 +220,49 @@ mpv 0.39 changed the subtitle border options, and the script adapts to the versi
 
 A `sosc-subs.conf` written by mpv 0.39 or newer uses option names that mpv 0.38 and older don't know: if the same config folder is used with an older mpv, it logs an unknown-option error for those lines and starts normally, without that style until it is picked again.
 
+## Anime4K upscaling
+
+[Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. sosc does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Installed, it stays **off** until you pick a mode.
+
+The **Escalado** button in the controls bar (sparkles icon, `auto_awesome`) opens a menu with two groups; picking an option applies it straight away and the menu stays open:
+
+- **Modo**: *Apagado* and Anime4K's six official modes. The guide of Anime4K says the right one is the one that looks best; roughly:
+
+  | Mode | For |
+  | --- | --- |
+  | A | Most 1080p anime, blurry or with compression artifacts. |
+  | B | Most 720p anime (and 1080p scaled down to 720p): less blur, more aliasing and ringing. |
+  | C | SD (480p) without much damage, wallpapers and clean images. |
+  | A+A, B+B, C+A | The same, sharper and slower. Only for scaling by 2× or more (720p and below on a 1080p screen). |
+
+- **Calidad**: *Alta* (Anime4K's *HQ* shader lists, for capable graphics cards) or *Rápida* (its *Fast* lists).
+
+`Ctrl+1` to `Ctrl+6` pick the modes in the same order and `Ctrl+0` turns Anime4K off, as in Anime4K's own instructions; each shows a short message such as *Anime4K: Modo A (Rápido)*. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (*Anime4K no está instalado: ejecuta el instalador*) and the button stays hidden.
+
+The choice is saved to `~~/sosc-upscale.conf`, which `mpv.conf` includes, so the mode is active from the first frame on the next start. With *Apagado* that file sets no `glsl-shaders` at all, so your own `glsl-shaders` line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and *Apagado* puts your list back. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (`;` on Windows, `:` elsewhere). The button needs mpv 0.36 or newer (it is shown through a `user-data` property); with an older mpv use the keys.
+
+What the installer does:
+
+- **AnimeJaNai**: nothing. It already upscales with AI and uses `Ctrl+1` to `Ctrl+9` for it.
+- **No Anime4K yet**: it explains what it is and asks *Install Anime4K?* (yes by default; with `-Yes`, yes). If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of sosc; Anime4K is offered again next time, yes by default.
+- **Already installed by sosc**: an update leaves it alone when it is the same version and every shader sosc needs is there; if one is missing or the version changed, it is downloaded and installed again.
+- **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that sosc did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, sosc first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to `shaders-desactivados/` (nothing is deleted), sosc installs its own copy, and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` can be turned off by putting `# sosc: ` in front of them, so the sosc keys can use those keys. A `glsl-shaders=` line with Anime4K shaders in your `mpv.conf` (Anime4K's templates have one) is turned off the same way (yes by default, and with `-Yes`): otherwise that mode would be on at every start, even with *Apagado*. The same happens if sosc installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
+- `-Anime4K yes` installs it (and takes over one installed by hand) without asking; `-Anime4K no` leaves it out (an Anime4K that sosc installed earlier is left as it is).
+
+The quality is chosen from your graphics card the first time `sosc-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. The line follows [Anime4K's own guide](https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md), which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets *Rápida*:
+
+| | *Alta* | *Rápida* |
+| --- | --- | --- |
+| NVIDIA | GTX 1080 / 1080 Ti; RTX 2070 and up; RTX 3060, 4060, 5060 and up; TITAN Xp / V / RTX; professional RTX 4000 and up | GTX 1070, GTX 16xx, GTX 1060 and older; RTX 2060 (Super too); RTX 3050, 4050, 5050; RTX A2000 and smaller; MX, GT |
+| AMD | RX 590; RX 5600, 5700; RX 6600 and up; RX 7600 and up; RX 9060 and up; RX Vega 56/64, Radeon VII | RX 580, 570 and older; RX 5500; RX 6400, 6500; RX 7400; integrated graphics (*Radeon Graphics*, *780M*...) |
+| Intel | Arc A580, A750, A770, B570, B580 (and A770M) | *Arc Graphics* with no model number and Arc 140V (integrated in Core Ultra), Arc A380, laptop Arc below A770M, UHD, Iris, HD |
+| Apple | M Pro, Max and Ultra | M base chips, Intel Macs |
+| Other | | anything unknown |
+
+It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use *Rápida* or a mode without `+`.
+
+The modes, qualities and shader lists are defined in `portable_config/scripts/sosc-upscale.lua`. To open the menu from the keyboard, bind `script-binding sosc_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to sosc_upscale set-mode <off|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
+
 ## Skip openings and endings
 
 `sosc-skip.lua` shows a **Saltar opening ›** / **Saltar ending ›** button at the bottom right, above uosc's controls, for as long as playback is inside a chapter that looks like an opening or an ending, even when uosc's controls are hidden or playback is paused. Clicking it, or pressing `Alt+s`, jumps to the start of the next chapter. Outside those chapters, in files without chapters, while idle and while a uosc menu or the console is open, nothing is drawn and the mouse is left to uosc and mpv.
@@ -237,6 +287,7 @@ lua tests/test_title.lua
 lua tests/test_speed.lua
 lua tests/test_skip.lua
 lua tests/test_subs.lua
+lua tests/test_upscale.lua
 pwsh -NoProfile -File tests/install.Tests.ps1
 bash tests/make-release.test.sh
 ```
@@ -278,8 +329,9 @@ The GitHub repository is a read-only mirror of a self-hosted Forgejo repository,
 
 - [uosc](https://github.com/tomasklaen/uosc) by tomasklaen, LGPL-2.1.
 - [thumbfast](https://github.com/po5/thumbfast) by po5, MPL-2.0.
+- [Anime4K](https://github.com/bloc97/Anime4K) by bloc97, MIT.
 
-Neither is included in this repository: the installer downloads them from their official sources (uosc 5.13.0 and a fixed thumbfast commit) and checks their SHA256.
+None of them is included in this repository: the installer downloads them from their official sources (uosc 5.13.0, a fixed thumbfast commit and Anime4K v4.0.1, the last only if you want it) and checks their SHA256.
 
 ## License
 
