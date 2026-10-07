@@ -149,6 +149,32 @@ show_out() { sed 's/^/     | /' "$out"; }
 rec() { grep "^$2=" "$1/sosc-installed.txt" | head -n 1 | cut -d= -f2-; }
 shader_list() { (cd "$1" 2>/dev/null && ls | sort | tr '\n' ' '); }
 
+# --- pinned downloads: the same as install/sosc.ps1 ----------------------------
+
+ps1_value() { sed -n "s/^\$script:$1 = '\(.*\)'\$/\1/p" "$repo/install/sosc.ps1"; }
+sh_value() { sed -n "s/^    $1='\(.*\)'\$/\1/p" "$repo/install/sosc.sh"; }
+same_pins=true
+for pair in UoscVersion:UOSC_VERSION UoscUrl:UOSC_URL UoscSha256:UOSC_SHA256 ThumbfastCommit:THUMBFAST_COMMIT \
+    ThumbfastUrl:THUMBFAST_URL ThumbfastSha256:THUMBFAST_SHA256 Anime4KVersion:ANIME4K_VERSION Anime4KUrl:ANIME4K_URL \
+    Anime4KSha256:ANIME4K_SHA256; do
+    a=$(ps1_value "${pair%%:*}")
+    b=$(sh_value "${pair#*:}")
+    if [ -z "$a" ] || [ "$a" != "$b" ]; then same_pins=false; echo "     differs: $pair ($a / $b)"; fi
+done
+check 'uosc, thumbfast and Anime4K: same versions, URLs and SHA256 as sosc.ps1' $same_pins
+check 'release markers are empty in the repository' test "$(sh_value SOSC_VERSION)|$(sh_value SOSC_RELEASE_URL)|$(sh_value SOSC_RELEASE_SHA256)" = 'dev||'
+check 'the last line calls main' test "$(tail -n 1 "$repo/install/sosc.sh")" = 'main "$@"'
+# Without its last line the script only defines functions: no output, no
+# variable set, nothing touched (what a download cut short would run).
+mkdir -p "$tmp/cut-home"
+sed '$d' "$repo/install/sosc.sh" >"$tmp/cut.sh"
+cut_out=$(cd "$tmp/cut-home" && HOME="$tmp/cut-home" "$under" -c '
+    vars() { set | grep -E "^[A-Za-z][A-Za-z0-9_]*=" | grep -vE "^(BASH_[A-Z]+|PIPESTATUS|_|before|after)="; }
+    before=$(vars); . "$1"; after=$(vars)
+    [ "$before" = "$after" ] || echo "variables set"
+    declare -F main >/dev/null || echo "no main"' _ "$tmp/cut.sh" 2>&1)
+check 'without the last line nothing runs (only functions are defined)' test -z "$cut_out" -a -z "$(ls -A "$tmp/cut-home")"
+
 # --- usage ----------------------------------------------------------------------
 
 h=$(newhome usage)
