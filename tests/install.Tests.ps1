@@ -2879,6 +2879,211 @@ Test-Case '-File: the exit code reaches the caller' {
 }
 
 # ---------------------------------------------------------------------------
+# Migration from sosc (the name of hikari until v0.3.0)
+# ---------------------------------------------------------------------------
+
+# The real installer of sosc 0.3.0 and its files, taken from the v0.3.0 tag. It
+# runs in a separate pwsh (its $script: names would clash with hikari's here),
+# with the fake downloads of New-FakeArtifacts. Skipped without git or the tag.
+$SoscRepo = $null
+$gitOk = $false
+try { & git -C $RepoRoot cat-file -e 'v0.3.0:install/sosc.ps1' 2>$null; $gitOk = ($LASTEXITCODE -eq 0) } catch { $gitOk = $false }
+if ($gitOk) {
+    $SoscRepo = P @($TestRoot, 'sosc-repo')
+    New-Item -ItemType Directory -Path (P @($SoscRepo, 'install')) -Force | Out-Null
+    $tar = P @($TestRoot, 'sosc-0.3.0.tar')
+    & git -C $RepoRoot archive --format=tar -o $tar v0.3.0 portable_config
+    & tar -xf $tar -C $SoscRepo
+    $SoscOriginal = [string]::Join("`n", @(& git -C $RepoRoot show 'v0.3.0:install/sosc.ps1')) + "`n"
+}
+
+# Runs sosc 0.3.0 with -Yes on a folder (artifacts from New-FakeArtifacts in
+# $Dl): exit code, and its output in $script:SoscOut.
+function Invoke-Sosc030 {
+    param([string]$Cfg, [string]$Dl, [string]$Action, [string]$Anime4K = '')
+    $text = $SoscOriginal
+    $text = $text -replace "(?m)^\`$script:UoscSha256 = '[0-9a-f]{64}'", ("`$script:UoscSha256 = '" + $script:UoscSha256 + "'")
+    $text = $text -replace "(?m)^\`$script:ThumbfastSha256 = '[0-9a-f]{64}'", ("`$script:ThumbfastSha256 = '" + $script:ThumbfastSha256 + "'")
+    $text = $text -replace "(?m)^\`$script:Anime4KSha256 = '[0-9a-f]{64}'", ("`$script:Anime4KSha256 = '" + $script:Anime4KSha256 + "'")
+    $ps1 = P @($SoscRepo, 'install', 'sosc.ps1')
+    [System.IO.File]::WriteAllText($ps1, $text)
+    $map = P @($Dl, 'downloads.json')
+    ($script:FakeDownloads | ConvertTo-Json) | Set-Content -LiteralPath $map
+    $runner = P @($Dl, 'run-sosc.ps1')
+    Set-Content -LiteralPath $runner -Value @'
+param([string]$Ps1, [string]$Map, [string]$Action, [string]$Target, [string]$Anime4K)
+$global:SoscMap = @{}
+foreach ($p in (Get-Content -Raw -LiteralPath $Map | ConvertFrom-Json).PSObject.Properties) { $global:SoscMap[$p.Name] = [string]$p.Value }
+function global:Invoke-WebRequest { param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing) Copy-Item -LiteralPath $global:SoscMap[$Uri] -Destination $OutFile -Force }
+$env:SOSC_LANG = 'en'
+Remove-Item Env:HIKARI_INSTALL_TEST -ErrorAction SilentlyContinue
+& $Ps1 -Action $Action -Target $Target -Anime4K $Anime4K -Yes
+exit $LASTEXITCODE
+'@
+    $out = & $script:Pwsh -NoProfile -NonInteractive -File $runner -Ps1 $ps1 -Map $map -Action $Action -Target $Cfg -Anime4K $Anime4K 2>&1
+    $script:SoscOut = [string]::Join("`n", @($out | ForEach-Object { [string]$_ }))
+    return $LASTEXITCODE
+}
+
+# The Mac of SCEPTICG (see install.test.sh) as it would look on Windows: CRLF,
+# Anime4K installed by hand with keys and a profile line, a broken aniskip.lua,
+# an old uosc with its own uosc.conf.
+function New-MacLikeConfig {
+    param([string]$Cfg)
+    foreach ($n in @('Anime4K_Clamp_Highlights.glsl', 'Anime4K_Restore_CNN_M.glsl', 'Anime4K_Upscale_CNN_x2_M.glsl', 'Anime4K_Thin_HQ.glsl')) {
+        Set-TestFile (P @($Cfg, 'shaders', $n)) ('// mine ' + $n)
+    }
+    Set-TestFile (P @($Cfg, 'scripts', 'aniskip.lua')) '404: Not Found'
+    Set-TestFile (P @($Cfg, 'scripts', 'uosc', 'main.lua')) '-- old uosc'
+    Set-TestFile (P @($Cfg, 'script-opts', 'uosc.conf')) "timeline_style=line`r`nautohide=no`r`n"
+    Set-TestFile (P @($Cfg, 'watch_later', 'ABCDEF')) 'start=123'
+    Set-TestFile (P @($Cfg, 'mpv.conf')) ("profile=high-quality`r`nosc=no`r`ntarget-trc=gamma2.2`r`n`r`n[anime4k-720]`r`n" +
+        "profile-cond=get(`"height`", 0) <= 810`r`nglsl-shaders=`"~~/shaders/Anime4K_Clamp_Highlights.glsl;~~/shaders/Anime4K_Restore_CNN_M.glsl`"`r`n")
+    Set-TestFile (P @($Cfg, 'input.conf')) ($OfficialA4kKeys +
+        "CTRL+3 no-osd change-list glsl-shaders set `"~~/shaders/Anime4K_Upscale_CNN_x2_M.glsl`"; show-text `"C`"`r`n" +
+        "CTRL+t cycle-values target-trc auto gamma2.2`r`nWHEEL_UP add volume -2`r`n")
+}
+
+# Names and contents under the folder that still say sosc ('' when none).
+function Get-SoscLeft {
+    param([string]$Cfg)
+    $hits = @(Get-ChildItem -LiteralPath $Cfg -Recurse -Force | Where-Object {
+            $_.Name -like '*sosc*' -or (-not $_.PSIsContainer -and [System.IO.File]::ReadAllText($_.FullName) -match '(?i)sosc') } |
+        ForEach-Object { Get-HikariRelativePath -Path $_.FullName -Root $Cfg } | Sort-Object)
+    return [string]::Join(',', $hits)
+}
+
+if ($null -ne $SoscRepo) {
+    Test-Case 'sosc 0.3.0 -> hikari: the Mac-like folder, Anime4K taken over; uninstall gives back the folder from before sosc' {
+        $d = New-TestDir 'mig-mac'
+        $dl = P @($d, 'dl')
+        $art = New-FakeArtifacts $dl
+        $cfg = P @($d, 'mpv')
+        New-MacLikeConfig $cfg
+        $pre = @{}
+        foreach ($f in @('mpv.conf', 'input.conf', 'script-opts/uosc.conf', 'scripts/aniskip.lua', 'shaders/Anime4K_Thin_HQ.glsl')) {
+            $pre[$f] = Get-TestText (P (@($cfg) + ($f -split '/')))
+        }
+        Assert-Equal (Invoke-Sosc030 -Cfg $cfg -Dl $dl -Action 'install' -Anime4K 'yes') 0 ('sosc 0.3.0 install: ' + $script:SoscOut)
+        $soscRecord = Get-TestText (P @($cfg, 'sosc-installed.txt'))
+        Assert-True ($soscRecord.Contains("anime4k=sosc`r`n")) 'sosc took Anime4K over'
+        Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), '(?m)^# sosc: CTRL\+')).Count 4 'sosc turned 4 keys off'
+        Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'mpv.conf'))), '(?m)^# sosc: glsl-shaders')).Count 1 'and the profile line'
+        $soscFirst = ([regex]::Match($soscRecord, '(?m)^first_backup=(.*?)\r?$')).Groups[1].Value
+        $soscBlockAt = @((Get-TestText (P @($cfg, 'input.conf'))) -split "`r?`n").IndexOf('# >>> sosc (managed block, do not edit) >>>')
+        $soscBackups = @(Get-ChildItem -LiteralPath $d -Directory | Where-Object { $_.Name -like 'mpv-respaldo-sosc-*' }).Count
+        Assert-True ($soscBackups -ge 1) 'sosc made its backup'
+        # What SCEPTICG did afterwards, outside the blocks, and his choices.
+        [System.IO.File]::AppendAllText((P @($cfg, 'input.conf')), "p script-binding sosc_palettes/open-menu`r`n")
+        [System.IO.File]::AppendAllText((P @($cfg, 'mpv.conf')), "script-opts-append=sosc-update-enabled=no`r`n")
+        Set-TestFile (P @($cfg, 'sosc-palette.conf')) "# Generated by sosc-palettes.lua. Palette: sceptic`nscript-opts-append=sosc_palettes-palette=sceptic`n"
+        Set-TestFile (P @($cfg, 'sosc-update.txt')) "last_check=1800000000`n"
+
+        $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+        Assert-True ($cand.Sosc -and $cand.Installed) 'the folder is seen as sosc'
+        Assert-Equal (Get-HikariCandidateTags $cand) '[sosc installed: it becomes hikari]' 'tag'
+        $backup = Invoke-TestInstall $cand $art '20261009-120000'
+        Assert-Equal (Get-SoscLeft $cfg) 'hikari-installed.txt' 'nothing of sosc left (only the first backup in the record)'
+        $rec = Read-HikariRecord $cfg
+        Assert-Equal $rec.Values['first_backup'] $soscFirst 'first backup inherited'
+        Assert-True (Test-Path -LiteralPath (P @($soscFirst, 'sosc-backup-original.txt'))) 'it is the one from before sosc'
+        Assert-Equal $rec.Values['anime4k'] 'hikari' 'Anime4K is hikari''s now'
+        Assert-Equal $rec.Values['uosc_preexisting'] 'yes' 'uosc was there before sosc'
+        Assert-Equal @($rec.Values.Keys | Where-Object { $_ -like 'sosc*' }).Count 0 'no sosc keys'
+        Assert-Equal @($rec.Moved).Count 4 'moved shaders inherited'
+        Assert-Equal @($rec.Commented).Count 4 'turned-off keys inherited'
+        Assert-Equal @($rec.CommentedMpv).Count 1 'turned-off mpv.conf line inherited'
+        Assert-Equal @($rec.Broken).Count 1 'aniskip inherited'
+        $in = Get-TestText (P @($cfg, 'input.conf'))
+        Assert-Equal @([regex]::Matches($in, '(?m)^# hikari: CTRL\+')).Count 4 'keys still off, with the hikari prefix'
+        Assert-Equal @(($in -split "`r?`n")).IndexOf('# >>> hikari (managed block, do not edit) >>>') $soscBlockAt 'block in the same place'
+        Assert-True ($in.Contains("`r`np script-binding hikari_palettes/open-menu`r`n")) 'p of the user points to hikari'
+        Assert-True ($in.Contains('Ctrl+1  script-message-to hikari_upscale set-mode a')) 'hikari keys'
+        $mpv = Get-TestText (P @($cfg, 'mpv.conf'))
+        Assert-True ($mpv.Contains("`r`n# hikari: glsl-shaders=")) 'profile line still off, hikari prefix'
+        Assert-True ($mpv.Contains("`r`nscript-opts-append=hikari-update-enabled=no`r`n")) 'mpv.conf line of the user changed'
+        Assert-True ($mpv.EndsWith("# <<< hikari <<<`r`n")) 'block at the end, CRLF kept'
+        Assert-Equal @($script:HikariWarnings | Where-Object { $_ -like '*line of yours changed from sosc to hikari*' }).Count 2 'one warning per changed line'
+        Assert-Equal (Get-TestText (P @($cfg, 'hikari-palette.conf'))) "# Generated by hikari-palettes.lua. Palette: sceptic`nscript-opts-append=hikari_palettes-palette=sceptic`n" 'palette choice kept'
+        Assert-Equal (Get-TestText (P @($cfg, 'hikari-originales', 'script-opts', 'uosc.conf'))) $pre['script-opts/uosc.conf'] 'uosc.conf from before sosc kept aside'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update state not carried over'
+        Assert-Equal @(Get-ChildItem -LiteralPath $d -Directory | Where-Object { $_.Name -like 'mpv-respaldo-sosc-*' }).Count $soscBackups 'old sosc backups left alone'
+        Assert-True (Test-Path -LiteralPath (P @($backup, 'sosc-installed.txt'))) 'the backup has the files of sosc'
+        Assert-True (Test-Path -LiteralPath (P @($backup, 'sosc-originales', 'script-opts', 'uosc.conf'))) 'and sosc-originales'
+        Assert-True (-not (Test-Path -LiteralPath (P @($backup, 'hikari-backup-original.txt')))) 'not marked as the original'
+
+        $script:HikariWarnings.Clear()
+        [void](Invoke-TestInstall $cand $art '20261009-120100')
+        Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), '# hikari: # hikari:')).Count 0 'update: not turned off twice'
+        Assert-Equal @($script:HikariWarnings | Where-Object { $_ -like '*sosc*' }).Count 0 'update: nothing more to migrate'
+
+        [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261009-120200')
+        Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) ($pre['mpv.conf'] + "script-opts-append=hikari-update-enabled=no`r`n") 'mpv.conf as before sosc (plus the line of the user)'
+        Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) ($pre['input.conf'] + "p script-binding hikari_palettes/open-menu`r`n") 'input.conf as before sosc (plus the line of the user)'
+        Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'uosc.conf'))) $pre['script-opts/uosc.conf'] 'uosc.conf as before sosc'
+        Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'aniskip.lua'))) $pre['scripts/aniskip.lua'] 'aniskip.lua back'
+        Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl'))) $pre['shaders/Anime4K_Thin_HQ.glsl'] 'own shaders back'
+        Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) 'Anime4K_Clamp_Highlights.glsl,Anime4K_Restore_CNN_M.glsl,Anime4K_Thin_HQ.glsl,Anime4K_Upscale_CNN_x2_M.glsl' 'only the own shaders'
+        Assert-Equal (Get-SoscLeft $cfg) '' 'sosc is not put back'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-installed.txt'))) -and -not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados')))) 'record and set-aside folders gone'
+    }
+
+    Test-Case 'sosc 0.3.0 -> uninstall with hikari straight away: the folder from before sosc' {
+        $d = New-TestDir 'mig-uninst'
+        $dl = P @($d, 'dl')
+        [void](New-FakeArtifacts $dl)
+        $cfg = P @($d, 'mpv')
+        New-MacLikeConfig $cfg
+        $pre = @{}
+        foreach ($f in @('mpv.conf', 'input.conf', 'script-opts/uosc.conf')) { $pre[$f] = Get-TestText (P (@($cfg) + ($f -split '/'))) }
+        Assert-Equal (Invoke-Sosc030 -Cfg $cfg -Dl $dl -Action 'install' -Anime4K 'yes') 0 ('sosc 0.3.0 install: ' + $script:SoscOut)
+        Assert-Equal (Invoke-HikariMain -Action 'uninstall' -Target @($cfg) -Yes $true) 0 'uninstall'
+        foreach ($f in $pre.Keys) { Assert-Equal (Get-TestText (P (@($cfg) + ($f -split '/')))) $pre[$f] ($f + ' as before sosc') }
+        Assert-Equal (Get-SoscLeft $cfg) '' 'nothing of sosc left'
+        $hikariLeft = @(Get-ChildItem -LiteralPath $cfg -Recurse -Force | Where-Object { $_.Name -like 'hikari*' } | ForEach-Object { $_.Name } | Sort-Object)
+        Assert-Equal ([string]::Join(',', $hikariLeft)) 'hikari-palette.conf,hikari-subs.conf,hikari-upscale.conf' 'of hikari only the saved choices (kept by default)'
+    }
+}
+else {
+    Write-Host 'skip migration from sosc 0.3.0: the v0.3.0 tag is not in this copy'
+}
+
+Test-Case 'sosc copied by hand (no record): its files go, choices and user lines change to hikari' {
+    $d = New-TestDir 'mig-manual'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'sosc-palettes.lua')) '-- sosc palettes'
+    Set-TestFile (P @($cfg, 'script-opts', 'sosc-title.conf')) "enabled=yes`n"
+    Set-TestFile (P @($cfg, 'sosc-palette.conf')) "script-opts-append=sosc_palettes-palette=nord`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`ninclude=`"~~/sosc-palette.conf`"`n# include=`"~~/sosc-subs.conf`" (a comment of mine)`n"
+    Set-TestFile (P @($cfg, 'input.conf')) "Alt+p script-binding sosc_palettes/open-menu`nCtrl+9 script-message-to sosc_upscale set-mode auto`n"
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-True $cand.Sosc 'seen as sosc'
+    $backup = Invoke-TestInstall $cand $art '20261009-130000' 'no'
+    Assert-Equal (Get-SoscLeft $cfg) 'mpv.conf' 'only the comment of the user says sosc'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-palette.conf'))) "script-opts-append=hikari_palettes-palette=nord`n" 'choice kept'
+    Assert-True ((Get-TestText (P @($cfg, 'mpv.conf'))).StartsWith("volume=50`ninclude=`"~~/hikari-palette.conf`"`n# include=`"~~/sosc-subs.conf`" (a comment of mine)`n")) 'user lines changed, comment left'
+    $in = Get-TestText (P @($cfg, 'input.conf'))
+    Assert-True ($in.StartsWith("Alt+p script-binding hikari_palettes/open-menu`nCtrl+9 script-message-to hikari_upscale set-mode auto`n")) 'bindings changed'
+    Assert-Equal @([regex]::Matches($in, '(?m)^Alt\+p')).Count 1 'Alt+p not repeated in the block'
+    Assert-True (Test-Path -LiteralPath (P @($backup, 'hikari-backup-original.txt'))) 'no sosc record: the backup is the original'
+}
+
+Test-Case 'a broken sosc block: refused, nothing changed' {
+    $d = New-TestDir 'mig-broken'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $text = "volume=50`n# >>> sosc (managed block, do not edit) >>>`nosc=no`n"
+    Set-TestFile (P @($cfg, 'mpv.conf')) $text
+    Set-TestFile (P @($cfg, 'sosc-installed.txt')) "sosc_version=0.3.0`n"
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-Throws { [void](Invoke-TestInstall $cand $art '20261009-140000' 'no') } -Like '*mpv.conf (sosc) has an incomplete*' -What 'install'
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $text 'mpv.conf untouched'
+    Assert-True ((Test-Path -LiteralPath (P @($cfg, 'sosc-installed.txt'))) -and -not (Test-Path -LiteralPath (P @($cfg, 'hikari-installed.txt'))) -and
+        -not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed or removed'
+}
+
+# ---------------------------------------------------------------------------
 
 Remove-Item -LiteralPath $TestRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''

@@ -205,7 +205,21 @@ $script:UpdateState = 'hikari-update.txt'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'hikari-originales'
 
-# What the backup copies: only what the installer can change. cache,
+# hikari was called sosc until v0.3.0. These names are only used to recognise an
+# installation of sosc and carry it over to hikari (Invoke-HikariSoscMigration).
+$script:SoscRecordName = 'sosc-installed.txt'
+$script:SoscBlockBegin = '# >>> sosc (managed block, do not edit) >>>'
+$script:SoscBlockEnd = '# <<< sosc <<<'
+$script:SoscCommentPrefix = '# sosc: '
+$script:SoscOriginalsDir = 'sosc-originales'
+$script:SoscUpdateState = 'sosc-update.txt'
+# The part after sosc- of its choice files (sosc-<name>.conf).
+$script:SoscChoices = @('palette', 'subs', 'upscale')
+# Names of its scripts (sosc_<name> in input.conf, sosc-<name> in options).
+$script:SoscScripts = @('palettes', 'palette', 'skip', 'subs', 'speed', 'upscale', 'update', 'title')
+
+# What the backup copies: only what the installer can change (and the files of
+# sosc, which a migration changes). cache,
 # watch_later and anything else in the folder are never touched, so not copied.
 # shaders is not copied either: hikari only adds and removes its own Anime4K
 # files there, and moves (never deletes) an Anime4K installed by hand to
@@ -213,7 +227,8 @@ $script:OriginalsDir = 'hikari-originales'
 $script:BackupItems = @(
     'mpv.conf', 'input.conf', 'scripts', 'script-opts', 'fonts',
     'hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf', 'hikari-installed.txt',
-    'scripts-desactivados', 'hikari-originales', 'shaders-desactivados'
+    'scripts-desactivados', 'hikari-originales', 'shaders-desactivados',
+    'sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale.conf', 'sosc-installed.txt', 'sosc-originales', 'sosc-update.txt'
 )
 
 # Signs that a folder belongs to mpv (any of them is enough).
@@ -313,7 +328,7 @@ $script:HikariStringsEn = @{
     installing_to         = 'Installing hikari into {0}'
     uosc_done             = 'uosc {0} installed.'
     thumbfast_done        = 'thumbfast installed.'
-    hikari_files_done       = 'hikari files copied ({0}).'
+    hikari_files_done     = 'hikari files copied ({0}).'
     kept_user_file        = '{0} already exists: kept (it holds your choice).'
     removed_stale         = 'Removed old hikari file {0}.'
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
@@ -408,6 +423,12 @@ $script:HikariStringsEn = @{
     broken_confirm        = 'Move them to {0}? Nothing is deleted, and they come back when you uninstall.'
     broken_kept           = 'Left in place: mpv keeps logging an error for each one at start-up.'
     ask_restore_broken    = 'Move back the broken scripts hikari set aside ({0})?'
+    tag_sosc              = '[sosc installed: it becomes hikari]'
+    sosc_found            = 'sosc is installed here (the name of hikari until v0.3.0): it becomes hikari, with your choices.'
+    sosc_line_changed     = '{0}: line of yours changed from sosc to hikari: {1}'
+    sosc_choice_moved     = '{0} -> {1} (your choice is kept).'
+    sosc_done             = 'sosc removed: hikari takes its place. Uninstalling hikari puts everything back as it was before sosc.'
+    sosc_old_backups      = 'There are {0} old sosc backups ({1}-respaldo-sosc-*). They are not deleted: delete them yourself when you no longer need them.'
 }
 
 $script:HikariStringsEs = @{
@@ -460,7 +481,7 @@ $script:HikariStringsEs = @{
     installing_to         = 'Instalando hikari en {0}'
     uosc_done             = 'uosc {0} instalado.'
     thumbfast_done        = 'thumbfast instalado.'
-    hikari_files_done       = 'Ficheros de hikari copiados ({0}).'
+    hikari_files_done     = 'Ficheros de hikari copiados ({0}).'
     kept_user_file        = '{0} ya existe: se conserva (guarda tu elecci\u00f3n).'
     removed_stale         = 'Borrado el fichero antiguo de hikari {0}.'
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
@@ -555,6 +576,12 @@ $script:HikariStringsEs = @{
     broken_confirm        = '\u00bfMoverlos a {0}? No se borra nada y vuelven a su sitio al desinstalar.'
     broken_kept           = 'Se quedan donde est\u00e1n: mpv sigue dando un error por cada uno al arrancar.'
     ask_restore_broken    = '\u00bfDevolver a su sitio los scripts rotos que hikari apart\u00f3 ({0})?'
+    tag_sosc              = '[sosc instalado: pasa a ser hikari]'
+    sosc_found            = 'Aqu\u00ed est\u00e1 instalado sosc (el nombre de hikari hasta la v0.3.0): pasa a ser hikari, con tus elecciones.'
+    sosc_line_changed     = '{0}: l\u00ednea tuya cambiada de sosc a hikari: {1}'
+    sosc_choice_moved     = '{0} -> {1} (se conserva tu elecci\u00f3n).'
+    sosc_done             = 'sosc quitado: hikari ocupa su lugar. Al desinstalar hikari todo vuelve a como estaba antes de sosc.'
+    sosc_old_backups      = 'Hay {0} copias de seguridad antiguas de sosc ({1}-respaldo-sosc-*). No se borran: b\u00f3rralas t\u00fa cuando ya no te hagan falta.'
 }
 
 function Get-HikariLanguage {
@@ -1430,7 +1457,7 @@ function Resolve-HikariShim {
 
 function Get-HikariInstallState {
     param([string]$ConfigDir)
-    $state = [pscustomobject]@{ Installed = $false; Version = ''; Manual = $false }
+    $state = [pscustomobject]@{ Installed = $false; Version = ''; Manual = $false; Sosc = $false }
     if (-not $ConfigDir -or -not (Test-Path -LiteralPath $ConfigDir -PathType Container)) { return $state }
     $record = Read-HikariRecord $ConfigDir -NoWarn
     if ($null -ne $record) {
@@ -1443,6 +1470,10 @@ function Get-HikariInstallState {
         @(Get-ChildItem -LiteralPath $scripts -Filter 'hikari-*.lua' -File -Force).Count -gt 0) {
         $state.Installed = $true
         $state.Manual = $true
+    }
+    elseif (Test-HikariSoscPresent $ConfigDir) {
+        $state.Installed = $true
+        $state.Sosc = $true
     }
     return $state
 }
@@ -1462,6 +1493,7 @@ function New-HikariCandidate {
         Installed        = $state.Installed
         InstalledVersion = $state.Version
         Manual           = $state.Manual
+        Sosc             = $state.Sosc
         UserConfigDir    = $fallback
     }
 }
@@ -1695,17 +1727,18 @@ function Get-HikariEol {
 
 # Returns $null when there is no block, or the index of its first and last line.
 # Throws when the markers do not pair up.
+# $BeginMarker and $EndMarker: other markers (sosc's).
 function Find-HikariBlock {
-    param([object[]]$Lines, [string]$Name = 'file')
+    param([object[]]$Lines, [string]$Name = 'file', [string]$BeginMarker = $script:BlockBegin, [string]$EndMarker = $script:BlockEnd)
     $begin = -1
     $end = -1
     for ($i = 0; $i -lt $Lines.Count; $i++) {
         $content = $Lines[$i].Content.Trim()
-        if ($content -eq $script:BlockBegin) {
+        if ($content -eq $BeginMarker) {
             if ($begin -ge 0) { throw (T 'malformed_block' @($Name)) }
             $begin = $i
         }
-        elseif ($content -eq $script:BlockEnd) {
+        elseif ($content -eq $EndMarker) {
             if ($begin -lt 0 -or $end -ge 0) { throw (T 'malformed_block' @($Name)) }
             $end = $i
         }
@@ -1740,10 +1773,11 @@ function Set-HikariBlockText {
 # block (Set-HikariBlockText then adds one); when the block is still the last
 # thing in the file, that line break goes too.
 function Remove-HikariBlockText {
-    param([string]$Text, [string]$Name = 'file', [switch]$NoFinalEol)
+    param([string]$Text, [string]$Name = 'file', [switch]$NoFinalEol, [string]$BeginMarker = $script:BlockBegin,
+        [string]$EndMarker = $script:BlockEnd)
     if ($null -eq $Text) { return '' }
     $lines = @(Split-HikariLines $Text)
-    $block = Find-HikariBlock -Lines $lines -Name $Name
+    $block = Find-HikariBlock -Lines $lines -Name $Name -BeginMarker $BeginMarker -EndMarker $EndMarker
     if ($null -eq $block) { return $Text }
     $first = $lines[$block.Begin]
     $last = $lines[$block.End]
@@ -1947,9 +1981,10 @@ function Test-HikariRecordPath {
     return $true
 }
 
+# $Name: another record (sosc's), read with the same checks.
 function Read-HikariRecord {
-    param([string]$ConfigDir, [switch]$NoWarn)
-    $path = Join-HikariPath $ConfigDir $script:RecordName
+    param([string]$ConfigDir, [switch]$NoWarn, [string]$Name = $script:RecordName)
+    $path = Join-HikariPath $ConfigDir $Name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     $values = @{}
     $files = New-Object System.Collections.Generic.List[string]
@@ -2691,6 +2726,201 @@ function Invoke-HikariAnime4KStep {
 }
 
 # ---------------------------------------------------------------------------
+# Migration from sosc (the name of hikari until v0.3.0)
+# ---------------------------------------------------------------------------
+
+# Is there anything of sosc in the folder? Its record, scripts, options, choice
+# files or managed blocks.
+function Test-HikariSoscPresent {
+    param([string]$ConfigDir)
+    if (-not $ConfigDir -or -not (Test-Path -LiteralPath $ConfigDir -PathType Container)) { return $false }
+    if (Test-Path -LiteralPath (Join-HikariPath $ConfigDir $script:SoscRecordName)) { return $true }
+    $scripts = Join-HikariPath $ConfigDir 'scripts'
+    if ((Test-Path -LiteralPath $scripts -PathType Container) -and
+        @(Get-ChildItem -LiteralPath $scripts -File -Force -Filter 'sosc-*.lua').Count -gt 0) { return $true }
+    $opts = Join-HikariPath $ConfigDir 'script-opts'
+    if ((Test-Path -LiteralPath $opts -PathType Container) -and
+        @(Get-ChildItem -LiteralPath $opts -File -Force -Filter 'sosc-*.conf').Count -gt 0) { return $true }
+    foreach ($n in $script:SoscChoices) {
+        if (Test-Path -LiteralPath (Join-HikariPath $ConfigDir ('sosc-' + $n + '.conf')) -PathType Leaf) { return $true }
+    }
+    foreach ($name in @('mpv.conf', 'input.conf')) {
+        $p = Join-HikariPath $ConfigDir $name
+        if ((Test-Path -LiteralPath $p -PathType Leaf) -and (Read-HikariText $p).Text.Contains($script:SoscBlockBegin)) { return $true }
+    }
+    return $false
+}
+
+# The text with the names of sosc's scripts, options and files changed to
+# hikari's (sosc_palettes/open-menu, script-message-to sosc_upscale,
+# sosc-subs.conf, sosc-update-enabled=...).
+function ConvertFrom-HikariSoscText {
+    param([string]$Text)
+    foreach ($n in $script:SoscScripts) {
+        $Text = $Text.Replace('sosc_' + $n, 'hikari_' + $n).Replace('sosc-' + $n, 'hikari-' + $n)
+    }
+    return $Text
+}
+
+# mpv.conf or input.conf: the sosc block becomes the hikari block, in the same
+# place (or goes, when there is a hikari block already); the lines sosc turned
+# off and recorded ($Recorded) get the hikari prefix, so uninstalling hikari
+# turns them back on; and lines of the user's own that use sosc's names are
+# changed to hikari's, with one warning each. Encoding, BOM and line ends kept.
+function Update-HikariSoscFile {
+    param([string]$ConfigDir, [string]$Name, [string[]]$Recorded = @())
+    $path = Join-HikariPath $ConfigDir $Name
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $file = Read-HikariText $path
+    $text = $file.Text
+    $lines = @(Split-HikariLines $text)
+    $hikariBlock = Find-HikariBlock -Lines $lines -Name $Name
+    $soscBlock = Find-HikariBlock -Lines $lines -Name ($Name + ' (sosc)') -BeginMarker $script:SoscBlockBegin -EndMarker $script:SoscBlockEnd
+    $map = @{}
+    $skip = @{}
+    if ($null -ne $soscBlock) {
+        if ($null -ne $hikariBlock) {
+            $text = Remove-HikariBlockText -Text $text -Name ($Name + ' (sosc)') -BeginMarker $script:SoscBlockBegin -EndMarker $script:SoscBlockEnd
+            $lines = @(Split-HikariLines $text)
+        }
+        else {
+            $map[$soscBlock.Begin] = $script:BlockBegin
+            $map[$soscBlock.End] = $script:BlockEnd
+            for ($i = $soscBlock.Begin; $i -le $soscBlock.End; $i++) { $skip[$i] = $true }
+        }
+    }
+    foreach ($l in @(Get-HikariOutsideLines -Text $text -Name $Name)) {
+        if ($skip.ContainsKey($l.Index)) { continue }
+        if ($l.Content.StartsWith($script:SoscCommentPrefix)) {
+            $rest = $l.Content.Substring($script:SoscCommentPrefix.Length)
+            if (@($Recorded) -ccontains $rest.Trim()) { $map[$l.Index] = $script:CommentPrefix + $rest }
+            continue
+        }
+        $t = $l.Content.Trim()
+        if ($t -eq '' -or $t.StartsWith('#')) { continue }
+        $converted = ConvertFrom-HikariSoscText $l.Content
+        if ($converted -cne $l.Content) {
+            $map[$l.Index] = $converted
+            Write-HikariWarn (T 'sosc_line_changed' @($Name, $converted.Trim()))
+        }
+    }
+    $sb = New-Object System.Text.StringBuilder
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $content = $lines[$i].Content
+        if ($map.ContainsKey($i)) { $content = [string]$map[$i] }
+        [void]$sb.Append($content + $lines[$i].Eol)
+    }
+    $newText = $sb.ToString()
+    if ($newText -cne $file.Text) { Write-HikariText -Path $path -Text $newText -Encoding $file.Encoding -Bom $file.Bom }
+}
+
+# Carries an installation of sosc over to hikari, after the backup and before
+# anything else. The record of sosc becomes the record of hikari (what sosc set
+# aside, turned off or found there before it), so uninstalling hikari puts
+# everything back as it was before sosc; sosc's choices are kept under hikari's
+# names; then everything of sosc goes. Each step can run again: a migration cut
+# short is finished by the next run. Old sosc backups are left alone (hikari's
+# rotation only counts its own).
+function Invoke-HikariSoscMigration {
+    param([string]$ConfigDir)
+    if (-not (Test-HikariSoscPresent $ConfigDir)) { return }
+    Write-HikariInfo (T 'sosc_found')
+    # A broken block stops everything before any change.
+    foreach ($name in @('mpv.conf', 'input.conf')) {
+        $p = Join-HikariPath $ConfigDir $name
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+        $lines = @(Split-HikariLines (Read-HikariText $p).Text)
+        [void](Find-HikariBlock -Lines $lines -Name $name)
+        [void](Find-HikariBlock -Lines $lines -Name ($name + ' (sosc)') -BeginMarker $script:SoscBlockBegin -EndMarker $script:SoscBlockEnd)
+    }
+
+    $old = Read-HikariRecord $ConfigDir -NoWarn -Name $script:SoscRecordName
+    $commented = @()
+    $commentedMpv = @()
+    if ($null -ne $old) { $commented = @($old.Commented); $commentedMpv = @($old.CommentedMpv) }
+    Update-HikariSoscFile -ConfigDir $ConfigDir -Name 'mpv.conf' -Recorded $commentedMpv
+    Update-HikariSoscFile -ConfigDir $ConfigDir -Name 'input.conf' -Recorded $commented
+
+    # The user's choices, with their keys under hikari's names.
+    foreach ($n in $script:SoscChoices) {
+        $from = Join-HikariPath $ConfigDir ('sosc-' + $n + '.conf')
+        $to = Join-HikariPath $ConfigDir ('hikari-' + $n + '.conf')
+        if (-not (Test-Path -LiteralPath $from -PathType Leaf)) { continue }
+        if (-not (Test-Path -LiteralPath $to)) {
+            $file = Read-HikariText $from
+            Write-HikariText -Path $to -Text (ConvertFrom-HikariSoscText $file.Text) -Encoding $file.Encoding -Bom $file.Bom
+            Write-HikariInfo (T 'sosc_choice_moved' @(('sosc-' + $n + '.conf'), ('hikari-' + $n + '.conf')))
+        }
+        Remove-HikariItem -Path $from -Root $ConfigDir
+    }
+
+    # The user's uosc.conf and thumbfast.conf from before sosc.
+    $soscOrig = Join-HikariPath $ConfigDir $script:SoscOriginalsDir
+    $item = Get-Item -LiteralPath $soscOrig -Force -ErrorAction SilentlyContinue
+    if ($null -ne $item -and $item.PSIsContainer -and -not (Test-HikariLink $item)) {
+        $fromOpts = Join-HikariPath $soscOrig 'script-opts'
+        $toOpts = Join-HikariPath $ConfigDir @($script:OriginalsDir, 'script-opts')
+        if (Test-Path -LiteralPath $fromOpts -PathType Container) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $fromOpts -File -Force)) {
+                $dest = Join-HikariPath $toOpts $f.Name
+                if (Test-Path -LiteralPath $dest) { continue }
+                New-HikariDirectory $toOpts
+                Assert-HikariNoLink -Path $f.FullName -Root $ConfigDir
+                Assert-HikariNoLink -Path $dest -Root $ConfigDir
+                Move-Item -LiteralPath $f.FullName -Destination $dest
+            }
+        }
+        Remove-HikariItem -Path $soscOrig -Root $ConfigDir
+    }
+
+    # The record. When hikari has one already (a migration cut short after
+    # writing it), that one has everything.
+    if ($null -ne $old -and -not (Test-Path -LiteralPath (Join-HikariPath $ConfigDir $script:RecordName))) {
+        $values = [ordered]@{}
+        foreach ($key in @($old.Values.Keys | Sort-Object)) {
+            $k = [string]$key
+            $v = [string]$old.Values[$key]
+            if ($k -ceq 'sosc_version') { $k = 'hikari_version' }
+            elseif ($k -ceq 'sosc_commit') { $k = 'hikari_commit' }
+            elseif ($k -ceq 'anime4k' -and $v -ceq 'sosc') { $v = 'hikari' }
+            $values[$k] = $v
+        }
+        $files = @($old.Files | Where-Object { $_ -cnotmatch '^(scripts|script-opts)/sosc-' })
+        Write-HikariRecord -ConfigDir $ConfigDir -Values $values -Files $files -Disabled @($old.Disabled) -Moved @($old.Moved) `
+            -Commented @($old.Commented) -CommentedMpv @($old.CommentedMpv) -Broken @($old.Broken)
+    }
+
+    # Everything else of sosc goes (it is all in the backup).
+    $scripts = Join-HikariPath $ConfigDir 'scripts'
+    if (Test-Path -LiteralPath $scripts -PathType Container) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $scripts -File -Force -Filter 'sosc-*.lua')) { Remove-HikariItem -Path $f.FullName -Root $ConfigDir }
+    }
+    $opts = Join-HikariPath $ConfigDir 'script-opts'
+    if (Test-Path -LiteralPath $opts -PathType Container) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $opts -File -Force -Filter 'sosc-*.conf')) { Remove-HikariItem -Path $f.FullName -Root $ConfigDir }
+    }
+    foreach ($name in @($script:SoscUpdateState, ($script:SoscUpdateState + '.tmp'), $script:SoscRecordName)) {
+        $p = Join-HikariPath $ConfigDir $name
+        if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-HikariItem -Path $p -Root $ConfigDir }
+    }
+    Write-HikariOk (T 'sosc_done')
+
+    $full = Get-HikariFullPath $ConfigDir
+    $parent = Split-Path -Path $full -Parent
+    $prefix = (Split-Path -Path $full -Leaf) + '-respaldo-sosc-'
+    $count = 0
+    if ($parent -and (Test-Path -LiteralPath $parent -PathType Container)) {
+        try {
+            foreach ($d in @(Get-ChildItem -LiteralPath $parent -Directory -Force -ErrorAction Stop)) {
+                if ($d.Name.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and -not (Test-HikariLink $d)) { $count++ }
+            }
+        }
+        catch { }
+    }
+    if ($count -gt 0) { Write-HikariInfo (T 'sosc_old_backups' @($count, $full)) }
+}
+
+# ---------------------------------------------------------------------------
 # Install steps
 # ---------------------------------------------------------------------------
 
@@ -2938,7 +3168,9 @@ function Install-HikariTarget {
     # the original) is marked, so the rotation keeps it for good.
     $backup = ''
     if (Test-Path -LiteralPath $config -PathType Container) {
-        $hadRecord = Test-Path -LiteralPath (Join-HikariPath $config $script:RecordName)
+        # A record of sosc counts too: its first backup, from before sosc, is the original.
+        $hadRecord = (Test-Path -LiteralPath (Join-HikariPath $config $script:RecordName)) -or
+            (Test-Path -LiteralPath (Join-HikariPath $config $script:SoscRecordName))
         try { $backup = New-HikariBackup -ConfigDir $config -Stamp $Stamp }
         catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
         if ($backup) {
@@ -2954,6 +3186,7 @@ function Install-HikariTarget {
     }
 
     try {
+        Invoke-HikariSoscMigration $config
         $old = Read-HikariRecord $config
         $oldValues = @{}
         $oldDisabled = @()
@@ -3178,6 +3411,7 @@ function Uninstall-HikariTarget {
     if ($backup) { Write-HikariInfo (T 'backup_done' @($backup)) }
 
     try {
+        Invoke-HikariSoscMigration $config
         $record = Read-HikariRecord $config
         $values = @{}
         $disabled = @()
@@ -3389,7 +3623,9 @@ function Get-HikariKindLabel {
 function Get-HikariCandidateTags {
     param($Candidate)
     $tags = @()
-    if ($Candidate.Installed -and $Candidate.Manual) { $tags += (T 'tag_manual') }
+    $sosc = $Candidate.PSObject.Properties['Sosc']
+    if ($null -ne $sosc -and $sosc.Value) { $tags += (T 'tag_sosc') }
+    elseif ($Candidate.Installed -and $Candidate.Manual) { $tags += (T 'tag_manual') }
     elseif ($Candidate.Installed) { $tags += (T 'tag_installed' @($Candidate.InstalledVersion)) }
     if (-not $Candidate.Writable) { $tags += (T 'tag_readonly') }
     if (-not $Candidate.Exists) { $tags += (T 'tag_new') }
