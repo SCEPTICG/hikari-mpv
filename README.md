@@ -222,7 +222,7 @@ With `pretty=yes` (the default) a title taken from `filename` is tidied up: dots
 | `Show.S00E03.mkv` | `Show · Especial E03` (season 0 holds the specials) |
 | `Movie.Name.2023.1080p.BluRay.x264.mkv` | `Movie Name (2023)` |
 
-Recognised markers: `S01E01`, `s1e1`, `S01E01v2`, `S01E01-E02`, `E01`, `EP01`, `Episode 01` and anime-style ` - 01` / ` - 01v2`. A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...); if nothing sensible is left, the name is shown as it comes. The path-segment fallback and playlist titles are never changed. Set `pretty=no` to get the filename as it comes, without its video extension.
+Recognised markers: `S01E01`, `s1e1`, `S01E01v2`, `S01E01-E02`, `E01`, `EP01`, `Episode 01` and anime-style ` - 01` / ` - 01v2`. A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...); if nothing sensible is left, the name is shown as it comes. The path-segment fallback and playlist titles are never changed. A name written all in lower case, as some groups do (Erai-raws calls one series just `jukishi`), gets a capital first letter (`Jukishi · E15`); a name with any capital letter is left as it was written. Only the filename is available: the full series title (which Seanime knows) is not passed to mpv. Set `pretty=no` to get the filename as it comes, without its video extension.
 
 Disable the whole script with `enabled=no` in `script-opts/sosc-title.conf`.
 
