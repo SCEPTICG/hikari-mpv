@@ -86,6 +86,7 @@ sosc_defaults() {
         'Alt+p|script-binding sosc_palettes/open-menu'
         'Alt+s|script-binding sosc_skip/skip'
         'Alt+t|script-binding sosc_subs/open-menu'
+        'Alt+u|script-binding sosc_update/open-menu'
     )
     MPV_CONF_LINES=(
         'osc=no'
@@ -111,6 +112,9 @@ sosc_defaults() {
     # script-opts not named sosc-*: removed on uninstall only if sosc put them there.
     SHARED_CONFS=('uosc.conf' 'thumbfast.conf')
     RECORD_NAME='sosc-installed.txt'
+    # What sosc-update.lua saves (last check, latest version, dismissed one):
+    # state, not a choice. Kept on update, removed on uninstall like the record.
+    UPDATE_STATE='sosc-update.txt'
     DISABLED_DIR='scripts-desactivados'
     ORIGINALS_DIR='sosc-originales'
     # What the backup copies: only what the installer can change.
@@ -2624,6 +2628,9 @@ uninstall_steps() {
     done
     remove_item "$CFG/$ORIGINALS_DIR" "$CFG" || return 1
     remove_item "$CFG/$RECORD_NAME" "$CFG" || return 1
+    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp"; do
+        if [ -f "$CFG/$f" ] || [ -L "$CFG/$f" ]; then remove_item "$CFG/$f" "$CFG" || return 1; fi
+    done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do
         if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" -type f -print 2>/dev/null | head -n 1)" ]; then
             remove_item "$CFG/$d" "$CFG" || return 1

@@ -14,8 +14,9 @@ https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
 - **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
 - **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automático*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
 - **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
+- **Update check**: a short notice and a button when a new sosc version is out, with its release notes and the update command one click away. It never updates anything by itself, and it can be turned off.
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*).
+The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar sosc*).
 
 ## Requirements
 
@@ -107,11 +108,11 @@ For each folder it:
 3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: sosc's is.
 4. Copies the sosc scripts and `script-opts`. `sosc-palette.conf` and `sosc-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
 5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `sosc-upscale.conf` if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in *Automático*.
-6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, and `Ctrl+0` to `Ctrl+7` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
+6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, `Alt+u`, and `Ctrl+0` to `Ctrl+7` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
 7. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
 8. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
-Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as sosc left them), and whether to delete your saved choices. A file that had no line break at its end gets it back that way.
+Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as sosc left them), and whether to delete your saved choices. `sosc-update.txt`, where the update check keeps its state, goes without asking, like `sosc-installed.txt`; updating keeps it. A file that had no line break at its end gets it back that way.
 
 If uosc goes and your own `mpv.conf` (outside the sosc block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# sosc: ` in front of it. With `-Yes` it only warns.
 
@@ -158,11 +159,12 @@ To check it before running it, download `sosc.sh` and `SHA256SUMS` from the [rel
 | `Alt+p` | Palette menu |
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
 | `Alt+t` | Subtitle menu (style, size, height) |
+| `Alt+u` | New sosc version: release notes, update command (see [Update check](#update-check)) |
 | `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when sosc installed Anime4K) |
 | `Ctrl+7` | Anime4K *Automático*: the mode from each video's resolution |
 | `Ctrl+0` | Anime4K off |
 
-The controls bar has up to four sosc buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed and palettes. The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
+The controls bar has up to five sosc buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed, palettes and *Actualizar sosc* (download icon, only when a new sosc version is out). The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
 
 ## Configuration
 
@@ -174,6 +176,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
 | `script-opts/sosc-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
 | `script-opts/sosc-title.conf` | Stream titles: on/off and tidying of release names. |
+| `script-opts/sosc-update.conf` | Update check: on/off and hours between checks. |
 | `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
 Updating sosc replaces the `script-opts` files above with sosc's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `sosc-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked sosc block is.
@@ -309,6 +312,26 @@ When the ending is the last chapter, skipping it moves on to the next playlist e
 
 The button follows the active palette (background and border from uosc's `background` and `foreground`, filled with `foreground` on hover). Position, size and opacity are set in `script-opts/sosc-skip.conf`. To use another key, bind `script-binding sosc_skip/skip` in `input.conf`.
 
+## Update check
+
+`sosc-update.lua` tells you when a new version of sosc is out. It only tells you: it never downloads or installs anything by itself.
+
+When there is one, opening a file shows *sosc 0.3.1 disponible · Alt+u* for a few seconds, and an *Actualizar sosc* button (download icon) appears in the controls bar, before *fullscreen*. The button, or `Alt+u`, opens a menu with:
+
+- **Ver novedades de la 0.3.1**: opens that version's release page on GitHub in your browser.
+- **Copiar comando de actualización**: copies the update command, the same one as in [Install](#install): `irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex` on Windows (paste it into PowerShell), `curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash` on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.
+- **No avisar de esta versión**: no more notice or button for that version. The next one is announced as usual, and `Alt+u` still opens the menu.
+
+How it checks: on the first file you open after starting mpv (never at start-up, so nothing waits for it), and at most once a day, sosc runs `curl` in the background to ask `https://github.com/SCEPTICG/sosc/releases/latest` where it points, and reads the version from the answer. That is the only request: no GitHub API, no account, nothing about you or your files is sent beyond what any visit to that page sends (your IP address and curl's name). Without `curl` or without network nothing is shown, and it tries again the next day. The installed version comes from `sosc-installed.txt`, which the installer writes; a copy installed by hand or from the repository (`dev`) is never checked. The time of the last check, the latest version found and the one you dismissed are kept in `sosc-update.txt` in the config folder. If that file cannot be written (a read-only config folder), it still asks only once per mpv session, but every new session asks again. On Windows it runs `curl.exe` (and, from the menu, `cmd.exe`, `clip.exe` and PowerShell) only from the `System32` folder of Windows, never from mpv's folder or the video's.
+
+It is on by default. To turn it off, set `enabled=no` in `script-opts/sosc-update.conf`; updating sosc replaces that file, so to keep it off for good add this line to your own `mpv.conf` instead (outside the sosc block):
+
+```
+script-opts-append=sosc-update-enabled=no
+```
+
+`interval_hours` in the same file sets the hours between checks (24 by default, at least 1). To use another key, bind `script-binding sosc_update/open-menu` in `input.conf`.
+
 ## Thumbnails
 
 Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On macOS the installer always writes it (`mpv_path=/opt/homebrew/bin/mpv`, say): mpv started from Finder or another app does not find `mpv` in its `PATH`, and the thumbnails come out black. On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
@@ -324,6 +347,7 @@ lua tests/test_speed.lua
 lua tests/test_skip.lua
 lua tests/test_subs.lua
 lua tests/test_upscale.lua
+lua tests/test_update.lua
 pwsh -NoProfile -File tests/install.Tests.ps1
 bash tests/install.test.sh
 bash tests/make-release.test.sh

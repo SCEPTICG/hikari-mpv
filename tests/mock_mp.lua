@@ -17,6 +17,9 @@ M.sections = {}      -- input section name -> {bindings, flags, enabled, enable_
 M.clock = 0          -- what mp.get_time returns; move it with M.advance
 M.timers = {}        -- pending mp.add_timeout timers
 M.native_sets = {}   -- every mp.set_property_native call, as {name, value}
+M.async = {}         -- pending mp.command_native_async calls, as {cmd, cb}; see M.finish_async
+M.set_fails = {}     -- property name -> true: mp.set_property fails for it
+M.files = {}        -- path -> mp.utils.file_info answer (nil: the file does not exist)
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -54,6 +57,7 @@ function M.install(script_name)
 	M.observers, M.overlays, M.sections = {}, {}, {}
 	M.clock, M.timers = 0, {}
 	M.native_sets = {}
+	M.async, M.set_fails, M.files = {}, {}, {}
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
@@ -62,6 +66,11 @@ function M.install(script_name)
 		commandv = function(...) table.insert(M.commands, {...}) end,
 		command_native = function(cmd)
 			if cmd[1] == 'expand-path' then return M.expand[cmd[2]] or cmd[2] end
+		end,
+		-- Kept until the test answers it with M.finish_async.
+		command_native_async = function(cmd, cb)
+			table.insert(M.async, {cmd = cmd, cb = cb or function() end})
+			return #M.async
 		end,
 		osd_message = function(text) table.insert(M.osd, text) end,
 		add_key_binding = function(key, name, fn) M.bindings[name] = fn end,
@@ -130,6 +139,7 @@ function M.install(script_name)
 		-- Like mpv: file-local-options/<name> sets <name> and remembers the old
 		-- value, which end_file() puts back.
 		set_property = function(name, value)
+			if M.set_fails[name] then return nil, 'property unavailable' end
 			local option = name:match('^file%-local%-options/(.+)$')
 			if option then
 				if M.backups[option] == nil then M.backups[option] = M.props[option] or '' end
@@ -142,7 +152,10 @@ function M.install(script_name)
 	package.loaded['mp'] = mp
 	package.loaded['mp.msg'] = {warn = logger('warn'), error = logger('error'), info = logger('info'),
 		verbose = logger('info'), debug = logger('info')}
-	package.loaded['mp.utils'] = {format_json = function(v) return format_json(v) end}
+	package.loaded['mp.utils'] = {
+		format_json = function(v) return format_json(v) end,
+		file_info = function(path) return M.files[path] end,
+	}
 	package.loaded['mp.options'] = {
 		read_options = function(tbl, identifier)
 			for k, default in pairs(tbl) do
@@ -178,6 +191,16 @@ function M.advance(seconds)
 		end
 	end
 	M.timers = pending
+end
+
+-- Answers the oldest pending mp.command_native_async call as mpv would:
+-- finish_async(true, {status = 0, stdout = '...'}) or finish_async(false, nil, 'error').
+-- Returns the command it answered.
+function M.finish_async(success, result, err)
+	local call = table.remove(M.async, 1)
+	assert(call, 'no pending async command')
+	call.cb(success, result, err)
+	return call.cmd
 end
 
 -- Simulates the end of the current file: file-local options go back.
