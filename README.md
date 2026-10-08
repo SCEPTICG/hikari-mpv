@@ -2,6 +2,10 @@
 
 A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https://github.com/tomasklaen/uosc), with its own colour palettes and a few extras for watching series and anime.
 
+https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
+
+<sub>A one-minute showreel of sosc, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. sosc is not affiliated with them.</sub>
+
 - **Palettes**: 14 colour palettes for uosc, including sosc's own, SCEPTIC, picked from a menu and applied straight away.
 - **Skip button**: a *Saltar opening / intro / ending* button while a chapter looks like an opening, intro or ending.
 - **Stream titles**: readable titles for streamed URLs, with the access token kept out of the title bar.
