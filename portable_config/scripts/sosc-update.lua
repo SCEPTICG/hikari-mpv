@@ -87,6 +87,10 @@ local CURL_TIMEOUT = 10        -- seconds, --max-time
 local MAX_HEADERS = 65536      -- bytes of curl output looked at
 local MAX_STATE = 4096         -- bytes of the state file and record read
 local NOTICE_SECONDS = 5
+-- The notice waits this long after the file loads: players such as AnimeJaNai
+-- show the media title on the OSD as a file starts, and mpv shows one OSD
+-- message at a time, so an earlier notice would be replaced straight away.
+local NOTICE_DELAY = 4
 local DEFAULT_INTERVAL = 24
 local MIN_INTERVAL, MAX_INTERVAL = 1, 24 * 365
 
@@ -341,6 +345,8 @@ local installed = nil   -- installed version, read on the first file
 local state = {}        -- what read_state returned, kept up to date
 local checked = false   -- the first file-loaded has been handled
 local notified = nil    -- version the notice was shown for this session
+local loaded_at = nil   -- mp.get_time() of the first file-loaded
+local notice_timer = nil -- pending delayed notice
 
 -- The newer version there is, dismissed or not; nil when none is known.
 local function pending_version()
@@ -359,14 +365,23 @@ local function set_button(on)
 	mp.set_property_native(AVAILABLE_PROP, on and true or false)
 end
 
--- Button on or off, and the notice once per session and version.
-local function announce()
+local function show_notice()
+	notice_timer = nil
 	local v = notice_version()
-	set_button(v ~= nil)
 	if v and notified ~= v then
 		notified = v
 		mp.osd_message('sosc ' .. v .. ' disponible · Alt+u', NOTICE_SECONDS)
 	end
+end
+
+-- Button on or off at once; the notice once per session and version, no
+-- sooner than NOTICE_DELAY seconds after the file loaded.
+local function announce()
+	local v = notice_version()
+	set_button(v ~= nil)
+	if not v or notified == v or notice_timer then return end
+	local wait = (loaded_at or mp.get_time()) + NOTICE_DELAY - mp.get_time()
+	if wait > 0 then notice_timer = mp.add_timeout(wait, show_notice) else show_notice() end
 end
 
 -- ---------------------------------------------------------------------------
@@ -466,6 +481,7 @@ end
 local function on_file_loaded()
 	if checked then return end
 	checked = true
+	loaded_at = mp.get_time()
 	if not opts.enabled then return end
 	installed = installed_version()
 	if not installed then
