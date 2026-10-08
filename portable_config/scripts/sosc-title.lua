@@ -305,6 +305,15 @@ local function join_words(tokens, stop)
 	return table.concat(words, ' ', first, last)
 end
 
+-- Some groups name a series in lower case (Erai-raws: `jukishi`). A name with
+-- no capital letter at all gets one at its start (`Jukishi`); a name with any
+-- capital (`DanMachi`, `sousou no Frieren`) is left as the group wrote it.
+-- ASCII only: `%l` and `%u` do not see accented letters.
+local function capitalize(title)
+	if title:find('%u') or not title:find('^%l') then return title end
+	return (title:gsub('^%l', string.upper))
+end
+
 -- Turns a release name into `Series · T1 E01`, `Series · E05` or, with no
 -- episode marker, the name up to its technical tail with dots as spaces.
 -- Falls back to `name` itself when nothing sensible is left. Expects
@@ -317,7 +326,7 @@ local function pretty_title(name)
 		if label then
 			local series = join_words(tokens, i)
 			if series == '' then return name end
-			return series .. ' · ' .. label
+			return capitalize(series) .. ' · ' .. label
 		end
 	end
 	-- No marker (a film): cut at the first strong technical word that is not
@@ -345,6 +354,7 @@ local function pretty_title(name)
 	end
 	local title = join_words(tokens, year_at or stop)
 	if title == '' then return name end
+	title = capitalize(title)
 	if year_at then title = title .. ' (' .. tokens[year_at].text .. ')' end
 	return title
 end
