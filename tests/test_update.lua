@@ -49,9 +49,13 @@ end
 local FAKE_BIN = tmp_path()
 assert(os.execute('mkdir -p "' .. FAKE_BIN .. '"'))
 write(FAKE_BIN .. '/curl', '#!/bin/sh\nexit 1\n')
+-- SystemRoot as on Windows, whatever the machine running the tests.
+local SYSTEM32 = 'C:\\Windows\\System32'
+local fake_env = {SystemRoot = 'C:\\Windows'}
 local system_getenv = os.getenv
 os.getenv = function(name)
 	if name == 'PATH' then return FAKE_BIN end
+	if name == 'SystemRoot' then return fake_env.SystemRoot end
 	return system_getenv(name)
 end
 
@@ -72,6 +76,7 @@ local function load(version, state_text, script_opts)
 	if state_text then write(env.state, state_text) end
 	mock.expand['~~/sosc-installed.txt'] = env.record
 	mock.expand['~~/sosc-update.txt'] = env.state
+	mock.files[SYSTEM32 .. '\\curl.exe'] = {is_file = true}
 	SOSC_UPDATE_TEST = true
 	local t = assert(loadfile(SCRIPT))()
 	t.set_now(function() return env.time end)
@@ -213,6 +218,7 @@ test('curl command: headers only, no redirects, short timeout, https only', func
 	eq(cmd.capture_stdout, true, 'capture_stdout')
 	local args = table.concat(cmd.args, ' ')
 	eq(cmd.args[1], 'curl')
+	eq(cmd.args[2], '-q', 'no .curlrc: -q first')
 	eq(cmd.args[#cmd.args], LATEST_URL, 'url last')
 	assert(args:find('--head', 1, true), args)
 	assert(args:find('--max-time 10', 1, true), args)
@@ -333,7 +339,9 @@ test('curl in PATH is found; on Windows PATH is not searched', function()
 		mock.props.platform = 'windows'
 		os.getenv = function(name) if name == 'PATH' then return '' end return real_getenv(name) end
 		file_loaded()
-		eq(#mock.async, 1, 'Windows: curl run without looking')
+		eq(#mock.async, 1, 'Windows: curl run without looking in PATH')
+		eq(mock.async[1].cmd.args[1], SYSTEM32 .. '\\curl.exe', 'absolute path')
+		eq(mock.async[1].cmd.args[2], '-q')
 		cleanup(env)
 	end)
 	os.getenv = real_getenv
@@ -485,7 +493,7 @@ end)
 test('open notes: the command per platform, the URL of the version', function()
 	local url = 'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1'
 	for platform, want in pairs({
-		windows = 'cmd /c start  ' .. url, darwin = 'open ' .. url, linux = 'xdg-open ' .. url, freebsd = 'xdg-open ' .. url,
+		windows = SYSTEM32 .. '\\cmd.exe /c start  ' .. url, darwin = 'open ' .. url, linux = 'xdg-open ' .. url, freebsd = 'xdg-open ' .. url,
 	}) do
 		local t, env = load('0.2.1', 'last_check=' .. (T0 - 3600) .. '\nlatest=0.3.1\n')
 		mock.props.platform = platform
@@ -541,7 +549,7 @@ end)
 
 test('copy: without the property, the tools of each platform in turn, via stdin', function()
 	local cases = {
-		windows = {'clip', 'powershell'},
+		windows = {SYSTEM32 .. '\\clip.exe', SYSTEM32 .. '\\WindowsPowerShell\\v1.0\\powershell.exe'},
 		darwin = {'pbcopy'},
 		linux = {'xclip', 'xsel'},
 	}
@@ -552,7 +560,8 @@ test('copy: without the property, the tools of each platform in turn, via stdin'
 		mock.messages['copy-command']()
 		for i, tool in ipairs(tools) do
 			local cmd = mock.async[1].cmd
-			eq(cmd.args[1], tool, platform .. ' tool ' .. i)
+			local program = platform == 'linux' and cmd.args[4] or cmd.args[1]
+			eq(program, tool, platform .. ' tool ' .. i)
 			eq(cmd.stdin_data, t.update_command(platform), 'stdin')
 			eq(cmd.capture_stdout, false, 'not captured')
 			mock.finish_async(true, {status = 1, error_string = ''})
@@ -582,11 +591,107 @@ test('copy: wl-copy first under Wayland', function()
 	os.getenv = function(name) if name == 'WAYLAND_DISPLAY' then return 'wayland-0' end return real_getenv(name) end
 	local ok, err = pcall(function()
 		local tools = t.clipboard_tools('linux')
-		eq(tools[1][1], 'wl-copy')
-		eq(tools[2][1], 'xclip')
+		eq(tools[1][4], 'wl-copy')
+		eq(tools[2][4], 'xclip')
 	end)
 	os.getenv = real_getenv
 	assert(ok, err)
+end)
+
+test('copy on Linux: each tool through sh, stdout and stderr to /dev/null', function()
+	local t = load()
+	local real_getenv = os.getenv
+	os.getenv = function(name) if name == 'WAYLAND_DISPLAY' then return nil end return real_getenv(name) end
+	local ok, err = pcall(function()
+		local tools = t.clipboard_tools('linux')
+		eq(#tools, 2)
+		eq(table.concat(tools[1], '|'), 'sh|-c|exec "$0" "$@" >/dev/null 2>&1|xclip|-selection|clipboard')
+		eq(table.concat(tools[2], '|'), 'sh|-c|exec "$0" "$@" >/dev/null 2>&1|xsel|--clipboard|--input')
+		os.getenv = function(name) if name == 'WAYLAND_DISPLAY' then return 'wayland-0' end return real_getenv(name) end
+		tools = t.clipboard_tools('linux')
+		eq(table.concat(tools[1], '|'), 'sh|-c|exec "$0" "$@" >/dev/null 2>&1|wl-copy')
+		-- macOS and Windows run their programs directly.
+		eq(table.concat(t.clipboard_tools('darwin')[1], '|'), 'pbcopy')
+		eq(t.clipboard_tools('windows')[1][1], SYSTEM32 .. '\\clip.exe')
+	end)
+	os.getenv = real_getenv
+	assert(ok, err)
+end)
+
+test('SystemRoot: only a plain drive path is used', function()
+	local t = load()
+	local good = {['C:\\Windows'] = 'C:\\Windows\\System32', ['C:\\Windows\\'] = 'C:\\Windows\\System32',
+		['D:\\WINNT'] = 'D:\\WINNT\\System32', ['C:\\Program Files (x86)\\W'] = 'C:\\Program Files (x86)\\W\\System32'}
+	local bad = {false, '', 'Windows', '\\Windows', 'C:', 'C:\\', 'C:Windows', 'C:/Windows', '\\\\server\\share',
+		'C:\\Win"dows', 'C:\\Windows\n', 'C:\\%x%', 'C:\\a|b', 'C:\\a\\\\b', 'C:\\Windows\\\\', 'CC:\\Windows'}
+	local saved = fake_env.SystemRoot
+	local ok, err = pcall(function()
+		for value, want in pairs(good) do
+			fake_env.SystemRoot = value
+			eq(t.system32(), want, value)
+		end
+		for _, value in ipairs(bad) do
+			fake_env.SystemRoot = value or nil
+			eq(t.system32(), nil, tostring(value))
+		end
+	end)
+	fake_env.SystemRoot = saved
+	assert(ok, err)
+end)
+
+test('Windows without a usable SystemRoot: nothing is ever started', function()
+	local saved = fake_env.SystemRoot
+	local ok, err = pcall(function()
+		for _, value in ipairs({false, 'C:', '..\\evil', 'C:\\x"y'}) do
+			fake_env.SystemRoot = value or nil
+			local t, env = load('0.2.1', 'last_check=' .. (T0 - 2 * DAY) .. '\nlatest=0.3.1\n')
+			mock.props.platform = 'windows'
+			file_loaded()
+			eq(#mock.async, 0, 'no curl: ' .. tostring(value))
+			eq(button(), true, 'saved version still announced')
+			eq(t.curl_program('windows'), nil)
+			eq(t.open_url_args('https://github.com/x', 'windows'), nil)
+			eq(#t.clipboard_tools('windows'), 0)
+			mock.messages['open-notes']()
+			eq(#mock.async, 0, 'no cmd')
+			assert(mock.osd[#mock.osd]:find('releases/tag/v0.3.1', 1, true), mock.osd[#mock.osd])
+			mock.set_fails['clipboard/text'] = true
+			mock.messages['copy-command']()
+			eq(#mock.async, 0, 'no clip, no powershell')
+			assert(mock.osd[#mock.osd]:find('No se pudo copiar', 1, true), mock.osd[#mock.osd])
+			cleanup(env)
+		end
+	end)
+	fake_env.SystemRoot = saved
+	assert(ok, err)
+end)
+
+test('Windows without System32\\curl.exe: no subprocess, no log noise', function()
+	local _, env = load('0.2.1')
+	mock.props.platform = 'windows'
+	mock.files = {}
+	file_loaded()
+	eq(#mock.async, 0, 'no curl run')
+	eq(#mock.logs.warn, 0, 'no warning')
+	cleanup(env)
+	_, env = load('0.2.1')
+	mock.props.platform = 'windows'
+	mock.files[SYSTEM32 .. '\\curl.exe'] = {is_file = false}
+	file_loaded()
+	eq(#mock.async, 0, 'a folder named curl.exe is not curl')
+	cleanup(env)
+end)
+
+test('state file: a link left at the .tmp path is replaced, not followed', function()
+	local t = load()
+	local target, path = tmp_path(), tmp_path()
+	write(target, 'untouched')
+	assert(os.execute('ln -s "' .. target .. '" "' .. path .. '.tmp"'))
+	assert(t.write_file_atomic(path, 'new\n'))
+	eq(read(target), 'untouched', 'link target')
+	eq(read(path), 'new\n')
+	eq(read(path .. '.tmp'), nil, 'no .tmp left')
+	os.remove(target); os.remove(path)
 end)
 
 test('platform: mpv property, else a guess', function()

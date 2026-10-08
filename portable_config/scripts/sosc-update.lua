@@ -28,8 +28,14 @@
 --   exactly v<digits>.<digits>.<digits> (at most 9 digits each); versions are
 --   compared as numbers (0.10.0 > 0.9.9). curl ships with Windows 10/11 and
 --   macOS and almost every Linux; without it, or without network, nothing is
---   shown (only a verbose log line; outside Windows curl is looked for in
---   PATH first, so mpv does not log a failed subprocess either).
+--   shown (only a verbose log line; curl is looked for first, so mpv does not
+--   log a failed subprocess either). `-q` keeps curl from reading a .curlrc.
+-- - Programs on Windows: always by absolute path under %SystemRoot%\System32
+--   (curl.exe, cmd.exe, clip.exe, WindowsPowerShell\v1.0\powershell.exe).
+--   mpv starts them with CreateProcessW, which looks for a bare name in mpv's
+--   folder and in the current folder (the video's, after a double click)
+--   before System32: a curl.exe next to a video would run. A SystemRoot that
+--   is not a plain drive path (C:\Windows) means no program is started at all.
 -- - When: on the first file-loaded after start-up, never at start-up itself,
 --   and at most once every interval_hours (24 by default). The time of the
 --   last attempt is saved, failed or not, so there is at most one request per
@@ -41,7 +47,9 @@
 --   `dismissed=X.Y.Z`, written through a temporary file and a rename. Unknown,
 --   broken or invalid lines are ignored (a corrupt file just means "never
 --   checked"). mpv.conf must not include it: it is not an mpv config file.
--- - Opening the release page: `cmd /c start "" <url>` on Windows, `open` on
+--   If it cannot be written, there is still only one request per mpv session
+--   (only the first file-loaded checks), but each new session asks again.
+-- - Opening the release page: `cmd.exe /c start "" <url>` on Windows, `open` on
 --   macOS, `xdg-open` elsewhere, detached. The URL is built here from a
 --   validated version, so it only ever has [A-Za-z0-9:/._-] in it: nothing cmd
 --   could read as an operator.
@@ -49,7 +57,10 @@
 --   setting it works; otherwise clip.exe, then PowerShell's Set-Clipboard on
 --   Windows, pbcopy on macOS, and wl-copy (Wayland), xclip or xsel elsewhere,
 --   the text going in through stdin. If all fail, the OSD shows the command so
---   it can be typed by hand.
+--   it can be typed by hand. xclip, wl-copy and xsel leave a process in the
+--   background holding the text, and mpv waits until every copy of the
+--   subprocess's stdout and stderr is closed, captured or not: they run
+--   through `sh -c 'exec "$0" "$@" >/dev/null 2>&1'` so that process holds none.
 -- - Platform: the `platform` property (mpv 0.36+); on older mpv, `\` as path
 --   separator means Windows and /System/Library/CoreServices means macOS.
 
@@ -194,6 +205,9 @@ end
 -- Writes through a temporary file and a rename so a crash never leaves half a file.
 local function write_file_atomic(path, content)
 	local tmp = path .. '.tmp'
+	-- A leftover .tmp (or a link planted there) goes first, so io.open creates
+	-- a new file instead of writing through whatever was there.
+	os.remove(tmp)
 	local file, err = io.open(tmp, 'wb')
 	if not file then return false, err end
 	local ok, write_err = file:write(content)
@@ -237,6 +251,24 @@ local function platform()
 	return 'linux'
 end
 
+-- Windows: the System32 folder from SystemRoot, nil unless SystemRoot is a
+-- plain drive path such as C:\Windows (one trailing backslash is dropped).
+local function system32()
+	local root = os.getenv('SystemRoot')
+	if type(root) ~= 'string' then return nil end
+	root = root:gsub('\\$', '')
+	if not root:match('^%a:\\[^%c"/:*?<>|%%]+$') or root:match('\\\\') or root:match('\\$') then return nil end
+	return root .. '\\System32'
+end
+
+-- Windows: the absolute path of a program in System32, nil when SystemRoot
+-- is not usable.
+local function windows_program(relative)
+	local dir = system32()
+	if not dir then return nil end
+	return dir .. '\\' .. relative
+end
+
 local function update_command(p)
 	return (p or platform()) == 'windows' and UPDATE_COMMANDS.windows or UPDATE_COMMANDS.unix
 end
@@ -258,27 +290,46 @@ end
 local function open_url_args(url, p)
 	if type(url) ~= 'string' or not url:match('^https://[%w:/._-]+$') then return nil end
 	p = p or platform()
-	if p == 'windows' then return {'cmd', '/c', 'start', '', url} end
+	if p == 'windows' then
+		local cmd = windows_program('cmd.exe')
+		if not cmd then return nil end
+		return {cmd, '/c', 'start', '', url}
+	end
 	if p == 'darwin' then return {'open', url} end
 	return {'xdg-open', url}
 end
 
+-- A Linux clipboard program with stdout and stderr sent to /dev/null, so the
+-- copy it leaves in the background does not keep mpv's pipes open.
+local QUIET = 'exec "$0" "$@" >/dev/null 2>&1'
+local function quiet(...) return {'sh', '-c', QUIET, ...} end
+
+-- The program a clipboard command runs, for the log.
+local function tool_name(tool)
+	if tool[1] == 'sh' and tool[3] == QUIET then return tool[4] end
+	return tool[1]
+end
+
 -- The programs that can take text on stdin into the clipboard, in order.
+-- On Windows none when SystemRoot is not usable.
 local function clipboard_tools(p)
 	p = p or platform()
 	if p == 'windows' then
+		local clip = windows_program('clip.exe')
+		local powershell = windows_program('WindowsPowerShell\\v1.0\\powershell.exe')
+		if not clip or not powershell then return {} end
 		return {
-			{'clip'},
-			{'powershell', '-NoProfile', '-NonInteractive', '-Command',
+			{clip},
+			{powershell, '-NoProfile', '-NonInteractive', '-Command',
 				'Set-Clipboard -Value ([Console]::In.ReadToEnd())'},
 		}
 	end
 	if p == 'darwin' then return {{'pbcopy'}} end
 	local tools = {}
 	local wayland = os.getenv('WAYLAND_DISPLAY')
-	if wayland and wayland ~= '' then tools[#tools + 1] = {'wl-copy'} end
-	tools[#tools + 1] = {'xclip', '-selection', 'clipboard'}
-	tools[#tools + 1] = {'xsel', '--clipboard', '--input'}
+	if wayland and wayland ~= '' then tools[#tools + 1] = quiet('wl-copy') end
+	tools[#tools + 1] = quiet('xclip', '-selection', 'clipboard')
+	tools[#tools + 1] = quiet('xsel', '--clipboard', '--input')
 	return tools
 end
 
@@ -338,9 +389,8 @@ local function check_due(t)
 end
 
 -- Is there an executable `name` in PATH? Only asked outside Windows (where
--- curl.exe ships with the system and PATH entries can be quoted or hold
--- variables), so a missing curl means no attempt at all instead of mpv logging
--- "Subprocess failed" at every check.
+-- curl.exe is taken from System32, never from PATH), so a missing curl means
+-- no attempt at all instead of mpv logging "Subprocess failed" at every check.
 local function in_path(name)
 	local path = os.getenv('PATH')
 	if type(path) ~= 'string' or path == '' then return false end
@@ -351,9 +401,24 @@ local function in_path(name)
 	return false
 end
 
-local function curl_args()
+-- The curl program to run: System32\curl.exe on Windows (only when it is
+-- there), `curl` from PATH elsewhere. nil when there is none.
+local function curl_program(p)
+	p = p or platform()
+	if p == 'windows' then
+		local curl = windows_program('curl.exe')
+		local info = curl and utils.file_info(curl)
+		if not info or not info.is_file then return nil end
+		return curl
+	end
+	if not in_path('curl') then return nil end
+	return 'curl'
+end
+
+-- `-q` first: curl must not read the user's .curlrc.
+local function curl_args(program)
 	return {
-		'curl', '--silent', '--show-error', '--head', '--max-time', tostring(CURL_TIMEOUT),
+		program or 'curl', '-q', '--silent', '--show-error', '--head', '--max-time', tostring(CURL_TIMEOUT),
 		'--proto', '=https', '--max-redirs', '0', LATEST_URL,
 	}
 end
@@ -378,8 +443,9 @@ local function on_curl_done(success, result, err)
 end
 
 local function start_check()
-	if platform() ~= 'windows' and not in_path('curl') then
-		msg.verbose('curl not found in PATH: not checking for updates')
+	local curl = curl_program()
+	if not curl then
+		msg.verbose('curl not found: not checking for updates')
 		announce()
 		return
 	end
@@ -389,7 +455,7 @@ local function start_check()
 	save_state(state)
 	mp.command_native_async({
 		name = 'subprocess',
-		args = curl_args(),
+		args = curl_args(curl),
 		playback_only = false,
 		capture_stdout = true,
 		capture_stderr = true,
@@ -473,8 +539,13 @@ end
 local function open_notes()
 	local v = pending_version()
 	local url = release_url(v)
+	if not url then return end
 	local args = open_url_args(url)
-	if not args then return end
+	if not args then
+		msg.warn('Could not open ' .. url .. ': no usable SystemRoot')
+		mp.osd_message('No se pudo abrir el navegador. Las novedades están en:\n' .. url, 10)
+		return
+	end
 	mp.command_native_async({
 		name = 'subprocess', args = args, playback_only = false, detach = true,
 	}, function(success, result)
@@ -493,14 +564,17 @@ local function copy_with_tools(text, tools, i, done)
 	if not tool then return done(false) end
 	mp.command_native_async({
 		name = 'subprocess', args = tool, playback_only = false, stdin_data = text,
-		-- Not captured: xclip and wl-copy stay in the background holding the
-		-- text, and a captured pipe would wait for them.
+		-- Nothing to read from them. This alone does not keep mpv from waiting
+		-- for xclip, wl-copy or xsel: they leave a process in the background
+		-- and mpv waits for every copy of stdout and stderr to close, captured
+		-- or not. clipboard_tools runs them through `sh -c 'exec ... >/dev/null
+		-- 2>&1'` for that.
 		capture_stdout = false, capture_stderr = false,
 	}, function(success, result)
 		if success and type(result) == 'table' and result.status == 0 and result.error_string ~= 'init' then
 			return done(true)
 		end
-		msg.verbose('Clipboard: ' .. tool[1] .. ' failed')
+		msg.verbose('Clipboard: ' .. tool_name(tool) .. ' failed')
 		copy_with_tools(text, tools, i + 1, done)
 	end)
 end
@@ -545,7 +619,8 @@ if SOSC_UPDATE_TEST then
 		installed_version = installed_version, read_state = read_state, state_content = state_content,
 		write_file_atomic = write_file_atomic, platform = platform, update_command = update_command,
 		release_url = release_url, open_url_args = open_url_args, clipboard_tools = clipboard_tools,
-		interval_seconds = interval_seconds, curl_args = curl_args, in_path = in_path, menu_data = menu_data,
+		interval_seconds = interval_seconds, curl_args = curl_args, curl_program = curl_program, in_path = in_path,
+		system32 = system32, menu_data = menu_data,
 		on_file_loaded = on_file_loaded, open_menu = open_menu, open_notes = open_notes,
 		copy_command = copy_command, dismiss = dismiss,
 		set_now = function(fn) now = fn end,
