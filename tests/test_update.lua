@@ -121,7 +121,9 @@ test('Location: strange URLs give nothing', function()
 		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1?x=1',        -- query
 		'https://evil.example/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',          -- other host
 		'http://github.com/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',             -- not https
-		'https://github.com/other/hikari/releases/tag/v9.9.9',               -- other repo
+		'https://github.com/other/hikari-mpv/releases/tag/v9.9.9',               -- other repo
+		'https://github.com/SCEPTICG/sosc/releases/tag/v9.9.9',                  -- the old name (sosc until v0.3.0)
+		'https://github.com/SCEPTICG/hikari/releases/tag/v9.9.9',                -- not the repository's name
 		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v9.9.9/../../x',
 		'/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',                              -- relative
 		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v',
