@@ -547,7 +547,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
 Test-Case 'input.conf: taken keys are reported and left alone' {
     $text = "Alt+p cycle pause`nALT+s script-binding sosc_skip/skip  # mine`n# Alt+t commented`n"
     $b = Get-SoscInputBlock $text
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding sosc_subs/open-menu' 'only Alt+t added'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding sosc_subs/open-menu|Alt+u  script-binding sosc_update/open-menu' 'only Alt+t and Alt+u added'
     Assert-Equal @($b.Taken).Count 1 'taken'
     Assert-Equal $b.Taken[0].Key 'Alt+p' 'taken key'
     Assert-Equal @($b.Same).Count 1 'same'
@@ -926,6 +926,10 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True ($inputAfter.StartsWith($inputConf)) 'user input.conf untouched'
     Assert-True (-not $inputAfter.Contains('Alt+p  script-binding')) 'Alt+p left to the user'
     Assert-True ($inputAfter.Contains("Alt+s  script-binding sosc_skip/skip`n")) 'Alt+s, LF kept'
+    Assert-True ($inputAfter.Contains("Alt+u  script-binding sosc_update/open-menu`n")) 'Alt+u for the update menu'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-update.lua')) -PathType Leaf) 'update check script'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'sosc-update.conf')) -PathType Leaf) 'update check options'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'sosc-update.txt')))) 'update check state not created by the installer'
     Assert-True (-not (Test-HasBom (P @($cfg, 'mpv.conf')))) 'no BOM mpv.conf'
     Assert-True (-not (Test-HasBom (P @($cfg, 'script-opts', 'thumbfast.conf')))) 'no BOM thumbfast.conf'
     $rec = Read-SoscRecord $cfg
@@ -942,7 +946,10 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     $rec2Text = (Get-TestText (P @($cfg, 'sosc-installed.txt'))) + "file=scripts/sosc-removed-feature.lua`r`n"
     Set-TestFile (P @($cfg, 'sosc-installed.txt')) $rec2Text
     Set-TestFile (P @($cfg, 'scripts', 'uosc', 'stale.lua')) '--'
+    $updateState = "last_check=1800000000`nlatest=9.9.9`ndismissed=9.9.9`n"
+    Set-TestFile (P @($cfg, 'sosc-update.txt')) $updateState
     [void](Install-SoscTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-120100')
+    Assert-Equal (Get-TestText (P @($cfg, 'sosc-update.txt'))) $updateState 'update check state kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvAfter 'mpv.conf idempotent'
     Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputAfter 'input.conf idempotent'
     Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'script-opts', 'thumbfast.conf'))), 'mpv_path=')).Count 1 'one mpv_path'
@@ -954,7 +961,11 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-Equal @($rec.Disabled).Count 3 'disabled list kept'
 
     # Uninstall with default answers.
+    Set-TestFile (P @($cfg, 'sosc-update.txt.tmp')) 'x'
     [void](Uninstall-SoscTarget -Candidate $cand -Stamp '20261005-120200')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'sosc-update.txt')))) 'update check state gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'sosc-update.txt.tmp')))) 'update check temporary file gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'sosc-update.conf')))) 'update check options gone'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvConf 'mpv.conf as before'
     Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputConf 'input.conf as before'
     Assert-Equal @(Get-ChildItem -LiteralPath (P @($cfg, 'scripts')) -Filter 'sosc-*').Count 0 'sosc scripts gone'

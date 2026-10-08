@@ -186,7 +186,8 @@ $script:MpvConfLines = @(
 $script:InputBindings = @(
     @{ Key = 'Alt+p'; Command = 'script-binding sosc_palettes/open-menu' },
     @{ Key = 'Alt+s'; Command = 'script-binding sosc_skip/skip' },
-    @{ Key = 'Alt+t'; Command = 'script-binding sosc_subs/open-menu' }
+    @{ Key = 'Alt+t'; Command = 'script-binding sosc_subs/open-menu' },
+    @{ Key = 'Alt+u'; Command = 'script-binding sosc_update/open-menu' }
 )
 
 # Files of sosc that only get copied when missing: they hold the user's choices.
@@ -198,6 +199,9 @@ $script:UserChoiceFiles = @('sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale
 $script:SharedConfs = @('uosc.conf', 'thumbfast.conf')
 
 $script:RecordName = 'sosc-installed.txt'
+# What sosc-update.lua saves (last check, latest version, dismissed one):
+# state, not a choice. Kept on update, removed on uninstall like the record.
+$script:UpdateState = 'sosc-update.txt'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'sosc-originales'
 
@@ -3351,6 +3355,10 @@ function Uninstall-SoscTarget {
         }
         Remove-SoscItem -Path (Join-SoscPath $config $script:OriginalsDir) -Root $config
         Remove-SoscItem -Path (Join-SoscPath $config $script:RecordName) -Root $config
+        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'))) {
+            $statePath = Join-SoscPath $config $name
+            if (Test-Path -LiteralPath $statePath -PathType Leaf) { Remove-SoscItem -Path $statePath -Root $config }
+        }
         foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {
             $dir = Join-SoscPath $config $dirName
             if ((Test-Path -LiteralPath $dir -PathType Container) -and
