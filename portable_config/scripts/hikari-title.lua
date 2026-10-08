@@ -1,4 +1,4 @@
--- sosc-title: readable titles for streamed files.
+-- hikari-title: readable titles for streamed files.
 --
 -- Streaming servers such as Seanime hand mpv URLs like
 --   https://host/<uuid>?token=<secret>&filename=Show.S01E01.1080p.mkv
@@ -34,12 +34,12 @@
 --   become `Show Name · T1 E01`. The fallback and playlist titles are never
 --   touched: they are not release names.
 --
--- Options (script-opts/sosc-title.conf): enabled=yes|no, pretty=yes|no
+-- Options (script-opts/hikari-title.conf): enabled=yes|no, pretty=yes|no
 
 local msg = require('mp.msg')
 local options = require('mp.options')
 
-local OPTIONS_ID = 'sosc-title'
+local OPTIONS_ID = 'hikari-title'
 local MAX_CHARS = 150
 -- Raw input kept before decoding: enough for MAX_CHARS 4-byte characters
 -- written as %XX%XX%XX%XX, and a bound on the work done per title.
@@ -454,7 +454,7 @@ end
 mp.register_event('start-file', on_start_file)
 mp.register_event('file-loaded', on_file_loaded)
 
-if SOSC_TITLE_TEST then
+if HIKARI_TITLE_TEST then
 	return {
 		title_for = title_for, url_decode = url_decode, sanitize = sanitize,
 		truncate = truncate, strip_extension = strip_extension, pretty_title = pretty_title,

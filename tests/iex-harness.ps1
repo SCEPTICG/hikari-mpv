@@ -1,4 +1,4 @@
-# Runs install/sosc.ps1 (or a release copy of it) the way a user does without a
+# Runs install/hikari.ps1 (or a release copy of it) the way a user does without a
 # file, and reports what that run left behind in the session. Dot-source it from
 # "pwsh -Command" so that it runs in the session's global scope, like a prompt:
 #
@@ -32,7 +32,7 @@ param(
 )
 
 # The parent test run loads the installer in test mode; this run must not.
-Remove-Item Env:SOSC_INSTALL_TEST -ErrorAction SilentlyContinue
+Remove-Item Env:HIKARI_INSTALL_TEST -ErrorAction SilentlyContinue
 
 $global:__hMap = @{}
 if ($Downloads) {

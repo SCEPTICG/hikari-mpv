@@ -1,29 +1,29 @@
--- sosc-update: tells you when a new sosc release is out. It only tells you:
+-- hikari-update: tells you when a new hikari release is out. It only tells you:
 -- it never downloads or installs anything.
 --
 -- When there is a newer release than the installed one, the first file opened
--- shows "sosc X.Y.Z disponible · Alt+u" for a few seconds, and a button
+-- shows "hikari X.Y.Z disponible · Alt+u" for a few seconds, and a button
 -- appears in uosc's controls bar (uosc.conf shows it while
--- user-data/sosc_update/available is true, mpv 0.36+). The button, or Alt+u,
+-- user-data/hikari_update/available is true, mpv 0.36+). The button, or Alt+u,
 -- opens a menu with: the release notes in the browser, copying the update
 -- command (PowerShell on Windows, a terminal elsewhere) and "No avisar de esta
 -- versión", which stops the notice for that version only.
 --
--- mpv turns this file name into the script name `sosc_update`, so:
---   input.conf:  Alt+u script-binding sosc_update/open-menu
---   options:     script-opts/sosc-update.conf, or
---                script-opts-append=sosc-update-enabled=no in mpv.conf
+-- mpv turns this file name into the script name `hikari_update`, so:
+--   input.conf:  Alt+u script-binding hikari_update/open-menu
+--   options:     script-opts/hikari-update.conf, or
+--                script-opts-append=hikari-update-enabled=no in mpv.conf
 --                (enabled=yes|no, interval_hours=<hours, at least 1>)
 --
 -- Decisions:
--- - Installed version: the `sosc_version=X.Y.Z` line of ~~/sosc-installed.txt,
+-- - Installed version: the `hikari_version=X.Y.Z` line of ~~/hikari-installed.txt,
 --   the record both installers write (the last such line wins, as in the
 --   installers). No record, or a version that is not X.Y.Z (a copy of the
 --   repository says `dev`): nothing is checked and nothing is shown.
 -- - Latest version: no GitHub API (60 requests an hour per address). curl asks
---   for the headers of https://github.com/SCEPTICG/sosc/releases/latest
+--   for the headers of https://github.com/SCEPTICG/hikari-mpv/releases/latest
 --   without following redirects, and the version is the tag of the
---   `Location: https://github.com/SCEPTICG/sosc/releases/tag/vX.Y.Z` header.
+--   `Location: https://github.com/SCEPTICG/hikari-mpv/releases/tag/vX.Y.Z` header.
 --   The answer is not trusted: the whole URL must be exactly that, and the tag
 --   exactly v<digits>.<digits>.<digits> (at most 9 digits each); versions are
 --   compared as numbers (0.10.0 > 0.9.9). curl ships with Windows 10/11 and
@@ -43,7 +43,7 @@
 --   the version found last time is used, without network.
 -- - The request runs as an asynchronous subprocess (playback_only=false, so a
 --   change of file does not kill it), with --max-time 10: playback never waits.
--- - State: ~~/sosc-update.txt, `last_check=<unix time>`, `latest=X.Y.Z`,
+-- - State: ~~/hikari-update.txt, `last_check=<unix time>`, `latest=X.Y.Z`,
 --   `dismissed=X.Y.Z`, written through a temporary file and a rename. Unknown,
 --   broken or invalid lines are ignored (a corrupt file just means "never
 --   checked"). mpv.conf must not include it: it is not an mpv config file.
@@ -70,18 +70,18 @@ local options = require('mp.options')
 
 local script_name = mp.get_script_name()
 
-local OPTIONS_ID = 'sosc-update'
-local RECORD_PATH = '~~/sosc-installed.txt'
-local STATE_PATH = '~~/sosc-update.txt'
-local MENU_TYPE = 'sosc-update'
+local OPTIONS_ID = 'hikari-update'
+local RECORD_PATH = '~~/hikari-installed.txt'
+local STATE_PATH = '~~/hikari-update.txt'
+local MENU_TYPE = 'hikari-update'
 -- uosc shows the controls-bar button only while this is true (see uosc.conf).
-local AVAILABLE_PROP = 'user-data/sosc_update/available'
+local AVAILABLE_PROP = 'user-data/hikari_update/available'
 
-local LATEST_URL = 'https://github.com/SCEPTICG/sosc/releases/latest'
-local TAG_URL_PREFIX = 'https://github.com/SCEPTICG/sosc/releases/tag/'
+local LATEST_URL = 'https://github.com/SCEPTICG/hikari-mpv/releases/latest'
+local TAG_URL_PREFIX = 'https://github.com/SCEPTICG/hikari-mpv/releases/tag/'
 local UPDATE_COMMANDS = {
-	windows = 'irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex',
-	unix = 'curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash',
+	windows = 'irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex',
+	unix = 'curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash',
 }
 local CURL_TIMEOUT = 10        -- seconds, --max-time
 local MAX_HEADERS = 65536      -- bytes of curl output looked at
@@ -183,10 +183,10 @@ local function parse_key_values(content)
 	return values
 end
 
--- The installed sosc version ("X.Y.Z"), nil without a record or for `dev`.
+-- The installed hikari version ("X.Y.Z"), nil without a record or for `dev`.
 local function installed_version()
 	local values = parse_key_values(read_small(expand(RECORD_PATH)))
-	return normalize(values.sosc_version)
+	return normalize(values.hikari_version)
 end
 
 -- Saved state; every field is checked and dropped when invalid.
@@ -199,7 +199,7 @@ local function read_state()
 end
 
 local function state_content(state)
-	local lines = {'# Written by sosc-update.lua: when sosc last looked for a new version. Safe to delete.'}
+	local lines = {'# Written by hikari-update.lua: when hikari last looked for a new version. Safe to delete.'}
 	if state.last_check then lines[#lines + 1] = 'last_check=' .. string.format('%d', state.last_check) end
 	if normalize(state.latest) then lines[#lines + 1] = 'latest=' .. normalize(state.latest) end
 	if normalize(state.dismissed) then lines[#lines + 1] = 'dismissed=' .. normalize(state.dismissed) end
@@ -370,7 +370,7 @@ local function show_notice()
 	local v = notice_version()
 	if v and notified ~= v then
 		notified = v
-		mp.osd_message('sosc ' .. v .. ' disponible · Alt+u', NOTICE_SECONDS)
+		mp.osd_message('hikari ' .. v .. ' disponible · Alt+u', NOTICE_SECONDS)
 	end
 end
 
@@ -485,7 +485,7 @@ local function on_file_loaded()
 	if not opts.enabled then return end
 	installed = installed_version()
 	if not installed then
-		msg.verbose('No released sosc version in ' .. RECORD_PATH .. ': not checking for updates')
+		msg.verbose('No released hikari version in ' .. RECORD_PATH .. ': not checking for updates')
 		return
 	end
 	state = read_state()
@@ -506,7 +506,7 @@ local function menu_data()
 	local dismissed = v ~= nil and v == state.dismissed
 	return {
 		type = MENU_TYPE,
-		title = 'sosc ' .. tostring(v) .. ' disponible',
+		title = 'hikari ' .. tostring(v) .. ' disponible',
 		items = {
 			{
 				title = 'Ver novedades de la ' .. tostring(v),
@@ -531,17 +531,17 @@ end
 
 local function open_menu()
 	if not opts.enabled then
-		mp.osd_message('sosc: el aviso de versiones está desactivado', 3)
+		mp.osd_message('hikari: el aviso de versiones está desactivado', 3)
 		return
 	end
 	if not installed then installed = installed_version() end
 	if not installed then
-		mp.osd_message('sosc: versión instalada desconocida, no se comprueban versiones', 3)
+		mp.osd_message('hikari: versión instalada desconocida, no se comprueban versiones', 3)
 		return
 	end
 	if not checked then state = read_state() end
 	if not pending_version() then
-		mp.osd_message('sosc ' .. installed .. ': no hay ninguna versión nueva', 3)
+		mp.osd_message('hikari ' .. installed .. ': no hay ninguna versión nueva', 3)
 		return
 	end
 	local json, err = utils.format_json(menu_data())
@@ -618,7 +618,7 @@ local function dismiss()
 	save_state(state)
 	set_button(false)
 	mp.commandv('script-message-to', 'uosc', 'close-menu', MENU_TYPE)
-	mp.osd_message('sosc ' .. v .. ': no se volverá a avisar', 3)
+	mp.osd_message('hikari ' .. v .. ': no se volverá a avisar', 3)
 end
 
 set_button(false)
@@ -628,7 +628,7 @@ mp.register_script_message('copy-command', copy_command)
 mp.register_script_message('dismiss', dismiss)
 mp.register_event('file-loaded', on_file_loaded)
 
-if SOSC_UPDATE_TEST then
+if HIKARI_UPDATE_TEST then
 	return {
 		opts = opts, parse_version = parse_version, normalize = normalize, compare_versions = compare_versions,
 		is_newer = is_newer, parse_location = parse_location, parse_key_values = parse_key_values,
