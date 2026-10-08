@@ -1,5 +1,7 @@
 # hikari
 
+> hikari was called **sosc** until v0.3.0. Installing hikari over sosc carries everything over: see [Coming from sosc](#coming-from-sosc).
+
 A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https://github.com/tomasklaen/uosc), with its own colour palettes and a few extras for watching series and anime.
 
 https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
@@ -116,7 +118,18 @@ Run it again at any time to update. *Uninstall* (after another backup of the sam
 
 If uosc goes and your own `mpv.conf` (outside the hikari block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# hikari: ` in front of it. With `-Yes` it only warns.
 
-Lines you added to `mpv.conf` or `input.conf` by hand for an earlier hikari install are not touched: once the installer's block is there you can delete them.
+Lines you added to `mpv.conf` or `input.conf` by hand, for a copy of hikari installed without the installer, are not touched: once the installer's block is there you can delete them.
+
+### Coming from sosc
+
+hikari was called sosc until v0.3.0. Both installers recognise a folder with sosc in it (its `sosc-installed.txt`, or `sosc-*` files) and, after the usual backup, which includes the files of sosc, carry it over to hikari:
+
+- Your palette, subtitle and upscaling choices move to `hikari-palette.conf`, `hikari-subs.conf` and `hikari-upscale.conf`.
+- The sosc blocks in `mpv.conf` and `input.conf` become hikari blocks, and what sosc set aside or turned off (with `# sosc: ` in front) is taken over by hikari, so uninstalling hikari leaves the folder as it was before sosc.
+- Lines of your own outside the blocks that use the names of sosc (`script-binding sosc_palettes/open-menu`, `script-message-to sosc_upscale set-mode a`, `include="~~/sosc-subs.conf"`, `script-opts-append=sosc-update-enabled=no`...) are changed to hikari's, and the installer shows each one.
+- The sosc scripts, options, record and update-check state go. Old `<folder>-respaldo-sosc-<date>` backups are left alone (the installer says how many there are): delete them yourself when you no longer need them.
+
+*Uninstall* works on a folder with sosc too. sosc itself is never put back. The update check of sosc 0.3.0 does not announce hikari, so run the install line once by hand.
 
 ### macOS and Linux
 
@@ -179,7 +192,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
-Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is.
+Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is (and, once, lines that used the names of sosc: see [Coming from sosc](#coming-from-sosc)).
 
 ### Example: audio and subtitle languages
 
@@ -316,9 +329,9 @@ The button follows the active palette (background and border from uosc's `backgr
 
 `hikari-update.lua` tells you when a new version of hikari is out. It only tells you: it never downloads or installs anything by itself.
 
-When there is one, opening a file shows *hikari 0.3.1 disponible · Alt+u* for a few seconds, and an *Actualizar hikari* button (download icon) appears in the controls bar, before *fullscreen*. The button, or `Alt+u`, opens a menu with:
+When there is one, opening a file shows *hikari 0.4.1 disponible · Alt+u* for a few seconds, and an *Actualizar hikari* button (download icon) appears in the controls bar, before *fullscreen*. The button, or `Alt+u`, opens a menu with:
 
-- **Ver novedades de la 0.3.1**: opens that version's release page on GitHub in your browser.
+- **Ver novedades de la 0.4.1**: opens that version's release page on GitHub in your browser.
 - **Copiar comando de actualización**: copies the update command, the same one as in [Install](#install): `irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex` on Windows (paste it into PowerShell), `curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash` on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.
 - **No avisar de esta versión**: no more notice or button for that version. The next one is announced as usual, and `Alt+u` still opens the menu.
 
@@ -353,7 +366,7 @@ bash tests/install.test.sh
 bash tests/make-release.test.sh
 ```
 
-The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/hikari.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs hikari from it, through `iex` and through `bash -s` as `curl ... | bash` does.
+The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/hikari.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs hikari from it, through `iex` and through `bash -s` as `curl ... | bash` does. To test the move from sosc, both installer test files also run the real installer of sosc 0.3.0, taken from the `v0.3.0` tag with `git` (skipped in a copy without that tag), and then install and uninstall hikari over it.
 
 ## Making a release
 
