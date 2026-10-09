@@ -127,13 +127,12 @@ jobs:
             os: windows-latest
             shell: pwsh
             experimental: false
-          # The tests were written and run with PowerShell 7 only; until this
-          # job has passed once, a failure here is reported but does not turn
-          # the whole run red (see docs/development.md).
+          # Windows PowerShell 5.1, the one every Windows has: it passed on the
+          # GitHub runner (2026-10-10), so a failure here turns the run red too.
           - name: Windows, Windows PowerShell 5.1
             os: windows-latest
             shell: powershell
-            experimental: true
+            experimental: false
           - name: Linux, PowerShell 7
             os: ubuntu-latest
             shell: pwsh
