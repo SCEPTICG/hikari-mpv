@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 ## What you get
 
 - **14 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original and hikari's own, SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away.
-- **Your language**: hikari's menus, buttons and messages in English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian and Chinese (Simplified and Hong Kong), the languages of uosc. It follows your system, and `Alt+l` changes it; uosc follows along.
+- **Your language**: hikari's menus, buttons and messages in English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian and Chinese (Simplified and Hong Kong), the languages of uosc. It follows your system, and `Alt+l` changes it; uosc follows along, and so do the audio and subtitle tracks mpv picks (your dub, otherwise Japanese with your subtitles).
 - **Skip openings and endings**: a *Skip opening ›* button while a chapter looks like an opening, intro or ending; one click or `Alt+s` jumps to the next chapter.
 - **Timeline thumbnails** through thumbfast, on network streams too.
 - **Subtitle styles**: *Dark box* (Netflix-like), *Thick outline* (Crunchyroll-like), *Classic yellow*, plus size and height (`Alt+t`).

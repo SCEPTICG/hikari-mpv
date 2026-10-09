@@ -38,12 +38,10 @@ Updating hikari replaces the `script-opts` files above with hikari's (your earli
 
 ## Example: audio and subtitle languages
 
-hikari does not choose languages for you. A common recipe for anime with Spanish dubs (Spanish audio when there is one, otherwise Japanese with Spanish subtitles) goes in your own `mpv.conf`, before the hikari block:
+hikari already picks audio and subtitle languages from its own [language](features/language.md#audio-and-subtitles): the dub in your language when there is one, otherwise Japanese with subtitles in your language. You only need your own lines for a different preference, and each line you write wins over hikari for that option. For example, to always play the Japanese audio and still get hikari's subtitle language:
 
 ```
-alang=spa,es,es-ES,ja,jpn
-slang=spa,es,es-ES
-subs-with-matching-audio=no
+alang=ja,jpn
 ```
 
-`alang` and `slang` list the preferred audio and subtitle languages in order; `subs-with-matching-audio=no` stops mpv from turning on subtitles in the same language as the audio. Change the codes to your languages.
+`alang` and `slang` list the preferred audio and subtitle languages in order; `subs-with-matching-audio=no` stops mpv from turning on subtitles in the same language as the audio. Put your lines before the hikari block. If you used the old recipe of this page (`alang=spa,es,es-ES,ja,jpn`, `slang=spa,es,es-ES`, `subs-with-matching-audio=no`), you can delete those lines and let hikari do the same, with the regional codes too.
