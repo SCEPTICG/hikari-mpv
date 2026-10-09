@@ -24,7 +24,7 @@ Each release is tested by hand on these setups, besides the automated tests:
 | System | Player |
 | --- | --- |
 | Windows 11 | mpv.net 7.1.2 (mpv 0.41.0-dev), AnimeJaNai bundle |
-| macOS (Apple Silicon) | mpv from Homebrew |
+| macOS (Apple Silicon) | mpv 0.41.0 from Homebrew |
 | Linux: Debian 13, arm64 | mpv 0.40.0 |
 
 uosc 5.13 itself needs mpv 0.33 or newer. hikari is only tested with the recent versions above: older ones may work, but nobody has checked. The Linux installer is the newest of the three and has seen the least real-world use; reports are welcome.
