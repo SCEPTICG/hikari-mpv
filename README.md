@@ -18,7 +18,7 @@ installed with one command on Windows, macOS and Linux
 
 hikari is a *skin* for mpv in the sense people usually mean: a ready-made, good-looking setup for watching series and anime, not a new on-screen controller written from scratch. It installs the official [uosc](https://github.com/tomasklaen/uosc) and [thumbfast](https://github.com/po5/thumbfast), configures them, and adds a few small Lua scripts of its own on top. Everything it changes in your config folder is backed up first, and it can be uninstalled.
 
-https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
+https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 
 <sub>A one-minute showreel, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. hikari is not affiliated with them.</sub>
 
