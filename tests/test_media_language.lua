@@ -1023,11 +1023,31 @@ test('signs: titles that say signs and songs only', function()
 		'Español (Forzados)', 'CARTELES Y CANCIONES', 'Song lyrics', 'Letreros', 'Legendas forçadas', 'SIGN'}) do
 		eq(m.signs_only({type = 'sub', title = title}), true, title)
 	end
-	for _, title in ipairs({'Spanish', 'Design notes', 'Signos', 'Full', 'Forcedor', ''}) do
+	for _, title in ipairs({'Spanish', 'Design notes', 'Signos', 'Full', 'Forcedor', '',
+		-- Full subtitles that also name signs or songs.
+		'Full + Songs', 'English [Full Subs + Songs]', 'Dialogue + Signs', 'Full (Songs Included)',
+		'Spanish (non-forced)', 'Spanish (Non Forced)', 'Spanish (nonforced)', 'English (not forced)',
+		'Dialog & Songs', 'Castellano [Full + Songs]', 'Diálogos + Carteles', 'DIÁLOGO y canciones',
+		'Dialogos y carteles', 'Completos + Carteles', 'Subtítulos completos (canciones)',
+		'Legendas completas + letreiros', 'Complete + Signs', 'Español (no forzados)',
+		'Português (não forçadas)', 'Portugues (nao forcadas)'}) do
 		eq(m.signs_only({type = 'sub', title = title}), false, title)
 	end
 	eq(m.signs_only({type = 'sub'}), false, 'no title')
 	eq(m.signs_only({type = 'audio', title = 'Songs'}), false, 'only subtitles')
+	-- Full ones of Spain named with songs, after Latin American ones: Spain's.
+	local tracks = {
+		{id = 1, type = 'sub', lang = 'es', title = 'Español (Latino)'},
+		{id = 2, type = 'sub', lang = 'es', title = 'Castellano [Full + Songs]'},
+	}
+	eq(m.preferred_track(tracks, 'sub', 1, 'es-ES', false), 2, 'Spain\'s full ones with songs')
+	eq(m.preferred_track(tracks, 'sub', 2, 'es-ES', false), nil, 'and they stay')
+	-- Full ones with songs and dialogue only: both full, the first stays.
+	tracks = {
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish [Full + Songs]'},
+		{id = 2, type = 'sub', lang = 'es', title = 'Spanish [Dialogue]'},
+	}
+	eq(m.preferred_track(tracks, 'sub', 1, 'es-ES', false), nil, 'full with songs kept')
 end)
 
 test('signs: full subtitles of the language over a signs track without the mark', function()

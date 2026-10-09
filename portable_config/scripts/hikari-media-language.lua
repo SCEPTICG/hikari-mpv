@@ -91,9 +91,10 @@
 --   another track of that language and of the same kind (forced or not,
 --   external or not) ranks higher, hikari switches to it. Full subtitles
 --   rank over a track whose title says it only has signs and songs ("Signs",
---   "Songs", "Carteles", "Forced"... without the forced mark: SIGNS), then a
---   track of your variant over one that may be either, over one of the other
---   variant. A track's variant comes from the region of its tag (`es-ES`,
+--   "Songs", "Carteles", "Forced"... without the forced mark: SIGNS; not
+--   when it also says full ones: "Full + Songs", "Dialogue + Signs",
+--   "non-forced"...: FULL), then a track of your variant over one that may be
+--   either, over one of the other variant. A track's variant comes from the region of its tag (`es-ES`,
 --   `es-419`, `es-MX`, `pt-BR`), else from words in its title ("Latin",
 --   "Latino", "LATAM", "América", "419" / "España", "Spain", "Castilian",
 --   "Castellano", "[ESP]", "European"; "Brazil", "Brasil", "BR" /
@@ -404,7 +405,7 @@ end
 -- Whether a track (an entry of track-list) is in `language`, one of REGIONAL.
 local function in_language(track, language)
 	if type(track.lang) ~= 'string' then return false end
-	local first = track.lang:lower():match('^%s*(%a+)')
+	local first = track.lang:sub(1, 64):lower():match('^%s*(%a+)')
 	return first ~= nil and TRACK_CODES[language][first] == true
 end
 
@@ -444,24 +445,36 @@ end
 local SIGNS = {'signs?', 'songs?', 'carteles', 'cartel', 'letreros?', 'letreiros?', 'forced', 'forzad[oa]s?',
 	'for\195\167ad[oa]s?'}
 
+-- Words that say the subtitles are full ones, though the title also names
+-- signs or songs ("Full + Songs", "Dialogue + Signs", "Spanish (non-forced)",
+-- "Completos", "Não forçadas"): those are never taken for signs only
+-- (whole words, folded; "non-forced" before "forced" in SIGNS).
+local FULL = {'full', 'dialogs?', 'dialogues?', 'di\195\161logos?', 'dialogos?', 'complete',
+	'complet[oa]s?', 'non[%- ]?forced', 'not forced', 'no forzad[oa]s?', 'n\195\163o for\195\167ad[oa]s?',
+	'nao forcad[oa]s?'}
+
 -- Whether a track is subtitles whose title says they only cover signs and songs.
 local function signs_only(track)
 	if track.type ~= 'sub' or type(track.title) ~= 'string' then return false end
 	local title = fold(track.title:sub(1, MAX_TITLE))
+	for _, word in ipairs(FULL) do
+		if title:find('%f[%w]' .. word .. '%f[%W]') then return false end
+	end
 	for _, word in ipairs(SIGNS) do
 		if title:find('%f[%w]' .. word .. '%f[%W]') then return true end
 	end
 	return false
 end
 
--- How mpv 0.40 and 0.41 rank a track tag against a list of `alang`/`slang`
--- (misc/language.c, mp_match_lang), for the Japanese tracks of
--- ORIGINAL_AUDIO; same_tag uses its parts too: the subtags split at `-`; an entry whose
--- first subtag is the track's (through mpv's table of ISO 639 codes) scores
--- INT_MAX minus its position, minus 1000 per later subtag of the track that
--- differs from the entry's or that the entry lacks; the best entry counts,
--- 0 for none. Of mpv's table only the codes hikari compares are needed:
--- tracks of a language with variants and Japanese.
+-- mpv's language tags, as mpv 0.40 and 0.41 read them (misc/language.c):
+-- subtags split at `-`, the first one through mpv's table of ISO 639 codes.
+-- Of that table only the codes hikari compares are needed: tracks of a
+-- language with variants and Japanese. same_tag and lang_rank use them.
+-- lang_rank is mpv's rank of a track tag against a list of `alang`/`slang`
+-- (mp_match_lang), used only to choose among the Japanese tracks of
+-- ORIGINAL_AUDIO: an entry whose first subtag is the track's scores INT_MAX
+-- minus its position, minus 1000 per later subtag of the track that differs
+-- from the entry's or that the entry lacks; the best entry counts, 0 for none.
 local INT_MAX = 2147483647
 local SAME_CODE = {es = 'spa', pt = 'por', ja = 'jpn'}
 
