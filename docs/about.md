@@ -1,3 +1,8 @@
+---
+title: "About hikari: contributing, credits and license"
+description: "hikari is an MIT licensed theme for mpv built on uosc, thumbfast and Anime4K."
+---
+
 # About
 
 ## Contributing

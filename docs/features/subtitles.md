@@ -1,3 +1,8 @@
+---
+title: "Subtitle styles for mpv: dark box, thick outline, classic yellow"
+description: "hikari adds a subtitle style menu to mpv: a Netflix-like dark box, a Crunchyroll-like outline, classic yellow, plus size and height."
+---
+
 # Subtitle styles
 
 The subtitles button with the text icon (`text_fields`) in the controls bar, or `Alt+t`, opens a **Subtítulos** menu with three groups. Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.

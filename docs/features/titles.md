@@ -1,3 +1,8 @@
+---
+title: "Readable stream titles in mpv (Seanime and similar apps)"
+description: "hikari turns streamed links from Seanime and similar apps into readable titles in mpv, such as Sousou no Frieren · E05, and keeps access tokens out of the title bar."
+---
+
 # Stream titles
 
 When mpv plays an http(s) URL with a query string, such as the links Seanime hands out (`https://host/<id>?token=...&filename=Show.S01E01.mkv`), `hikari-title.lua` sets the title to the decoded `filename` parameter without its video extension, or to the last path segment when there is no `filename`. The title is set as the file starts, so the token is kept out of the top bar except, at most, for an instant while the stream opens. Local files and URLs without a query keep mpv's own title, and a `force-media-title` you set yourself is left alone. The title only lasts for that file.

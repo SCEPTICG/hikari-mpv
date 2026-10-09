@@ -1,3 +1,8 @@
+---
+title: "Update check for the hikari mpv theme"
+description: "hikari tells you inside mpv when a new version is out. It never updates anything by itself and can be turned off."
+---
+
 # Update check
 
 `hikari-update.lua` tells you when a new version of hikari is out. It only tells you: it never downloads or installs anything by itself.

@@ -1,3 +1,8 @@
+---
+title: "hikari development: tests and releases"
+description: "How to run hikari's tests and how a release of the mpv theme is made."
+---
+
 # Development
 
 How to run the tests and how a hikari release is made. For what hikari is and how to install it, see the [home page](index.md).

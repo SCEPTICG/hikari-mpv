@@ -1,3 +1,8 @@
+---
+title: "Automatic Anime4K upscaling in mpv"
+description: "hikari installs Anime4K for mpv with an upscaling menu and an automatic mode that picks the Anime4K mode from each video's resolution and your graphics card."
+---
+
 # Anime4K upscaling
 
 [Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. hikari does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Once installed it starts in **Automático** (see below); pick another mode, or *Apagado*, at any time.

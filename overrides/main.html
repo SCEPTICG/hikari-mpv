@@ -1,0 +1,65 @@
+{#- Adds what Material does not: link previews (Open Graph, X), search engine
+    verification tags and, on the home page, structured data describing hikari. -#}
+{% extends "base.html" %}
+
+{#- Pages carry their full, search-friendly title in their front matter, so the
+    site name is not appended to it. #}
+{% block htmltitle %}
+  {%- if page and page.meta and page.meta.title %}
+  <title>{{ page.meta.title | striptags }}</title>
+  {%- else %}
+  {{ super() }}
+  {%- endif %}
+{% endblock %}
+
+{% block extrahead %}
+{#- The 404 page has no page object. #}
+{%- if page %}
+  {%- set desc = page.meta.description or config.site_description -%}
+  {%- set title = page.meta.title or (page.title ~ " - " ~ config.site_name) -%}
+  {%- set image = config.site_url ~ "images/social.png" -%}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ desc }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:image" content="{{ image }}">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="hikari, a modern theme for the mpv video player, built on uosc">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ desc }}">
+  <meta name="twitter:image" content="{{ image }}">
+  {%- if config.extra.google_site_verification %}
+  <meta name="google-site-verification" content="{{ config.extra.google_site_verification }}">
+  {%- endif %}
+  {%- if config.extra.bing_site_verification %}
+  <meta name="msvalidate.01" content="{{ config.extra.bing_site_verification }}">
+  {%- endif %}
+  {%- if page.is_homepage %}
+  <script type="application/ld+json">
+  {{ {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "hikari",
+    "alternateName": "hikari-mpv",
+    "description": desc,
+    "url": config.site_url,
+    "image": image,
+    "applicationCategory": "MultimediaApplication",
+    "applicationSubCategory": "mpv theme",
+    "operatingSystem": "Windows, macOS, Linux",
+    "downloadUrl": "https://github.com/SCEPTICG/hikari-mpv/releases/latest",
+    "codeRepository": config.repo_url,
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+    "author": {"@type": "Person", "name": config.site_author, "url": "https://github.com/SCEPTICG"},
+    "isBasedOn": "https://github.com/tomasklaen/uosc",
+    "keywords": "mpv, mpv theme, uosc, mpv skin, anime, Anime4K, skip opening, thumbnails, Catppuccin"
+  } | tojson }}
+  </script>
+  {%- endif %}
+{%- endif %}
+{% endblock %}

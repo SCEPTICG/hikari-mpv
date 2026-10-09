@@ -1,3 +1,8 @@
+---
+title: "Skip opening and ending button for mpv"
+description: "hikari shows a Skip opening button in mpv while a chapter looks like an anime opening, intro or ending. One click or Alt+s jumps to the next chapter."
+---
+
 # Skip openings and endings
 
 `hikari-skip.lua` shows a **Saltar opening ›** / **Saltar ending ›** button at the bottom right, above uosc's controls, for as long as playback is inside a chapter that looks like an opening or an ending, even when uosc's controls are hidden or playback is paused. Clicking it, or pressing `Alt+s`, jumps to the start of the next chapter. Outside those chapters, in files without chapters, while idle and while a uosc menu or the console is open, nothing is drawn and the mouse is left to uosc and mpv.

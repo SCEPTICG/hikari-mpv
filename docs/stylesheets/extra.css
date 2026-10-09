@@ -18,6 +18,7 @@
 .md-typeset h1 { font-weight: 800; letter-spacing: -0.02em; }
 .md-typeset .hk-hero { text-align: center; margin: 1rem 0 2rem; }
 .md-typeset .hk-hero img { border-radius: 14px; }
+.md-typeset .hk-hero h1.hk-title { font-size: 1.9rem; margin: 1.2rem 0 0.4rem; }
 .md-typeset .hk-tagline { font-size: 1.15rem; opacity: 0.9; }
 .md-typeset .grid.cards img { border-radius: 10px; }
 .md-typeset .md-button--primary { background-color: #5ad4e6; border-color: #5ad4e6; color: #0b0d12; }

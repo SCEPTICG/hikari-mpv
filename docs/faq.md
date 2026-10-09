@@ -1,3 +1,8 @@
+---
+title: "hikari mpv theme: frequently asked questions"
+description: "Answers about hikari, a theme for mpv built on uosc: supported players, backups, Spanish labels, Anime4K and AnimeJaNai, thumbnails on macOS, privacy and uninstalling."
+---
+
 # Frequently asked questions
 
 ## Does hikari replace uosc?

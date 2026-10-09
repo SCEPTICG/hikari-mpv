@@ -1,3 +1,8 @@
+---
+title: "hikari keys and configuration for mpv"
+description: "Keyboard shortcuts and configuration files of hikari, a theme for the mpv video player built on uosc."
+---
+
 # Usage and configuration
 
 ## Keys and buttons

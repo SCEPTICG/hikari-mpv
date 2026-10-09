@@ -1,3 +1,8 @@
+---
+title: "Install the hikari mpv theme on macOS and Linux"
+description: "Install hikari, a uosc-based theme for mpv, on macOS and Linux with one curl line, no sudo. Backs up your mpv config first and can be uninstalled."
+---
+
 # Install on macOS and Linux
 
 Open Terminal and run:

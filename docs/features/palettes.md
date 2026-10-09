@@ -1,3 +1,8 @@
+---
+title: "14 colour palettes for mpv and uosc: Catppuccin, Tokyo Night, Dracula, Nord"
+description: "hikari adds a palette menu to mpv with 14 colour themes for uosc, among them Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox and Rosé Pine, applied at once."
+---
+
 # Palettes
 
 hikari ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away. Each palette is a uosc colour scheme with the names you may know from your editor or terminal theme.

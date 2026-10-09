@@ -1,3 +1,8 @@
+---
+title: "Install the hikari mpv theme on Windows (mpv, mpv.net, AnimeJaNai)"
+description: "Install hikari, a uosc-based theme for mpv, on Windows with one PowerShell line. Works with mpv, mpv.net and AnimeJaNai, backs up your config first and can be uninstalled."
+---
+
 # Install on Windows
 
 ## Requirements

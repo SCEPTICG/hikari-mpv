@@ -1,5 +1,5 @@
 ---
-title: hikari, a modern theme for mpv
+title: "hikari: a modern mpv theme built on uosc, with palettes, skip opening and Anime4K"
 description: hikari is a theme for the mpv video player built on uosc, with 14 colour palettes, a skip opening and ending button, timeline thumbnails, subtitle styles and automatic Anime4K upscaling. One-command install on Windows, macOS and Linux.
 hide:
   - navigation
@@ -10,7 +10,9 @@ hide:
 
 ![hikari, a modern theme for the mpv video player built on uosc](images/banner.png)
 
-<p class="hk-tagline">A modern theme for the <a href="https://mpv.io">mpv</a> video player, built on <a href="https://github.com/tomasklaen/uosc">uosc</a>, made for watching series and anime.</p>
+# hikari, a modern theme for the mpv video player { .hk-title }
+
+<p class="hk-tagline">Built on <a href="https://github.com/tomasklaen/uosc">uosc</a>, made for watching series and anime on <a href="https://mpv.io">mpv</a>.</p>
 
 [Install :material-download:](#quick-install){ .md-button .md-button--primary }
 [See it on GitHub :fontawesome-brands-github:](https://github.com/SCEPTICG/hikari-mpv){ .md-button }
