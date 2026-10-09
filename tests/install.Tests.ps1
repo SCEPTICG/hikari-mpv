@@ -3043,6 +3043,43 @@ if ($null -ne $SoscRepo) {
         $hikariLeft = @(Get-ChildItem -LiteralPath $cfg -Recurse -Force | Where-Object { $_.Name -like 'hikari*' } | ForEach-Object { $_.Name } | Sort-Object)
         Assert-Equal ([string]::Join(',', $hikariLeft)) 'hikari-palette.conf,hikari-subs.conf,hikari-upscale.conf' 'of hikari only the saved choices (kept by default)'
     }
+
+    Test-Case 'sosc 0.3.0 -> hikari cut short (choices moved, sosc record still there): the next run finishes it' {
+        $d = New-TestDir 'mig-cut'
+        $dl = P @($d, 'dl')
+        $art = New-FakeArtifacts $dl
+        $cfg = P @($d, 'mpv')
+        New-MacLikeConfig $cfg
+        $pre = @{}
+        foreach ($f in @('mpv.conf', 'input.conf', 'script-opts/uosc.conf', 'scripts/aniskip.lua')) { $pre[$f] = Get-TestText (P (@($cfg) + ($f -split '/'))) }
+        Assert-Equal (Invoke-Sosc030 -Cfg $cfg -Dl $dl -Action 'install' -Anime4K 'yes') 0 ('sosc 0.3.0 install: ' + $script:SoscOut)
+        $soscFirst = ([regex]::Match((Get-TestText (P @($cfg, 'sosc-installed.txt'))), '(?m)^first_backup=(.*?)\r?$')).Groups[1].Value
+        # What a migration cut short leaves: blocks, lines turned off, choices and
+        # sosc-originales carried over; the record and scripts of sosc still there.
+        foreach ($name in @('mpv.conf', 'input.conf')) {
+            $t = (Get-TestText (P @($cfg, $name))).Replace($script:SoscBlockBegin, $script:BlockBegin).Replace($script:SoscBlockEnd, $script:BlockEnd)
+            [System.IO.File]::WriteAllText((P @($cfg, $name)), ($t -replace '(?m)^# sosc: ', '# hikari: '))
+        }
+        foreach ($n in $script:SoscChoices) {
+            $from = P @($cfg, ('sosc-' + $n + '.conf'))
+            if (-not (Test-Path -LiteralPath $from)) { continue }
+            [System.IO.File]::WriteAllText((P @($cfg, ('hikari-' + $n + '.conf'))), (Get-TestText $from).Replace('sosc', 'hikari'))
+            Remove-Item -LiteralPath $from
+        }
+        Move-Item -LiteralPath (P @($cfg, 'sosc-originales')) -Destination (P @($cfg, 'hikari-originales'))
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-installed.txt'))) 'sosc record still there'
+
+        $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+        Assert-True $cand.Sosc 'still seen as sosc'
+        [void](Invoke-TestInstall $cand $art '20261009-150000')
+        Assert-Equal (Get-SoscLeft $cfg) 'hikari-installed.txt' 'nothing of sosc left'
+        $rec = Read-HikariRecord $cfg
+        Assert-Equal $rec.Values['first_backup'] $soscFirst 'first backup inherited'
+        Assert-Equal $rec.Values['anime4k'] 'hikari' 'Anime4K is hikari''s'
+        Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), '# hikari: # hikari:')).Count 0 'not turned off twice'
+        [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261009-150100')
+        foreach ($f in $pre.Keys) { Assert-Equal (Get-TestText (P (@($cfg) + ($f -split '/')))) $pre[$f] ($f + ' as before sosc') }
+    }
 }
 else {
     Write-Host 'skip migration from sosc 0.3.0: the v0.3.0 tag is not in this copy'
@@ -3081,6 +3118,79 @@ Test-Case 'a broken sosc block: refused, nothing changed' {
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $text 'mpv.conf untouched'
     Assert-True ((Test-Path -LiteralPath (P @($cfg, 'sosc-installed.txt'))) -and -not (Test-Path -LiteralPath (P @($cfg, 'hikari-installed.txt'))) -and
         -not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed or removed'
+}
+
+Test-Case 'only the files sosc installed count as sosc: a sosc-otro.lua of someone else stays' {
+    $d = New-TestDir 'mig-foreign'
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'sosc-otro.lua')) '-- not sosc'
+    Set-TestFile (P @($cfg, 'script-opts', 'sosc-otro.conf')) "x=1`n"
+    Assert-True (-not (Test-HikariSoscPresent $cfg)) 'not seen as sosc'
+    Set-TestFile (P @($cfg, 'scripts', 'sosc-skip.lua')) '-- sosc skip'
+    Set-TestFile (P @($cfg, 'script-opts', 'sosc-skip.conf')) "x=1`n"
+    Assert-True (Test-HikariSoscPresent $cfg) 'sosc-skip.lua is sosc'
+    Invoke-HikariSoscMigration $cfg
+    Assert-True ((Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-otro.lua'))) -and (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'sosc-otro.conf')))) 'the others stay'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'sosc-skip.lua'))) -and -not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'sosc-skip.conf')))) 'sosc''s go'
+}
+
+Test-Case 'sosc names in lines of the user: only whole names change' {
+    Assert-Equal (ConvertFrom-HikariSoscText 'p script-binding sosc_palettes/open-menu') 'p script-binding hikari_palettes/open-menu' 'binding'
+    Assert-Equal (ConvertFrom-HikariSoscText 'include="~~/sosc-subs.conf"') 'include="~~/hikari-subs.conf"' 'include'
+    Assert-Equal (ConvertFrom-HikariSoscText 'script-opts-append=sosc-update-enabled=no') 'script-opts-append=hikari-update-enabled=no' 'option'
+    Assert-Equal (ConvertFrom-HikariSoscText 'sosc_skip-x=1') 'hikari_skip-x=1' 'at the start'
+    Assert-Equal (ConvertFrom-HikariSoscText 'x script-binding mysosc_skipper/x') 'x script-binding mysosc_skipper/x' 'mysosc_skipper'
+    Assert-Equal (ConvertFrom-HikariSoscText 'a-sosc-skip=2,b_sosc_skip=3,Xsosc-skip,9sosc-skip') 'a-sosc-skip=2,b_sosc_skip=3,Xsosc-skip,9sosc-skip' 'after a letter, digit, _ or -'
+    Assert-Equal (ConvertFrom-HikariSoscText 'sosc-otro sosc_palette sosc-palettes') 'sosc-otro hikari_palette hikari-palettes' 'only its names'
+}
+
+Test-Case 'a changed line with control characters: not sent to the terminal' {
+    $d = New-TestDir 'mig-cntrl'
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'sosc-skip.lua')) '-- sosc skip'
+    $esc = [string][char]27
+    $bel = [string][char]7
+    Set-TestFile (P @($cfg, 'input.conf')) ("k script-binding sosc_skip/x " + $esc + "[31mred" + $bel + "`n")
+    Invoke-HikariSoscMigration $cfg
+    Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) ("k script-binding hikari_skip/x " + $esc + "[31mred" + $bel + "`n") 'changed in the file as it was'
+    $w = @($script:HikariWarnings | Where-Object { $_ -like '*line of yours changed*' })
+    Assert-Equal $w.Count 1 'one warning'
+    Assert-Equal $w[0] 'input.conf: line of yours changed from sosc to hikari: k script-binding hikari_skip/x [31mred' 'without control characters'
+}
+
+Test-Case 'links where sosc''s choices and record go: nothing written through them' {
+    $d = New-TestDir 'mig-links'
+    $cfg = P @($d, 'mpv')
+    $outside = P @($d, 'outside')
+    New-Item -ItemType Directory -Path $outside -Force | Out-Null
+    Set-TestFile (P @($cfg, 'sosc-palette.conf')) "script-opts-append=sosc_palettes-palette=nord`n"
+    Set-TestFile (P @($cfg, 'sosc-subs.conf')) "script-opts-append=sosc_subs-style=box`n"
+    Set-TestFile (P @($cfg, 'sosc-installed.txt')) "sosc_version=0.3.0`n"
+    try {
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-palette.conf')) -Target (P @($outside, 'palette.conf')) | Out-Null
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-installed.txt')) -Target (P @($outside, 'record.txt')) | Out-Null
+    }
+    catch { Write-Host '     (symlinks not available, skipped)'; return }
+    Invoke-HikariSoscMigration $cfg
+    Assert-Equal @(Get-ChildItem -LiteralPath $outside -Force).Count 0 'nothing written outside'
+    Assert-Equal @($script:HikariWarnings | Where-Object { $_ -like '*is a link (junction or symbolic link), nothing is written*' }).Count 2 'said so, twice'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-subs.conf'))) "script-opts-append=hikari_subs-style=box`n" 'the other choice moved'
+}
+
+Test-Case 'as administrator, a linked hikari-originales: refused before any folder is made through it' {
+    $d = New-TestDir 'mig-orig-link'
+    $cfg = P @($d, 'mpv')
+    $outside = P @($d, 'outside')
+    New-Item -ItemType Directory -Path $outside -Force | Out-Null
+    Set-TestFile (P @($cfg, 'scripts', 'sosc-skip.lua')) '-- sosc skip'
+    Set-TestFile (P @($cfg, 'sosc-originales', 'script-opts', 'uosc.conf')) "# my uosc.conf`n"
+    try { New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-originales')) -Target $outside | Out-Null }
+    catch { Write-Host '     (symlinks not available, skipped)'; return }
+    $script:HikariElevated = $true
+    try { Assert-Throws { Invoke-HikariSoscMigration $cfg } -Like '*is a link*' -What 'migration' }
+    finally { $script:HikariElevated = $false }
+    Assert-Equal @(Get-ChildItem -LiteralPath $outside -Force).Count 0 'no folder made outside'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-originales', 'script-opts', 'uosc.conf'))) 'uosc.conf not moved'
 }
 
 # ---------------------------------------------------------------------------
