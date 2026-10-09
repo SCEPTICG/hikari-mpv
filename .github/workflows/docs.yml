@@ -1,0 +1,64 @@
+# Builds the website (MkDocs Material) and publishes it on GitHub Pages when
+# main changes the site. Pages must be set to "Source: GitHub Actions".
+# Every third-party action is pinned to a full commit SHA (its version in the
+# comment); this workflow needs no secret.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'overrides/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+# One deployment at a time; a newer push waits instead of cancelling one that
+# is already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install MkDocs (versions of docs/requirements.txt)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mkdocs-venv"
+          "$RUNNER_TEMP/mkdocs-venv/bin/python" -m pip install --disable-pip-version-check -r docs/requirements.txt
+      - name: Build
+        run: '"$RUNNER_TEMP/mkdocs-venv/bin/mkdocs" build --strict -d "$RUNNER_TEMP/site"'
+      - name: Check that the Google verification file is in the site
+        run: test -s "$RUNNER_TEMP/site/googlee48f4adc48980983.html"
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

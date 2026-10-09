@@ -1,0 +1,190 @@
+# Runs every test of hikari on the systems it is for: the Lua scripts (Lua 5.1
+# and LuaJIT, as mpv), install/hikari.sh on Linux (bash 5) and macOS (its own
+# /bin/bash 3.2), install/hikari.ps1 on Windows (PowerShell 7 and Windows
+# PowerShell 5.1) and Linux, tools/make-release.sh, and the website build.
+# Read-only: no secret, no publishing. Every third-party action is pinned to a
+# full commit SHA (its version in the comment).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lua:
+    name: Lua (${{ matrix.lua }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: [lua5.1, luajit]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install ${{ matrix.lua }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends "$LUA"
+        env:
+          LUA: ${{ matrix.lua }}
+      - name: Lua tests
+        run: |
+          "$LUA" -v
+          status=0
+          for f in tests/test_*.lua; do
+            echo "== $f"
+            "$LUA" "$f" || status=1
+          done
+          exit "$status"
+        env:
+          LUA: ${{ matrix.lua }}
+
+  install-sh:
+    name: hikari.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # bash 5, and Lua 5.1 to compare the language rules with the scripts.
+          - os: ubuntu-latest
+            bash: bash
+            lua: lua5.1
+          # The /bin/bash of macOS is 3.2, the one the installer must run on.
+          # Homebrew has no Lua 5.1: LuaJIT (5.1 language) stands in for it.
+          - os: macos-latest
+            bash: /bin/bash
+            lua: luajit
+    steps:
+      - name: Check out (with tags, for the sosc 0.3.0 migration tests)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install Lua (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lua5.1
+      - name: Install LuaJIT (macOS)
+        if: runner.os == 'macOS'
+        run: brew install luajit
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      - name: Installer tests
+        run: |
+          "$TEST_BASH" --version | head -n 1
+          python3 --version
+          "$TEST_BASH" tests/install.test.sh
+        env:
+          TEST_BASH: ${{ matrix.bash }}
+          HIKARI_TEST_LUA: ${{ matrix.lua }}
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends shellcheck
+      - name: ShellCheck
+        run: |
+          shellcheck --version
+          shellcheck install/hikari.sh tools/make-release.sh
+
+  install-ps1:
+    name: hikari.ps1 (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows, PowerShell 7
+            os: windows-latest
+            shell: pwsh
+            experimental: false
+          # The tests were written and run with PowerShell 7 only; until this
+          # job has passed once, a failure here is reported but does not turn
+          # the whole run red (see docs/development.md).
+          - name: Windows, Windows PowerShell 5.1
+            os: windows-latest
+            shell: powershell
+            experimental: true
+          - name: Linux, PowerShell 7
+            os: ubuntu-latest
+            shell: pwsh
+            experimental: false
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Check out (with tags, for the sosc 0.3.0 migration tests)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install Lua (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lua5.1
+      # The tests start new sessions of the same PowerShell that runs them, so
+      # each run checks the installer under that version (5.1 or 7).
+      - name: Installer tests
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          & ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests/install.Tests.ps1
+          exit $LASTEXITCODE
+
+  make-release:
+    name: make-release.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release tests
+        run: |
+          pwsh --version
+          bash tests/make-release.test.sh
+
+  website:
+    name: Website build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install MkDocs (versions of docs/requirements.txt)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mkdocs-venv"
+          "$RUNNER_TEMP/mkdocs-venv/bin/python" -m pip install --disable-pip-version-check -r docs/requirements.txt
+      - name: Build (strict)
+        run: '"$RUNNER_TEMP/mkdocs-venv/bin/mkdocs" build --strict -d "$RUNNER_TEMP/site"'
