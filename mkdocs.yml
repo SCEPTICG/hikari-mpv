@@ -84,4 +84,5 @@ nav:
   - FAQ: faq.md
   - About:
       - Contributing, credits and license: about.md
+      - Compatibility: compatibility.md
       - Development: development.md

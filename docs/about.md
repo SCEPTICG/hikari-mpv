@@ -9,7 +9,9 @@ description: "hikari is an MIT licensed theme for mpv built on uosc, thumbfast a
 
 Issues and pull requests are welcome on [GitHub](https://github.com/SCEPTICG/hikari-mpv).
 
-Running the tests and making a release: [docs/development.md](development.md).
+Running the tests and making a release: [Development](development.md). Tested versions: [Compatibility](compatibility.md).
+
+To report a security problem privately, see the [security policy](https://github.com/SCEPTICG/hikari-mpv/security/policy).
 
 ## Credits
 
