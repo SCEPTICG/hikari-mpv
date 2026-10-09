@@ -53,3 +53,31 @@ To try it before it becomes the Latest release, publish it first as a pre-releas
 irm https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.ps1 | iex
 ```
 
+
+## Preview builds
+
+To try the `dev` branch on real machines before a release, there is a test channel: a GitHub **pre-release** under the moving tag `preview`, with the same four files as a release and the same SHA256 check. It is for testing only; it is not on the public install pages.
+
+```
+irm https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.ps1 | iex
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.sh | bash
+```
+
+The version written in the installers is `preview-` and the short hash of the commit (e.g. `preview-ffebb37`), so `hikari-installed.txt` tells which build is installed. The installers say it when they start: `Preview build (preview-ffebb37). To go back to the stable version:` and the usual install line. That version is not `X.Y.Z`, so `hikari-update.lua` does not look for updates on a preview install (as with a copy of the repository, `dev`). To go back, run the normal install line: the stable version installs over a preview (there is no version check), removes the hikari files the preview had and it does not, and keeps the palette, subtitle, upscaling and language choices.
+
+To publish a new preview build:
+
+1. Merge the work into `dev` and check it out, with a clean work tree.
+
+2. Move the tag to that commit and build. The tag must point to the current commit, or the script refuses:
+
+   ```
+   git tag -f preview
+   tools/make-release.sh preview
+   ```
+
+   It checks and builds the same files as for a release, with `https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.zip` as the address of the zip.
+
+3. Push the moved tag (`git push -f origin preview`) and wait until GitHub (through the mirror) has `preview` on the new commit.
+
+4. On GitHub, delete the previous `preview` release (its files would otherwise stay attached), then create it again **from the existing tag** `preview`, attach `dist/hikari.ps1`, `dist/hikari.sh`, `dist/hikari.zip` and `dist/SHA256SUMS` with those names, and publish it as a **pre-release**. Never mark it Latest: `releases/latest` must keep pointing at the stable version.
