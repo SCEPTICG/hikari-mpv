@@ -58,8 +58,8 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 extra:
-  # Search engine verification codes (public by design), filled in when the sites are set up.
-  google_site_verification: ""
+  # Bing verification code (public by design), if Bing is not imported from Google.
+  # Google is verified with docs/googlee48f4adc48980983.html.
   bing_site_verification: ""
   social:
     - icon: fontawesome/brands/github

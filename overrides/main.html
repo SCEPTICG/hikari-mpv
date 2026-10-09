@@ -1,5 +1,5 @@
-{#- Adds what Material does not: link previews (Open Graph, X), search engine
-    verification tags and, on the home page, structured data describing hikari. -#}
+{#- Adds what Material does not: link previews (Open Graph, X), Bing's
+    verification tag and, on the home page, structured data describing hikari. -#}
 {% extends "base.html" %}
 
 {#- Pages carry their full, search-friendly title in their front matter, so the
@@ -31,9 +31,6 @@
   <meta name="twitter:title" content="{{ title }}">
   <meta name="twitter:description" content="{{ desc }}">
   <meta name="twitter:image" content="{{ image }}">
-  {%- if config.extra.google_site_verification %}
-  <meta name="google-site-verification" content="{{ config.extra.google_site_verification }}">
-  {%- endif %}
   {%- if config.extra.bing_site_verification %}
   <meta name="msvalidate.01" content="{{ config.extra.bing_site_verification }}">
   {%- endif %}
