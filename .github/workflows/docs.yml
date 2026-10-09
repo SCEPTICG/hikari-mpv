@@ -50,6 +50,8 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    # Only main is published, even if the workflow is dispatched on another branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
