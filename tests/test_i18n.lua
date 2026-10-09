@@ -7,7 +7,7 @@ local mock = require('mock_mp')
 local MODULE = 'portable_config/script-modules/hikari-i18n.lua'
 local SCRIPTS = {
 	'hikari-language', 'hikari-palettes', 'hikari-skip', 'hikari-speed', 'hikari-subs',
-	'hikari-update', 'hikari-upscale',
+	'hikari-title', 'hikari-update', 'hikari-upscale',
 }
 local CODES = {'en', 'es', 'de', 'fr', 'it', 'pl', 'pt', 'ro', 'ru', 'tr', 'uk', 'zh-HK', 'zh-hans'}
 -- Keys that may leave languages out on purpose: those fall back to English

@@ -1,13 +1,30 @@
--- hikari-title: readable titles for streamed files.
+-- hikari-title: readable titles for anime (and other) releases, local or streamed.
 --
--- Streaming servers such as Seanime hand mpv URLs like
+-- mpv shows a file's `title` tag, or else its file name. For releases neither
+-- reads well: `[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv`, a
+-- tag that is just the release group, or, for streaming servers such as
+-- Seanime, a whole URL with its token:
 --   https://host/<uuid>?token=<secret>&filename=Show.S01E01.1080p.mkv
--- and with no title of its own mpv (and uosc's top bar) shows the whole URL,
--- token included. For http(s) URLs with a query this script sets
--- `force-media-title` to the decoded `filename` parameter without its video
--- extension or, when there is none, to the last path segment without the query
--- (the fallback). URLs whose only path is `/` but that carry `user:password@`
--- get the bare host. Other local files and URLs are left alone.
+-- This script sets `force-media-title` to a tidy title instead:
+--   Sousou no Frieren · E05        Show · S1 E01 (`T1 E01` in Spanish)
+--   Show (2024) · S1 E05 · Episode Title
+--
+-- Which files get a title:
+-- - Local files (plain paths and file:// URLs) with a video extension: the
+--   file name, tidied by pretty_title(), but only when it really looks like a
+--   release (an episode marker, a technical tail such as `1080p.WEB-DL`, or
+--   [group] / (1080p) brackets to drop). Then it wins over the file's `title`
+--   tag. Any other name (`Holiday video.mkv`) is left to mpv, which shows the
+--   tag or the name.
+-- - http(s) URLs with a `filename` query parameter (Seanime and the like): that
+--   parameter, decoded, always (it is what names the file there).
+-- - http(s) URLs whose last path segment is a video file name that looks like
+--   a release (`https://host/files/[SubsPlease] Show - 05 (1080p).mkv`): that
+--   segment, as for local files.
+-- - Other http(s) URLs with a query: the last path segment without the query
+--   (the fallback), so the token never shows; it gives way to a `title` tag.
+--   URLs whose only path is `/` but that carry `user:password@` get the bare
+--   host. Any other URL (ytdl://, rtsp://, YouTube pages...) is left alone.
 --
 -- Decisions:
 -- - Runs on `start-file`, not `file-loaded`, so the title is replaced before
@@ -21,23 +38,48 @@
 --   playlist entry.
 -- - Nothing is set if `force-media-title` is already non-empty (set by the
 --   user) or the playlist entry has its own title (M3U #EXTINF, IPTV lists).
--- - The `filename` parameter wins over the file's `title` metadata tag: it is
---   known before the file opens, it names show and episode, and the tag in
---   these releases is often missing or just the release group.
+-- - The `filename` parameter and release-like file names win over the file's
+--   `title` tag: they are known before the file opens, they name show and
+--   episode, and the tag in these releases is often missing or just the
+--   release group.
 -- - The fallback is weaker (`stream`, `master.m3u8`, `watch`): if the file
 --   turns out to have a `title` tag, it is cleared on `file-loaded` so the tag
 --   shows. It still matters until then and for files without a tag, because
 --   mpv would otherwise show the basename with its query (`stream?api_key=...`).
---
--- - With pretty=yes (default) a title taken from `filename` is tidied up by
---   pretty_title(): release names such as `Show.Name.S01E01.1080p.WEB-DL-GRP`
---   become `Show Name · T1 E01`. The fallback and playlist titles are never
---   touched: they are not release names.
+-- - Release names are recognised token by token (see pretty_title): episode
+--   markers (`S01E05`, `E05`, `EP05`, `- 05`, `- 05v2`, `- 12.5`, `Episode 5`,
+--   `SP01`, `Special 1`, `OVA`), a season written before the marker (`S2`,
+--   `Season 2`, `2nd Season`, `(Season 2)`), the release group in front, the
+--   technical tail (resolution, source, codecs, services, CRC) and, when it is
+--   clearly there, an episode title after the marker (`- S01E05 - Title`,
+--   `S01E05.Title.1080p`). The season and episode labels follow hikari's
+--   language (hikari-i18n: `S1 E05`, `T1 E05`, `第1季 第05集`), and the title of
+--   the file playing is redone when the language changes. The fallback and
+--   playlist titles are never touched: they are not release names.
+-- - Every pattern is anchored to a token and input is cut to MAX_RAW before
+--   any work, so hostile names cost linear time.
 --
 -- Options (script-opts/hikari-title.conf): enabled=yes|no, pretty=yes|no
+-- (pretty=no: only `filename=` and the fallback, shown as they come).
 
 local msg = require('mp.msg')
 local options = require('mp.options')
+
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
 
 local OPTIONS_ID = 'hikari-title'
 local MAX_CHARS = 150
@@ -139,7 +181,8 @@ word_set(STRONG_WORDS, [[web-dl webdl web-rip webrip bluray blu-ray bdrip brrip 
 	truehd dts-hd 10bit 8bit 10-bit hdr10 hdr10+]])
 word_set(WEAK_WORDS, [[web 4k 8k uhd bd dvd hdr dovi sdr atmos dts dual dual-audio multi multisub
 	multi-sub msubs subs subbed dubbed multiple subtitle subtitles jpn eng vostfr
-	cr adn amzn nf dsnp hulu hmax atvp hidive funi uncensored proper repack opus]])
+	cr adn amzn nf dsnp hulu hmax atvp hidive funi uncensored proper repack opus
+	dub sub raw internal dl vf vff multi-audio]])
 
 -- 'strong', 'weak' or nil for one word.
 local function tech_kind(word)
@@ -223,6 +266,13 @@ local function episode_number(digits)
 	return string.format('%02d', tonumber(digits))
 end
 
+-- `05`, or `12.5` for a half episode (recaps, specials between two episodes).
+local function episode_text(digits, fraction)
+	local number = episode_number(digits)
+	if number and fraction then return number .. '.' .. fraction end
+	return number
+end
+
 -- What may follow an episode number: nothing, or punctuation that starts
 -- something else (`.1080p` when dots are not separators).
 local function ends_cleanly(rest)
@@ -243,14 +293,27 @@ local function episode_suffix(rest)
 	return nil, ends_cleanly(rest)
 end
 
--- `01`, or `01-E02` for a range.
-local function episode_label(first, last)
-	local e1, e2 = episode_number(first), last and episode_number(last)
-	if not e1 or (last and not e2) then return nil end
-	return e2 and e1 ~= e2 and (e1 .. '-E' .. e2) or e1
+-- A bare episode number token: `05`, `05v2`, `12.5` (a year is not one: `- 2049`).
+-- Returns its digits and fraction, or nil.
+local function bare_number(token)
+	if not token or token.group then return nil end
+	local digits, fraction = token.text:match('^(%d+)%.(%d)$')
+	if digits then return digits, fraction end
+	local after
+	digits, after = token.text:match('^(%d+)(.*)$')
+	if digits and (after == '' or after:match('^[vV]%d+$')) and not is_year(digits) and #digits <= 4 then
+		return digits
+	end
+	return nil
 end
 
--- Episode marker starting at tokens[i]: label and number of tokens it uses.
+local function is_separator(token)
+	return token ~= nil and not token.group and token.text:match('^[%-~.]+$') ~= nil
+end
+
+-- Episode marker starting at tokens[i], and the number of tokens it uses. A
+-- marker is a table: `first` and `last` (episode range, digits), `fraction`,
+-- `season` (number), `special` (season 0, SP01) or `extra` (`OVA`, `OAD`, `ONA`).
 local function marker_at(tokens, i)
 	local t = tokens[i]
 	if t.group then return nil end
@@ -259,50 +322,133 @@ local function marker_at(tokens, i)
 	local season, first, rest = text:match('^[Ss](%d+)[Ee](%d+)(.*)$')
 	if season then
 		local last, ok = episode_suffix(rest)
-		local episodes = ok and #season <= 4 and episode_label(first, last)
-		if not episodes then return nil end
+		if not ok or #season > 4 or not episode_number(first) or (last and not episode_number(last)) then return nil end
 		season = tonumber(season)
-		-- Season 0 holds the specials: `Show · Especial E03`.
-		if season == 0 then return 'Especial E' .. episodes, 1 end
-		return 'T' .. season .. ' E' .. episodes, 1
+		-- Season 0 holds the specials: `Show · Special E03`.
+		if season == 0 then return {special = true, first = first, last = last}, 1 end
+		return {season = season, first = first, last = last}, 1
 	end
 	-- E01, EP01, E01v2, EP01-02
 	first, rest = text:match('^[Ee][Pp]?(%d+)(.*)$')
 	if first then
 		local last, ok = episode_suffix(rest)
-		local episodes = ok and episode_label(first, last)
-		if not episodes then return nil end
-		return 'E' .. episodes, 1
+		if not ok or not episode_number(first) or (last and not episode_number(last)) then return nil end
+		return {first = first, last = last}, 1
 	end
-	-- `Episode 01`, `Ep 01`, `- 01`, `- 01v2` (anime releases)
+	-- SP01, SP1v2 (specials)
+	first, rest = text:match('^[Ss][Pp](%d+)(.*)$')
+	if first then
+		rest = rest:gsub('^[vV]%d+', '', 1)
+		if not ends_cleanly(rest) or not episode_number(first) then return nil end
+		return {special = true, first = first}, 1
+	end
 	local lower = text:lower()
 	local nxt = tokens[i + 1]
-	if nxt and not nxt.group and (lower == 'episode' or lower == 'ep' or lower == 'ep.' or lower == '-') then
-		-- Only a bare number (plus version): `- 2049` is a year, `- 3D` a word.
-		local number, after = nxt.text:match('^(%d+)(.*)$')
-		if number and (after == '' or after:match('^[vV]%d+$')) and not is_year(number) then
-			local episodes = episode_label(number)
-			if episodes then return 'E' .. episodes, 2 end
+	-- OVA, OAD, ONA, alone or with a number: `OVA`, `OVA 2`, `OVA - 02`.
+	if lower == 'ova' or lower == 'oad' or lower == 'ona' then
+		local extra = text:upper()
+		local digits = bare_number(nxt)
+		if digits then return {extra = extra, first = digits}, 2 end
+		if is_separator(nxt) then
+			digits = bare_number(tokens[i + 2])
+			if digits then return {extra = extra, first = digits}, 3 end
 		end
+		-- Alone only at the end of the name proper: `Show - OVA [1080p]`.
+		if nxt == nil or nxt.group or is_separator(nxt) then return {extra = extra}, 1 end
+		return nil
+	end
+	-- `Special 01`, `SP 01`
+	if lower == 'special' or lower == 'sp' then
+		local digits = bare_number(nxt)
+		if digits then return {special = true, first = digits}, 2 end
+		return nil
+	end
+	-- `Episode 01`, `Ep 01`, `- 01`, `- 01v2`, `- 12.5` (anime releases)
+	if lower == 'episode' or lower == 'ep' or lower == 'ep.' or lower == '-' then
+		local digits, fraction = bare_number(nxt)
+		if digits then return {first = digits, fraction = fraction}, 2 end
 	end
 	return nil
 end
 
+-- The marker's label in `lang` (hikari's language when nil): `S1 E05`,
+-- `T1 E01-E02`, `Special E03`, `OVA`, `E12.5`, `第1季 第05集`.
+local function marker_label(marker, lang)
+	local parts = {}
+	if marker.extra then
+		parts[#parts + 1] = marker.extra
+	elseif marker.special then
+		parts[#parts + 1] = i18n.t('title_special', nil, lang)
+	elseif marker.season then
+		parts[#parts + 1] = i18n.t('title_season', {season = marker.season}, lang)
+	end
+	if marker.first then
+		local first = episode_text(marker.first, marker.fraction)
+		local last = marker.last and episode_number(marker.last)
+		if last and last ~= first then
+			parts[#parts + 1] = i18n.t('title_episodes', {first = first, last = last}, lang)
+		else
+			parts[#parts + 1] = i18n.t('title_episode', {episode = first}, lang)
+		end
+	end
+	return table.concat(parts, ' ')
+end
+
+-- Ordinals that may come before `Season`.
+local ORDINAL_WORDS = {first = 1, second = 2, third = 3, fourth = 4, fifth = 5, sixth = 6}
+
+-- A season written at the end of the series name, before position `stop`:
+-- `S2`, `Season 2`, `2nd Season`, `Second Season`, `(Season 2)`. Returns the
+-- season and the position where it starts, or nil.
+local function season_before(tokens, stop)
+	local j = stop - 1
+	while j >= 1 and is_separator(tokens[j]) do j = j - 1 end
+	if j < 2 then return nil end
+	local t = tokens[j]
+	local n, at
+	if t.group then
+		local inner = t.text:sub(2, -2):lower()
+		n = inner:match('^season (%d%d?)$') or inner:match('^(%d%d?)%a%a season$') or inner:match('^s(%d%d?)$')
+		at = j
+	else
+		local word = t.text:lower()
+		n, at = word:match('^s(%d%d?)$'), j
+		local prev = tokens[j - 1]
+		if not n and j >= 3 and not prev.group then
+			local before = prev.text:lower()
+			if before == 'season' and word:match('^%d%d?$') then
+				n, at = word, j - 1
+			elseif word == 'season' then
+				n = before:match('^(%d%d?)st$') or before:match('^(%d%d?)nd$') or before:match('^(%d%d?)rd$')
+					or before:match('^(%d%d?)th$') or ORDINAL_WORDS[before]
+				at = j - 1
+			end
+		end
+	end
+	n = tonumber(n)
+	if not n or n == 0 then return nil end
+	return n, at
+end
+
 -- Words before position `stop`, without the leading [...] group (the release
 -- group), without technical [...] and (...) groups, and without separators
--- left dangling at either end.
-local function join_words(tokens, stop)
-	local words = {}
-	for i = 1, stop - 1 do
+-- left dangling at either end. The second result is true when a group was
+-- dropped (a sign of a release name).
+local function join_words(tokens, stop, start)
+	local words, dropped = {}, false
+	start = start or 1
+	for i = start, stop - 1 do
 		local t = tokens[i]
 		if not t.group or (i > 1 and keep_group(t.text)) then
 			words[#words + 1] = t.text
+		else
+			dropped = true
 		end
 	end
 	local first, last = 1, #words
 	while first <= last and words[first]:match('^[%-~.]+$') do first = first + 1 end
 	while last >= first and words[last]:match('^[%-~.]+$') do last = last - 1 end
-	return table.concat(words, ' ', first, last)
+	return table.concat(words, ' ', first, last), dropped
 end
 
 -- Some groups name a series in lower case (Erai-raws: `jukishi`). A name with
@@ -314,21 +460,66 @@ local function capitalize(title)
 	return (title:gsub('^%l', string.upper))
 end
 
--- Turns a release name into `Series · T1 E01`, `Series · E05` or, with no
--- episode marker, the name up to its technical tail with dots as spaces.
--- Falls back to `name` itself when nothing sensible is left. Expects
--- sanitized input already cut to MAX_RAW; every pattern is anchored to a
--- token, so the work stays linear.
-local function pretty_title(name)
+-- Words that end an episode title: anything technical, plus a version (`v2`).
+local function ends_episode_title(token)
+	return token.group or is_separator(token) or tech_kind(token.text) ~= nil
+		or token.text:match('^[vV]%d+$') ~= nil
+end
+
+-- The episode title after a marker that ends before position `from`, when it
+-- is clearly one: in names with spaces it must follow a ` - `
+-- (`Show - S01E05 - The Title [1080p]`); in dotted names it is the words up to
+-- the technical tail (`Show.S01E05.The.Title.1080p.WEB`). nil otherwise.
+local function episode_title(tokens, from, spaced)
+	local i = from
+	if spaced then
+		if not tokens[i] or tokens[i].group or tokens[i].text ~= '-' then return nil end
+		i = i + 1
+	end
+	local words = {}
+	while tokens[i] and not ends_episode_title(tokens[i]) do
+		words[#words + 1] = tokens[i].text
+		i = i + 1
+	end
+	local title = table.concat(words, ' ')
+	if not title:find('%a') then return nil end
+	return title
+end
+
+-- Turns a release name into `Series · S1 E05`, `Series · E05 · Episode title`
+-- or, with no episode marker, the name up to its technical tail with dots as
+-- spaces. Falls back to `name` itself when nothing sensible is left. The
+-- second result says whether the name looked like a release (a marker, a
+-- technical tail or brackets dropped); `lang` is the language of the labels
+-- (hikari's when nil). Expects sanitized input already cut to MAX_RAW; every
+-- pattern is anchored to a token, so the work stays linear.
+local function pretty_title(name, lang)
 	local tokens = tokenize(name)
+	local spaced = name:find(' ', 1, true) ~= nil
+	local nameless_marker = false
 	for i = 1, #tokens do
-		local label = marker_at(tokens, i)
-		if label then
-			local series = join_words(tokens, i)
-			if series == '' then return name end
-			return capitalize(series) .. ' · ' .. label
+		local marker, used = marker_at(tokens, i)
+		if marker then
+			local stop, start = i, 1
+			if not marker.season and not marker.special and not marker.extra then
+				local season, at = season_before(tokens, i)
+				if season and join_words(tokens, at) ~= '' then
+					marker.season, stop = season, at
+				end
+			end
+			local series = join_words(tokens, stop, start)
+			if series ~= '' then
+				local title = capitalize(series) .. ' · ' .. marker_label(marker, lang)
+				local episode = episode_title(tokens, i + used, spaced)
+				if episode then title = title .. ' · ' .. episode end
+				return title, true
+			end
+			-- `S01E01.1080p`, `- 01`: a marker but no series in front. Look on:
+			-- in `Special 7 - 05` the series is `Special 7`.
+			nameless_marker = true
 		end
 	end
+	if nameless_marker then return name, false end
 	-- No marker (a film): cut at the first strong technical word that is not
 	-- the first word, plus the weak ones right before it (`NF.WEB-DL`), and
 	-- keep a year right before the cut as `(2023)`. A year at the very end stays
@@ -352,31 +543,70 @@ local function pretty_title(name)
 		and is_year(tokens[stop - 1].text) then
 		year_at = stop - 1
 	end
-	local title = join_words(tokens, year_at or stop)
-	if title == '' then return name end
+	local title, dropped = join_words(tokens, year_at or stop)
+	if title == '' then return name, false end
 	title = capitalize(title)
 	if year_at then title = title .. ' (' .. tokens[year_at].text .. ')' end
-	return title
+	-- Groups after the cut were never looked at: they go with the tail.
+	return title, stop <= #tokens or dropped
 end
 
 -- ----------------------------------------------------------------------------
 
+-- Sanitized and cut text; with `pretty`, tidied by pretty_title. Returns the
+-- title (nil when nothing is left) and whether it looked like a release.
 local function clean(text, pretty)
 	local title = sanitize(text)
-	if pretty and title ~= '' then title = pretty_title(title) end
+	local release = false
+	if pretty and title ~= '' then title, release = pretty_title(title) end
 	title = truncate(title)
-	return title ~= '' and title or nil
+	if title == '' then return nil, false end
+	return title, release
 end
 
 local opts = {enabled = true, pretty = true}
 options.read_options(opts, OPTIONS_ID)
 
--- Title for `path` and where it came from ('filename' or 'fallback'), or nil
--- when the path should keep mpv's own title.
+-- Name of a video file (without its extension) at the end of `path`, or nil
+-- when the path does not end in a video file name. `\` separates folders too
+-- (Windows paths). The last separator is found by a plain scan, so a long
+-- path costs linear time.
+local function video_file_name(path)
+	local last = 0
+	for pos in path:gmatch('()[/\\]') do last = pos end
+	local name = path:sub(last + 1)
+	local base, ext = name:match('^(.+)%.([%w]+)$')
+	if not base or not VIDEO_EXTENSION_SET[ext:lower()] then return nil end
+	return base:sub(1, MAX_RAW)
+end
+
+-- Title for a video file name, only when it looks like a release.
+local function release_title(name)
+	if not name or not opts.pretty then return nil end
+	local title, release = clean(name, true)
+	if title and release then return title end
+	return nil
+end
+
+-- Title for `path` and where it came from ('filename', 'file' or 'fallback'),
+-- or nil when the path should keep mpv's own title.
 local function title_for(path)
 	if type(path) ~= 'string' then return nil end
 	local scheme = path:match('^(%a[%w+.-]*)://')
-	if not scheme or (scheme:lower() ~= 'http' and scheme:lower() ~= 'https') then return nil end
+	if not scheme then
+		-- A local path (`/x/a.mkv`, `C:\x\a.mkv`, `a.mkv`).
+		local title = release_title(video_file_name(path:sub(-MAX_RAW * 4)))
+		if title then return title, 'file' end
+		return nil
+	end
+	scheme = scheme:lower()
+	if scheme == 'file' then
+		local location = path:sub(#scheme + 4):sub(-MAX_RAW * 4)
+		local title = release_title(video_file_name(url_decode(location, false)))
+		if title then return title, 'file' end
+		return nil
+	end
+	if scheme ~= 'http' and scheme ~= 'https' then return nil end
 	local rest = path:sub(#scheme + 4):gsub('#.*$', '')
 	local location, query = rest:match('^([^?]*)%?(.*)$')
 	location = location or rest
@@ -384,7 +614,12 @@ local function title_for(path)
 	local host = authority:gsub('^.*@', '')
 	local has_userinfo = host ~= authority
 
+	-- Last path segment, if any. Anchored so the match stays linear on long routes.
+	local segment = route:match('^.*/([^/]+)/*$')
+	local segment_title = segment and release_title(video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false)))
+
 	if not query then
+		if segment_title then return segment_title, 'file' end
 		-- Credentials in the URL and no path to show instead: the bare host.
 		if has_userinfo and route:match('^/*$') then
 			local title = clean(host:sub(1, MAX_RAW))
@@ -400,10 +635,9 @@ local function title_for(path)
 			if title then return title, 'filename' end
 		end
 	end
+	if segment_title then return segment_title, 'file' end
 
 	-- No usable filename: last path segment, or the host if the path is empty.
-	-- Anchored so the match stays linear on long routes.
-	local segment = route:match('^.*/([^/]+)/*$')
 	if segment then
 		local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
 		if title then return title, 'fallback' end
@@ -413,8 +647,9 @@ local function title_for(path)
 	return nil
 end
 
--- Fallback title we set for the current file, so file-loaded can withdraw it.
-local fallback_title = nil
+-- What we set for the current file: the title, and whether it is the weak
+-- fallback (file-loaded withdraws it when the file has a title tag).
+local current = nil
 
 local function playlist_entry_title()
 	local pos = mp.get_property_number('playlist-playing-pos', -1)
@@ -423,12 +658,12 @@ local function playlist_entry_title()
 end
 
 local function on_start_file()
-	fallback_title = nil
+	current = nil
 	if not opts.enabled then return end
 	local title, source = title_for(mp.get_property('path'))
 	if not title then return end
-	local current = mp.get_property('force-media-title', '')
-	if current ~= nil and current ~= '' then
+	local existing = mp.get_property('force-media-title', '')
+	if existing ~= nil and existing ~= '' then
 		msg.verbose('force-media-title already set, leaving it alone')
 		return
 	end
@@ -437,28 +672,42 @@ local function on_start_file()
 		return
 	end
 	mp.set_property('file-local-options/force-media-title', title)
-	if source == 'fallback' then fallback_title = title end
+	current = {title = title, fallback = source == 'fallback'}
 end
 
 -- A container title beats our fallback. The file-local backup is already taken,
 -- so mpv still restores the original value when the file ends.
 local function on_file_loaded()
-	if not fallback_title then return end
+	if not current or not current.fallback then return end
 	local tag = mp.get_property('metadata/by-key/title', '')
-	if tag ~= nil and tag ~= '' and mp.get_property('force-media-title', '') == fallback_title then
+	if tag ~= nil and tag ~= '' and mp.get_property('force-media-title', '') == current.title then
 		mp.set_property('file-local-options/force-media-title', '')
+		current = nil
 	end
-	fallback_title = nil
+end
+
+-- Another language: the season and episode labels of the title on screen
+-- change with it, as long as nothing else has replaced our title meanwhile.
+local function on_language_change()
+	if not current or current.fallback then return end
+	if mp.get_property('force-media-title', '') ~= current.title then return end
+	local title = title_for(mp.get_property('path'))
+	if title and title ~= current.title then
+		mp.set_property('file-local-options/force-media-title', title)
+		current.title = title
+	end
 end
 
 mp.register_event('start-file', on_start_file)
 mp.register_event('file-loaded', on_file_loaded)
+mp.register_event('end-file', function() current = nil end)
+i18n.on_change(on_language_change)
 
 if HIKARI_TITLE_TEST then
 	return {
 		title_for = title_for, url_decode = url_decode, sanitize = sanitize,
 		truncate = truncate, strip_extension = strip_extension, pretty_title = pretty_title,
 		on_start_file = on_start_file, on_file_loaded = on_file_loaded,
-		MAX_CHARS = MAX_CHARS, MAX_RAW = MAX_RAW, opts = opts,
+		MAX_CHARS = MAX_CHARS, MAX_RAW = MAX_RAW, opts = opts, i18n = i18n,
 	}
 end

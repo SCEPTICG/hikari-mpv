@@ -26,6 +26,8 @@ end
 local function load(opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = opts or {}
+	-- The assertions below are in Spanish: unless a test says otherwise, hikari speaks Spanish.
+	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	HIKARI_TITLE_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
@@ -81,16 +83,70 @@ test('URL without filename: last path segment, no query', function()
 	eq(t.title_for('https://h/a+b?token=x'), 'a+b', '+ is literal in the path')
 end)
 
-test('local files and URLs without a query are untouched', function()
+test('names that are not releases, and other protocols, are untouched', function()
 	local t = load()
 	for _, path in ipairs({
-		'/home/u/Anime/Show.S01E01.mkv', 'C:\\Videos\\a.mkv?filename=x.mkv', 'file:///tmp/a.mkv?x=1',
+		'/home/u/Videos/Holiday video.mkv', 'C:\\Videos\\a.mkv?filename=x.mkv', 'file:///tmp/a.mkv?x=1',
 		'https://h/video.mkv', 'https://h/video.mkv#t=10', 'ytdl://abc?filename=x', 'rtsp://h/a?token=1',
+		'/home/u/Music/Artist - 01 - Song.flac', '/home/u/Anime/Show.S01E01.srt', 'edl://Show.S01E01.mkv',
+		'https://www.youtube.com/watch?v=abc', '/home/u/Anime/', 'C:\\Anime\\Show - 05',
 	}) do
-		eq(t.title_for(path), nil, path)
+		local title, source = t.title_for(path)
+		if path:find('youtube', 1, true) then eq(source, 'fallback', path) else eq(title, nil, path) end
 	end
-	start('/home/u/Anime/Show.S01E01.mkv')
+	start('/home/u/Videos/Holiday video.mkv')
 	eq(mock.props['force-media-title'], nil, 'property not set')
+end)
+
+test('local files with a release name get the tidy title', function()
+	local t = load()
+	eq(t.title_for('/home/u/Anime/Show.S01E01.mkv'), 'Show · T1 E01')
+	eq(t.title_for('C:\\Anime\\[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren · E05',
+		'Windows path')
+	eq(t.title_for('file:///home/u/Anime/%5BSubsPlease%5D%20Sousou%20no%20Frieren%20-%2005%20(1080p).mkv'),
+		'Sousou no Frieren · E05', 'file:// URL, decoded')
+	eq(t.title_for('Movie.Name.2023.1080p.BluRay.x264-GRP.MP4'), 'Movie Name (2023)', 'relative path, upper-case ext')
+	local title, source = t.title_for('/a/Show - 05.webm')
+	eq(title, 'Show · E05'); eq(source, 'file')
+end)
+
+test('a local release name wins over the title tag and is restored after the file', function()
+	load()
+	eq(start('/home/u/Anime/[Erai-raws] jukishi - 15 [1080p].mkv'), 'Jukishi · E15')
+	mock.props['metadata/by-key/title'] = 'Erai-raws'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], 'Jukishi · E15', 'the tag does not replace it')
+	mock.end_file()
+	eq(mock.props['force-media-title'], '', 'restored at the end')
+end)
+
+test('local files: a title of the user or of the playlist entry is respected; pretty=no turns it off', function()
+	load()
+	mock.props['force-media-title'] = 'Mi título'
+	eq(start('/a/Show.S01E01.mkv'), 'Mi título', 'force-media-title of the user')
+	load()
+	mock.props['playlist-playing-pos'] = 0
+	mock.props['playlist/0/title'] = 'Capítulo 1'
+	eq(start('/a/Show.S01E01.mkv'), nil, 'playlist title')
+	load({['hikari-title-pretty'] = 'no'})
+	eq(start('/a/Show.S01E01.mkv'), nil, 'pretty=no')
+	load({['hikari-title-enabled'] = 'no'})
+	eq(start('/a/Show.S01E01.mkv'), nil, 'enabled=no')
+end)
+
+test('URLs whose last segment is a release file name', function()
+	local t = load()
+	eq(t.title_for('https://h/files/%5BSubsPlease%5D%20Show%20-%2005%20(1080p).mkv'), 'Show · E05', 'no query')
+	eq(t.title_for('https://h/dl/Show.S02E03.1080p.WEB-DL.mkv?token=abc'), 'Show · T2 E03', 'with a query, no filename')
+	eq(t.title_for('https://h/dl/Show.S02E03.mkv?token=abc&filename=Other.S01E01.mkv'), 'Other · T1 E01',
+		'filename= still wins')
+	local title, source = t.title_for('https://h/dl/Show.S02E03.mkv')
+	eq(source, 'file', 'strong, not a fallback')
+	load()
+	start('https://h/dl/Show.S02E03.mkv?token=abc')
+	mock.props['metadata/by-key/title'] = 'Tag'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], 'Show · T2 E03', 'kept despite the tag')
 end)
 
 test('title does not stick to the next file', function()
@@ -233,7 +289,7 @@ end)
 test('pretty: anime releases with [Group] and technical brackets', function()
 	local p = load().pretty_title
 	eq(p('[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234]'), 'Sousou no Frieren · E05')
-	eq(p('[Erai-raws] Show Name 2nd Season - 12v2 [1080p][Multiple Subtitle]'), 'Show Name 2nd Season · E12')
+	eq(p('[Erai-raws] Show Name 2nd Season - 12v2 [1080p][Multiple Subtitle]'), 'Show Name · T2 E12', 'season read')
 	eq(p('[SubsPlease] [Oshi no Ko] - 05 (1080p) [ABCD1234]'), '[Oshi no Ko] · E05', 'bracketed title kept')
 	eq(p('Show - 2049'), 'Show - 2049', 'a year is not an episode')
 end)
@@ -283,6 +339,106 @@ test('pretty: only filename= titles; pretty=no keeps the name', function()
 	eq(start(SEANIME), SEANIME_RAW)
 end)
 
+-- Real release names of many groups and naming styles, with the English
+-- labels: {name, expected}.
+local CORPUS = {
+	{'[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234]', 'Sousou no Frieren · E05'},
+	{'[SubsPlease] Kusuriya no Hitorigoto - 17v2 (1080p) [5E3B1A2C]', 'Kusuriya no Hitorigoto · E17'},
+	{'[SubsPlease] Mob Psycho 100 III - 05 (1080p) [ABCD1234]', 'Mob Psycho 100 III · E05'},
+	{'[Erai-raws] Shingeki no Kyojin - The Final Season Part 2 - 01 [1080p][Multiple Subtitle][ABCDEF01]',
+		'Shingeki no Kyojin - The Final Season Part 2 · E01'},
+	{'[Erai-raws] Mushoku Tensei II - Isekai Ittara Honki Dasu 2nd Season - 05 [1080p CR WEB-DL AVC AAC][MultiSub][ABCD1234]',
+		'Mushoku Tensei II - Isekai Ittara Honki Dasu · S2 E05'},
+	{'[Erai-raws] Kimetsu no Yaiba - Katanakaji no Sato Hen - 03 [1080p][Multiple Subtitle]',
+		'Kimetsu no Yaiba - Katanakaji no Sato Hen · E03'},
+	{'[HorribleSubs] One Punch Man S2 - 05 [1080p]', 'One Punch Man · S2 E05'},
+	{'[HorribleSubs] Boku no Hero Academia - 88 [720p]', 'Boku no Hero Academia · E88'},
+	{'[Judas] Jujutsu Kaisen - S02E05 [1080p][HEVC x265 10bit][Multi-Subs]', 'Jujutsu Kaisen · S2 E05'},
+	{'[Judas] Vinland Saga (Season 2) - 05 [1080p][HEVC x265 10bit][Multi-Subs]', 'Vinland Saga · S2 E05'},
+	{'[ASW] Dungeon Meshi - 05 [1080p HEVC x265 10Bit][AAC]', 'Dungeon Meshi · E05'},
+	{'[EMBER] Frieren S01E05 [1080p] [HEVC WEBRip]', 'Frieren · S1 E05'},
+	{'[EMBER] Kimi no Na wa (2016) [1080p] [HEVC BDRip]', 'Kimi no Na wa (2016)'},
+	{'[Tsundere-Raws] Spy x Family S2 - 05 VOSTFR (CR) [WEB 1080p x264 AAC]', 'Spy x Family · S2 E05'},
+	{'[DKB] Chainsaw Man - S01E05 [1080p][HEVC x265 10bit][Multi-Subs]', 'Chainsaw Man · S1 E05'},
+	{'[Anime Time] Oshi no Ko (Season 2) - 05 [1080p][HEVC 10bit x265][AAC][Multi Sub]', 'Oshi no Ko · S2 E05'},
+	{'[Anime Time] Bocchi the Rock! - 05 [1080p][HEVC 10bit x265][AAC][Multi Sub]', 'Bocchi the Rock! · E05'},
+	{'[Yameii] The Apothecary Diaries - S01E05 [English Dub] [CR WEB-DL 1080p] [ABCD1234]',
+		'The Apothecary Diaries · S1 E05'},
+	{'Frieren.Beyond.Journeys.End.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG', 'Frieren Beyond Journeys End · S1 E05'},
+	{'Dandadan.S01E05.Episode.Title.1080p.NF.WEB-DL.DDP5.1.H.264-VARYG', 'Dandadan · S1 E05 · Episode Title'},
+	{'Show.S01E05.REPACK.1080p.WEB', 'Show · S1 E05'},
+	{'Show.S01E05.Dual.Audio.1080p', 'Show · S1 E05'},
+	-- Plex / Jellyfin / Sonarr
+	{'Frieren (2023) - S01E05 - The Hero\'s Party', 'Frieren (2023) · S1 E05 · The Hero\'s Party'},
+	{'Frieren - S01E05 - Phantoms of the Dead [WEBDL-1080p][AAC 2.0][x264]-GRP', 'Frieren · S1 E05 · Phantoms of the Dead'},
+	{'[Group] Show - 05 - Episode Title [1080p]', 'Show · E05 · Episode Title'},
+	-- Short forms
+	{'Show - 05v2', 'Show · E05'},
+	{'Show E05', 'Show · E05'},
+	{'Show Episode 05', 'Show · E05'},
+	{'Show - 12.5', 'Show · E12.5'},
+	-- OVA, specials, seasons
+	{'[Group] Show - OVA [1080p]', 'Show · OVA'},
+	{'[Group] Show OVA 2 [1080p]', 'Show · OVA E02'},
+	{'[Group] Show OVA - 03 [1080p]', 'Show · OVA E03'},
+	{'[Group] Show - SP01 [1080p]', 'Show · Special E01'},
+	{'[Group] Show - Special 01 [1080p]', 'Show · Special E01'},
+	{'[Group] Special 7 - 05 [1080p]', 'Special 7 · E05'},
+	{'[Group] Show Season 2 - 05 [1080p]', 'Show · S2 E05'},
+	{'[Group] Show 3rd Season - 05 [1080p]', 'Show · S3 E05'},
+	{'[Group] Show Second Season - 05 [1080p]', 'Show · S2 E05'},
+	{'[Group] Show S2 E05 [1080p]', 'Show · S2 E05'},
+	{'[Group] Re Zero kara Hajimeru Isekai Seikatsu S3 - 05 [1080p]', 'Re Zero kara Hajimeru Isekai Seikatsu · S3 E05'},
+	{'[Group] 86 Eighty-Six - 05 [1080p]', '86 Eighty-Six · E05'},
+	-- Not a season: the name would be left empty, or it is part of the title.
+	{'[Group] S2 - 05 [1080p]', 'S2 · E05'},
+	{'[Group] Season 2049 - 05', 'Season 2049 · E05'},
+}
+
+test('pretty: a corpus of real release names', function()
+	local p = load({['hikari-language'] = 'en'}).pretty_title
+	for _, case in ipairs(CORPUS) do eq(p(case[1]), case[2], case[1]) end
+end)
+
+test('pretty: a release name is flagged as one; other names are not', function()
+	local p = load().pretty_title
+	for _, case in ipairs(CORPUS) do eq(select(2, p(case[1])), true, case[1]) end
+	for _, name in ipairs({'Holiday video', 'IMG_2034', 'Movie (2023)', 'Show.Name', 'S01E01.1080p', '- 01'}) do
+		eq(select(2, p(name)), false, name)
+	end
+	eq(select(2, p('[Group] Movie')), true, 'a group dropped')
+end)
+
+test('pretty: labels in every language; the label of the title on screen follows a switch', function()
+	local t = load({['hikari-language'] = 'en'})
+	local name = '[Group] Show S2 - 05 [1080p]'
+	local expected = {
+		en = 'Show · S2 E05', es = 'Show · T2 E05', pt = 'Show · T2 E05', de = 'Show · S2 E05', fr = 'Show · S2 E05',
+		tr = 'Show · S2 B05', ['zh-hans'] = 'Show · 第2季 第05集', ['zh-HK'] = 'Show · 第2季 第05集',
+	}
+	for lang, title in pairs(expected) do eq(t.pretty_title(name, lang), title, lang) end
+	eq(t.pretty_title('Show.S00E03', 'es'), 'Show · Especial E03')
+	eq(t.pretty_title('Show.S01E01E02', 'zh-hans'), 'Show · 第1季 第01-02集')
+	eq(t.pretty_title('Show - 12.5', 'zh-HK'), 'Show · 第12.5集')
+	eq(start('/a/' .. name .. '.mkv'), 'Show · S2 E05')
+	mock.set_script_opt('hikari-language', 'es')
+	eq(mock.props['force-media-title'], 'Show · T2 E05', 'redone in Spanish')
+	mock.end_file()
+	eq(mock.props['force-media-title'], '', 'still restored at the end')
+end)
+
+test('a language switch leaves alone a title someone else set, and the fallback', function()
+	load({['hikari-language'] = 'en'})
+	start('/a/Show.S01E01.mkv')
+	mock.props['force-media-title'] = 'Changed by another script'
+	mock.set_script_opt('hikari-language', 'es')
+	eq(mock.props['force-media-title'], 'Changed by another script')
+	load({['hikari-language'] = 'en'})
+	eq(start('https://h/live/master.m3u8?token=abc'), 'master.m3u8')
+	mock.set_script_opt('hikari-language', 'es')
+	eq(mock.props['force-media-title'], 'master.m3u8')
+end)
+
 test('pretty: long and hostile names stay fast', function()
 	local t = load()
 	local clock = os.clock()
@@ -296,7 +452,18 @@ test('pretty: long and hostile names stay fast', function()
 		local title = t.title_for('https://h/x?filename=' .. s)
 		assert(title and t.sanitize(title) == title, 'valid title')
 		t.pretty_title(s)
+		t.title_for('/home/u/' .. s .. '.mkv')
+		t.title_for('file:///home/u/' .. s .. '.mkv')
+		t.title_for('https://h/a/' .. s .. '.mkv')
 	end
+	-- Paths with no separator, or nothing but separators.
+	t.title_for(string.rep('a', 1000000) .. '.mkv')
+	t.title_for(string.rep('/', 1000000))
+	t.title_for(string.rep('\\', 1000000) .. 'x.mkv')
+	t.pretty_title(string.rep('S2 ', 20000) .. '- 05')
+	t.pretty_title(string.rep('OVA - ', 20000))
+	t.pretty_title(string.rep('Season 2 ', 20000) .. 'E05')
+	t.pretty_title('Show - S01E05 - ' .. string.rep('Word ', 20000))
 	assert(os.clock() - clock < 2, 'too slow: ' .. (os.clock() - clock))
 end)
 
