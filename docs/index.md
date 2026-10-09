@@ -65,7 +65,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![Skip opening button](images/skip-opening.jpg)
 
-    A *Saltar opening ›* button while a chapter looks like an opening, intro or ending. One click or `Alt+s`.
+    A *Skip opening ›* button while a chapter looks like an opening, intro or ending. One click or `Alt+s`.
 
     [:octicons-arrow-right-24: Skip openings and endings](features/skip.md)
 
@@ -85,7 +85,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![Subtitle menu](images/subtitle-styles.jpg)
 
-    *Caja oscura*, *Borde grueso* and *Amarillo clásico*, plus size and height. `Alt+t`.
+    *Dark box*, *Thick outline* and *Classic yellow*, plus size and height. `Alt+t`.
 
     [:octicons-arrow-right-24: Subtitle styles](features/subtitles.md)
 
@@ -93,9 +93,9 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ---
 
-    ![Escalado menu](images/anime4k-menu.jpg)
+    ![Upscaling menu](images/anime4k-menu.jpg)
 
-    Anime4K's modes, and *Automático*, which picks the mode from each video's resolution, with a quality for your graphics card.
+    Anime4K's modes, and *Automatic*, which picks the mode from each video's resolution, with a quality for your graphics card.
 
     [:octicons-arrow-right-24: Anime4K upscaling](features/anime4k.md)
 
@@ -105,13 +105,13 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![The player](images/player.jpg)
 
-    A filled timeline with the opening and ending marked, readable stream titles, a speed menu and an update notice.
+    A filled timeline with the opening and ending marked, readable titles for local files and streams, a speed menu and an update notice.
 
     [:octicons-arrow-right-24: Keys and configuration](usage.md)
 
 </div>
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*). The installer speaks English or Spanish, following your system.
+hikari speaks your language: its menus, buttons and messages come in the 13 languages of uosc (English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian, Simplified Chinese and Chinese from Hong Kong). It follows your system, and `Alt+l` changes it; see [Languages](features/language.md). The installer itself speaks English or Spanish.
 
 ## hikari and other mpv themes
 
@@ -119,4 +119,4 @@ The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *V
 - **[ModernX](https://github.com/cyl0/ModernX) and [ModernZ](https://github.com/Samillion/ModernZ)** are other replacements for mpv's built-in OSC. They clash with uosc, so the installer sets them aside (nothing is deleted) and puts them back on uninstall.
 - **mpv.net and AnimeJaNai** are supported on Windows: hikari installs into the config folder each of them reads.
 
-<small>Screenshots of the real player on Linux, with [Sintel](https://durian.blender.org/) © Blender Foundation (CC BY 3.0).</small>
+<small>Screenshots of the real player on Linux, with hikari in Spanish, with [Sintel](https://durian.blender.org/) © Blender Foundation (CC BY 3.0).</small>

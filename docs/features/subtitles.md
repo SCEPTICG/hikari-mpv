@@ -5,9 +5,9 @@ description: "hikari adds a subtitle style menu to mpv: a Netflix-like dark box,
 
 # Subtitle styles
 
-The subtitles button with the text icon (`text_fields`) in the controls bar, or `Alt+t`, opens a **Subtítulos** menu with three groups. Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.
+The subtitle style button with the text icon (`text_fields`) in the controls bar, or `Alt+t`, opens a **Subtitle style** menu with three groups (in hikari's [language](language.md); *Subtítulos* in Spanish). Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.
 
-- **Style**: *Original* (sets nothing: mpv's defaults or your own `sub-*` lines in `mpv.conf`), *Caja oscura* (white text on a translucent black box, Netflix-like), *Borde grueso* (bold white text, thick black outline, soft shadow, Crunchyroll-like) and *Amarillo clásico* (yellow text, black outline and shadow).
+- **Style**: *Original* (sets nothing: mpv's defaults or your own `sub-*` lines in `mpv.conf`), *Dark box* (white text on a translucent black box, Netflix-like), *Thick outline* (bold white text, thick black outline, soft shadow, Crunchyroll-like) and *Classic yellow* (yellow text, black outline and shadow).
 - **Size**: `sub-scale` 0.85, *Normal*, 1.2 or 1.4.
 - **Height**: `sub-pos` *Normal*, 95 or 90.
 
@@ -19,7 +19,7 @@ ASS subtitles keep their own styling: hikari leaves mpv's `sub-ass-override=scal
 
 mpv 0.39 changed the subtitle border options, and the script adapts to the version it runs on, always writing the real option name (never an alias):
 
-- mpv 0.39 and newer: `sub-outline-color`/`sub-outline-size`, `sub-back-color` for the shadow colour (`sub-shadow-color` is an alias of it), and `sub-border-style`. *Caja oscura* uses `sub-border-style=opaque-box`.
-- mpv 0.38 and older: `sub-border-color`/`sub-border-size`, a separate `sub-shadow-color`, and no `sub-border-style`. *Caja oscura* still gets its box: a translucent `sub-back-color` makes mpv draw a background box in that colour. The other styles never give `sub-back-color` any opacity of their own (they put back the value it had at start-up), so no box appears with them.
+- mpv 0.39 and newer: `sub-outline-color`/`sub-outline-size`, `sub-back-color` for the shadow colour (`sub-shadow-color` is an alias of it), and `sub-border-style`. *Dark box* uses `sub-border-style=opaque-box`.
+- mpv 0.38 and older: `sub-border-color`/`sub-border-size`, a separate `sub-shadow-color`, and no `sub-border-style`. *Dark box* still gets its box: a translucent `sub-back-color` makes mpv draw a background box in that colour. The other styles never give `sub-back-color` any opacity of their own (they put back the value it had at start-up), so no box appears with them.
 
 A `hikari-subs.conf` written by mpv 0.39 or newer uses option names that mpv 0.38 and older don't know: if the same config folder is used with an older mpv, it logs an unknown-option error for those lines and starts normally, without that style until it is picked again.

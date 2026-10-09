@@ -77,8 +77,9 @@ nav:
       - Thumbnails: features/thumbnails.md
       - Subtitle styles: features/subtitles.md
       - Anime4K upscaling: features/anime4k.md
-      - Stream titles: features/titles.md
+      - Titles: features/titles.md
       - Speed menu: features/speed.md
+      - Languages: features/language.md
       - Update check: features/update-check.md
   - FAQ: faq.md
   - About:

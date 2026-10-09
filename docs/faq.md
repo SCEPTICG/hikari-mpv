@@ -1,6 +1,6 @@
 ---
 title: "hikari mpv theme: frequently asked questions"
-description: "Answers about hikari, a theme for mpv built on uosc: supported players, backups, Spanish labels, Anime4K and AnimeJaNai, thumbnails on macOS, privacy and uninstalling."
+description: "Answers about hikari, a theme for mpv built on uosc: supported players, backups, languages, Anime4K and AnimeJaNai, thumbnails on macOS, privacy and uninstalling."
 ---
 
 # Frequently asked questions
@@ -21,9 +21,13 @@ See [Install on Windows](install/windows.md) and [Install on macOS and Linux](in
 
 It is built not to. Before touching anything it backs up the files it may change next to your config folder (`<folder>-respaldo-hikari-<date>`), it only adds a marked block to `mpv.conf` and `input.conf` and leaves the rest of both files as they are, and *Uninstall* puts back what was there before. Other interfaces it has to set aside (ModernX, ModernZ...) are moved, never deleted.
 
-## Why are the labels in Spanish?
+## What language are the labels in?
 
-hikari started as a personal theme and its on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*). The documentation and, on a system that is not in Spanish, the installer are in English.
+Yours, if it is one of the 13 languages of uosc: English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian, Simplified Chinese or Chinese from Hong Kong. The installer picks your system's language, and `Alt+l` changes it in mpv (restart mpv to translate uosc's own menus too). Any other language gets English. The documentation is in English, and the installer speaks English or Spanish. See [Languages](features/language.md).
+
+## Does it tidy the titles of my local files too?
+
+Yes. Since 0.5.0, a local video file whose name looks like a release (`[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv`, `Show.S01E05.1080p.WEB-DL.mkv`) shows as `Show · E05` or `Show · S1 E05`, as streamed links do. Names that do not look like a release keep mpv's title. See [Titles](features/titles.md).
 
 ## I use AnimeJaNai: do I need Anime4K?
 
@@ -35,7 +39,7 @@ mpv started from Finder or from another app (Seanime...) does not have Homebrew'
 
 ## The title of an episode looks short or odd
 
-hikari tidies the `filename` of streamed links, and it can only show what the file name carries. Some groups use their own short names (Erai-raws calls one series just `jukishi`), and the full title, which Seanime knows, is not passed to mpv. See [Stream titles](features/titles.md).
+hikari tidies release names, and it can only show what the file name carries. Some groups use their own short names (Erai-raws calls one series just `jukishi`), and the full title, which Seanime knows, is not passed to mpv. If a release name comes out wrong, [open an issue](https://github.com/SCEPTICG/hikari-mpv/issues) with the exact file name. See [Titles](features/titles.md).
 
 ## Does hikari phone home?
 

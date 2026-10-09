@@ -25,17 +25,18 @@ https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 ## What you get
 
 - **14 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original and hikari's own, SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away.
-- **Skip openings and endings**: a *Saltar opening ›* button while a chapter looks like an opening, intro or ending; one click or `Alt+s` jumps to the next chapter.
+- **Your language**: hikari's menus, buttons and messages in English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian and Chinese (Simplified and Hong Kong), the languages of uosc. It follows your system, and `Alt+l` changes it; uosc follows along.
+- **Skip openings and endings**: a *Skip opening ›* button while a chapter looks like an opening, intro or ending; one click or `Alt+s` jumps to the next chapter.
 - **Timeline thumbnails** through thumbfast, on network streams too.
-- **Subtitle styles**: *Caja oscura* (Netflix-like box), *Borde grueso* (Crunchyroll-like outline), *Amarillo clásico*, plus size and height (`Alt+t`).
-- **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automático*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
-- **Readable stream titles**: links from Seanime and similar apps show `Sousou no Frieren · E05` instead of a release name, with the access token kept out of the title bar.
+- **Subtitle styles**: *Dark box* (Netflix-like), *Thick outline* (Crunchyroll-like), *Classic yellow*, plus size and height (`Alt+t`).
+- **Anime4K upscaling**: an *Upscaling* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automatic*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
+- **Readable titles**: `[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv` shows as `Sousou no Frieren · E05`, for local files and for links from Seanime and similar apps (with the access token kept out of the title bar). Seasons, specials and episode titles too.
 - **Speed menu**: fixed speeds from 0.5× to 2× instead of a slider.
 - **A controls bar made for single episodes**: a filled timeline with the opening and ending marked, and hikari's own buttons.
 - **Update check**: a short notice and a button when a new hikari version is out. It never updates anything by itself, and it can be turned off.
 - **A careful installer**: finds mpv, mpv.net and AnimeJaNai, backs up first, verifies every download against its SHA256, sets aside clashing interfaces such as ModernX, and puts everything back on uninstall.
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar hikari*). The installer speaks English or Spanish, following your system.
+The installer itself speaks English or Spanish, following your system.
 
 ## Quick install
 
@@ -61,16 +62,16 @@ A menu opens: choose *Install or update* and the player. Run the same line again
     <td width="50%"><img src="docs/images/palette-menu.jpg" alt="hikari palette menu in mpv with 14 colour palettes"><br><sub><b>Palettes</b> (<code>Alt+p</code>): 14 palettes, applied at once.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/skip-opening.jpg" alt="Skip opening button in mpv during the opening chapter"><br><sub><b>Saltar opening ›</b>: shown during openings, intros and endings.</sub></td>
+    <td><img src="docs/images/skip-opening.jpg" alt="Skip opening button in mpv during the opening chapter"><br><sub><b>Skip opening ›</b>: shown during openings, intros and endings.</sub></td>
     <td><img src="docs/images/thumbnails.jpg" alt="Timeline thumbnail preview in mpv with uosc and thumbfast"><br><sub><b>Thumbnails</b> on hover, with the chapter name.</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/subtitle-styles.jpg" alt="hikari subtitle styles menu in mpv: dark box, thick outline, classic yellow"><br><sub><b>Subtitle styles</b> (<code>Alt+t</code>): style, size and height.</sub></td>
-    <td><img src="docs/images/anime4k-menu.jpg" alt="Anime4K upscaling menu in mpv with automatic mode"><br><sub><b>Escalado</b>: Anime4K modes, with <i>Automático</i> by resolution.</sub></td>
+    <td><img src="docs/images/anime4k-menu.jpg" alt="Anime4K upscaling menu in mpv with automatic mode"><br><sub><b>Upscaling</b>: Anime4K modes, with <i>Automatic</i> by resolution.</sub></td>
   </tr>
 </table>
 
-<sub>Screenshots of the real player on Linux, with <a href="https://durian.blender.org/">Sintel</a> © Blender Foundation (CC BY 3.0).</sub>
+<sub>Screenshots of the real player on Linux, with hikari in Spanish, with <a href="https://durian.blender.org/">Sintel</a> © Blender Foundation (CC BY 3.0).</sub>
 
 ## hikari and other mpv themes
 
@@ -83,7 +84,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 The full manual lives at **[scepticg.github.io/hikari-mpv](https://scepticg.github.io/hikari-mpv/)**:
 
 - **Install**: [Windows](https://scepticg.github.io/hikari-mpv/install/windows/) · [macOS and Linux](https://scepticg.github.io/hikari-mpv/install/macos-linux/)
-- **Use**: [Keys and configuration](https://scepticg.github.io/hikari-mpv/usage/) · [Palettes](https://scepticg.github.io/hikari-mpv/features/palettes/) · [Skip openings and endings](https://scepticg.github.io/hikari-mpv/features/skip/) · [Thumbnails](https://scepticg.github.io/hikari-mpv/features/thumbnails/) · [Subtitle styles](https://scepticg.github.io/hikari-mpv/features/subtitles/) · [Anime4K upscaling](https://scepticg.github.io/hikari-mpv/features/anime4k/) · [Stream titles](https://scepticg.github.io/hikari-mpv/features/titles/) · [Speed menu](https://scepticg.github.io/hikari-mpv/features/speed/) · [Update check](https://scepticg.github.io/hikari-mpv/features/update-check/)
+- **Use**: [Keys and configuration](https://scepticg.github.io/hikari-mpv/usage/) · [Palettes](https://scepticg.github.io/hikari-mpv/features/palettes/) · [Skip openings and endings](https://scepticg.github.io/hikari-mpv/features/skip/) · [Thumbnails](https://scepticg.github.io/hikari-mpv/features/thumbnails/) · [Subtitle styles](https://scepticg.github.io/hikari-mpv/features/subtitles/) · [Anime4K upscaling](https://scepticg.github.io/hikari-mpv/features/anime4k/) · [Titles](https://scepticg.github.io/hikari-mpv/features/titles/) · [Speed menu](https://scepticg.github.io/hikari-mpv/features/speed/) · [Languages](https://scepticg.github.io/hikari-mpv/features/language/) · [Update check](https://scepticg.github.io/hikari-mpv/features/update-check/)
 - **Help**: [FAQ](https://scepticg.github.io/hikari-mpv/faq/) · [Development](https://scepticg.github.io/hikari-mpv/development/)
 
 ## Contributing
