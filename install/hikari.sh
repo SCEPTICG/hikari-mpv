@@ -132,7 +132,7 @@ hikari_defaults() {
         'scripts-desactivados' 'hikari-originales' 'shaders-desactivados'
         'sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf' 'sosc-installed.txt' 'sosc-originales' 'sosc-update.txt'
     )
-    MPV_CONFIG_FILES=('mpv.conf' 'input.conf' 'hikari-installed.txt' 'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf')
+    MPV_CONFIG_FILES=('mpv.conf' 'input.conf' 'hikari-installed.txt' 'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-language.conf')
     MPV_CONFIG_DIRS=('scripts' 'script-opts')
     # Scripts that replace mpv's on-screen controller and clash with uosc
     # (file names in scripts/, case-insensitive), and the fonts of some of them.

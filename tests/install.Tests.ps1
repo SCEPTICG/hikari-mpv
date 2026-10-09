@@ -1415,6 +1415,9 @@ Test-Case 'refused targets: drive root, user profile, and folders that are not m
     $withConf = P @($d, 'withconf')
     Set-TestFile (P @($withConf, 'mpv.conf')) 'x'
     Assert-True (Test-HikariLooksLikeMpvConfig -Env $e -Candidate (New-HikariCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $withConf -Portable $false)) 'mpv.conf'
+    $langOnly = P @($d, 'langonly')
+    Set-TestFile (P @($langOnly, 'hikari-language.conf')) 'x'
+    Assert-True (Test-HikariLooksLikeMpvConfig -Env $e -Candidate (New-HikariCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $langOnly -Portable $false)) 'hikari-language.conf'
     $beside = P @($d, 'player', 'cfg')
     Set-TestFile (P @($beside, 'notes.txt'))
     Set-TestFile (P @($d, 'player', 'mpv.exe'))
