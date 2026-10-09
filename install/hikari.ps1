@@ -156,6 +156,9 @@ $script:Anime4KBindings = @(
 $script:ShadersDir = 'shaders'
 $script:ShadersDisabledDir = 'shaders-desactivados'
 $script:UpscaleConf = 'hikari-upscale.conf'
+$script:LanguageConf = 'hikari-language.conf'
+# The languages of hikari in mpv: those of uosc 5.13 (script-modules/hikari-i18n.lua).
+$script:MpvLanguages = @('en', 'es', 'de', 'fr', 'it', 'pl', 'pt', 'ro', 'ru', 'tr', 'uk', 'zh-HK', 'zh-hans')
 # What hikari puts in front of a line of the user's it turns off (never deleted).
 $script:CommentPrefix = '# hikari: '
 # mpv.conf lines (outside the hikari block) of an Anime4K installed by hand that
@@ -180,20 +183,23 @@ $script:MpvConfLines = @(
     'osd-bar=no',
     'include="~~/hikari-palette.conf"',
     'include="~~/hikari-subs.conf"',
-    'include="~~/hikari-upscale.conf"'
+    'include="~~/hikari-upscale.conf"',
+    'include="~~/hikari-language.conf"'
 )
 
 $script:InputBindings = @(
     @{ Key = 'Alt+p'; Command = 'script-binding hikari_palettes/open-menu' },
     @{ Key = 'Alt+s'; Command = 'script-binding hikari_skip/skip' },
     @{ Key = 'Alt+t'; Command = 'script-binding hikari_subs/open-menu' },
-    @{ Key = 'Alt+u'; Command = 'script-binding hikari_update/open-menu' }
+    @{ Key = 'Alt+u'; Command = 'script-binding hikari_update/open-menu' },
+    @{ Key = 'Alt+l'; Command = 'script-binding hikari_language/open-menu' }
 )
 
 # Files of hikari that only get copied when missing: they hold the user's choices.
-# hikari-upscale.conf is written by the installer itself (with the quality that
-# suits the graphics card), the others are copied from the hikari files.
-$script:UserChoiceFiles = @('hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf')
+# hikari-upscale.conf (with the quality that suits the graphics card) and
+# hikari-language.conf (with the system language) are written by the installer
+# itself, the others are copied from the hikari files.
+$script:UserChoiceFiles = @('hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf', 'hikari-language.conf')
 
 # script-opts that are not named hikari-*: removed on uninstall only if hikari put them there.
 $script:SharedConfs = @('uosc.conf', 'thumbfast.conf')
@@ -229,14 +235,14 @@ $script:SoscConfFiles = @('skip', 'title', 'update')
 # files there, and moves (never deletes) an Anime4K installed by hand to
 # shaders-desactivados, which is copied.
 $script:BackupItems = @(
-    'mpv.conf', 'input.conf', 'scripts', 'script-opts', 'fonts',
-    'hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf', 'hikari-installed.txt',
+    'mpv.conf', 'input.conf', 'scripts', 'script-opts', 'script-modules', 'fonts',
+    'hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf', 'hikari-language.conf', 'hikari-installed.txt',
     'scripts-desactivados', 'hikari-originales', 'shaders-desactivados',
     'sosc-palette.conf', 'sosc-subs.conf', 'sosc-upscale.conf', 'sosc-installed.txt', 'sosc-originales', 'sosc-update.txt'
 )
 
 # Signs that a folder belongs to mpv (any of them is enough).
-$script:MpvConfigFiles = @('mpv.conf', 'input.conf', 'hikari-installed.txt', 'hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf')
+$script:MpvConfigFiles = @('mpv.conf', 'input.conf', 'hikari-installed.txt', 'hikari-palette.conf', 'hikari-subs.conf', 'hikari-upscale.conf', 'hikari-language.conf')
 $script:MpvConfigDirs = @('scripts', 'script-opts')
 $script:PlayerExes = @('mpvnet.exe', 'mpv.exe')
 
@@ -264,6 +270,15 @@ $script:HikariWarnings = New-Object System.Collections.Generic.List[string]
 
 # Names of the graphics cards, replaceable in tests (returns a list of names).
 $script:HikariGpuProbe = { Get-HikariGpuNames }
+
+# The Windows display language (de-DE, zh-Hant-TW...), replaceable in tests.
+# The regional format (Get-Culture) only when the display language is unknown.
+$script:HikariUiCultureProbe = {
+    $name = ''
+    try { $name = (Get-UICulture).Name } catch { }
+    if (-not $name) { try { $name = (Get-Culture).Name } catch { } }
+    return [string]$name
+}
 
 # Download function, replaceable in tests: param($Url, $OutFile).
 $script:HikariDownloader = {
@@ -334,6 +349,7 @@ $script:HikariStringsEn = @{
     thumbfast_done        = 'thumbfast installed.'
     hikari_files_done     = 'hikari files copied ({0}).'
     kept_user_file        = '{0} already exists: kept (it holds your choice).'
+    language_set          = 'hikari language in mpv: {0} (the system''s; change it in mpv with Alt+l).'
     removed_stale         = 'Removed old hikari file {0}.'
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
     block_updated         = '{0}: hikari block written.'
@@ -349,7 +365,7 @@ $script:HikariStringsEn = @{
     ask_remove_uosc       = 'Remove uosc too?'
     ask_remove_thumbfast  = 'Remove thumbfast too?'
     ask_restore           = 'Move back the interfaces hikari set aside ({0})?'
-    ask_delete_choices    = 'Delete your saved palette, subtitle and upscaling choices (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?'
+    ask_delete_choices    = 'Delete your saved palette, subtitle, upscaling and language choices (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf, hikari-language.conf)?'
     restore_skipped       = '{0} not moved back: {1} already exists.'
     conf_restored         = '{0}: your version from before hikari was put back.'
     conf_left             = '{0} was there before hikari and is left as it is now. Your earlier version is in {1}.'
@@ -488,6 +504,7 @@ $script:HikariStringsEs = @{
     thumbfast_done        = 'thumbfast instalado.'
     hikari_files_done     = 'Ficheros de hikari copiados ({0}).'
     kept_user_file        = '{0} ya existe: se conserva (guarda tu elecci\u00f3n).'
+    language_set          = 'Idioma de hikari en mpv: {0} (el del sistema; c\u00e1mbialo en mpv con Alt+l).'
     removed_stale         = 'Borrado el fichero antiguo de hikari {0}.'
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
     block_updated         = '{0}: bloque de hikari escrito.'
@@ -503,7 +520,7 @@ $script:HikariStringsEs = @{
     ask_remove_uosc       = '\u00bfQuitar tambi\u00e9n uosc?'
     ask_remove_thumbfast  = '\u00bfQuitar tambi\u00e9n thumbfast?'
     ask_restore           = '\u00bfDevolver a su sitio las interfaces que hikari apart\u00f3 ({0})?'
-    ask_delete_choices    = '\u00bfBorrar tus elecciones guardadas de paleta, subt\u00edtulos y escalado (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?'
+    ask_delete_choices    = '\u00bfBorrar tus elecciones guardadas de paleta, subt\u00edtulos, escalado e idioma (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf, hikari-language.conf)?'
     restore_skipped       = '{0} no se devuelve: ya existe {1}.'
     conf_restored         = '{0}: se ha devuelto tu versi\u00f3n de antes de hikari.'
     conf_left             = '{0} ya exist\u00eda antes de hikari y se deja como est\u00e1 ahora. Tu versi\u00f3n anterior est\u00e1 en {1}.'
@@ -2353,6 +2370,76 @@ function Initialize-HikariUpscaleConf {
     }
 }
 
+# The hikari language for mpv (one of $script:MpvLanguages) of a culture name or
+# a locale, the same rules as normalize() in script-modules/hikari-i18n.lua and
+# mpv_language_code in hikari.sh: es-ES -> es, pt-BR -> pt, de_DE@euro -> de,
+# zh-CN / zh-SG / zh-Hans -> zh-hans, zh-TW / zh-HK / zh-Hant -> zh-HK. $null for
+# C, POSIX and any other language.
+function ConvertTo-HikariMpvLanguage {
+    param([string]$Tag)
+    if ($null -eq $Tag) { return $null }
+    $t = $Tag.ToLowerInvariant().Replace('_', '-').TrimStart()
+    $m = [regex]::Match($t, '^[a-z0-9-]*')
+    $t = $m.Value
+    if ($t -eq '' -or $t -eq 'c' -or $t -eq 'posix') { return $null }
+    $lang = [regex]::Match($t, '^[a-z]+').Value
+    if ($lang -eq 'zh') {
+        $sub = '-' + $t + '-'
+        if ($sub.Contains('-hans-')) { return 'zh-hans' }
+        if ($sub.Contains('-hant-') -or $sub.Contains('-tw-') -or $sub.Contains('-hk-') -or $sub.Contains('-mo-')) { return 'zh-HK' }
+        return 'zh-hans'
+    }
+    if (@('en', 'es', 'de', 'fr', 'it', 'pl', 'pt', 'ro', 'ru', 'tr', 'uk') -contains $lang) { return $lang }
+    return $null
+}
+
+# The language hikari speaks in mpv after a first install: HIKARI_MPV_LANG when
+# set (tests, or whoever wants another one), else the Windows display language.
+# English when it is none of $script:MpvLanguages.
+function Get-HikariMpvLanguage {
+    $name = $env:HIKARI_MPV_LANG
+    if (-not $name) { $name = & $script:HikariUiCultureProbe }
+    $code = ConvertTo-HikariMpvLanguage $name
+    if ($null -eq $code) { return 'en' }
+    return $code
+}
+
+# hikari-language.conf for a language code, byte for byte what
+# hikari-language.lua writes for it (the tests compare both). uosc gets the same
+# language; zh-HK also by the path of its file (uosc looks for it in lower case,
+# which a case-sensitive file system does not find).
+function Get-HikariLanguageConfText {
+    param([string]$Code)
+    if ($script:MpvLanguages -cnotcontains $Code) { $Code = 'en' }
+    $uosc = $Code + ',en'
+    if ($Code -eq 'en') { $uosc = 'en' }
+    elseif ($Code -ceq 'zh-HK') { $uosc = '~~/scripts/uosc/intl/zh-HK.json,zh-HK,en' }
+    $lines = @(
+        ('# Generated by hikari-language.lua. Language: ' + $Code),
+        ('script-opts-append=hikari-language=' + $Code),
+        ('script-opts-append=uosc-languages=' + $uosc)
+    )
+    return ([string]::Join("`n", $lines) + "`n")
+}
+
+# Writes hikari-language.conf with the system language when it holds no choice
+# yet: missing, or the copy that comes with the hikari files (only comments).
+# One with a hikari-language= line is the user's and is kept.
+function Initialize-HikariLanguageConf {
+    param([string]$ConfigDir)
+    $path = Join-HikariPath $ConfigDir $script:LanguageConf
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $text = (Read-HikariText $path).Text
+        if ($text -cmatch '(?m)^script-opts-append=hikari-language=') {
+            Write-HikariInfo (T 'kept_user_file' @($script:LanguageConf))
+            return
+        }
+    }
+    $code = Get-HikariMpvLanguage
+    Write-HikariText -Path $path -Text (Get-HikariLanguageConfText -Code $code)
+    Write-HikariInfo (T 'language_set' @($code))
+}
+
 # AnimeJaNai brings its own AI upscaling (and uses Ctrl+1..9 for it).
 function Test-HikariAnimeJaNai {
     param($Candidate, [string]$ConfigDir)
@@ -3293,6 +3380,16 @@ function Install-HikariTarget {
             Copy-Item -LiteralPath $f.FullName -Destination (Join-HikariPath $scripts $f.Name) -Force
             $installed.Add('scripts/' + $f.Name)
         }
+        # The texts module the scripts share (not a script: mpv would run any .lua in scripts\).
+        $modules = Join-HikariPath $config 'script-modules'
+        New-HikariDirectory $modules
+        $srcModules = Join-HikariPath $Source.ConfigDir 'script-modules'
+        if (Test-Path -LiteralPath $srcModules -PathType Container) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $srcModules -File -Filter 'hikari-*.lua' -Force)) {
+                Copy-Item -LiteralPath $f.FullName -Destination (Join-HikariPath $modules $f.Name) -Force
+                $installed.Add('script-modules/' + $f.Name)
+            }
+        }
         New-HikariDirectory $opts
         $origDir = Join-HikariPath $config @($script:OriginalsDir, 'script-opts')
         foreach ($f in @(Get-ChildItem -LiteralPath (Join-HikariPath $Source.ConfigDir 'script-opts') -File -Filter '*.conf' -Force)) {
@@ -3305,7 +3402,7 @@ function Install-HikariTarget {
             $installed.Add('script-opts/' + $f.Name)
         }
         foreach ($name in $script:UserChoiceFiles) {
-            if ($name -eq $script:UpscaleConf) { continue }
+            if ($name -eq $script:UpscaleConf -or $name -eq $script:LanguageConf) { continue }
             $dest = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $dest -PathType Leaf) {
                 Write-HikariInfo (T 'kept_user_file' @($name))
@@ -3314,8 +3411,10 @@ function Install-HikariTarget {
                 Copy-Item -LiteralPath (Join-HikariPath $Source.ConfigDir $name) -Destination $dest
             }
         }
+        Initialize-HikariLanguageConf -ConfigDir $config
         foreach ($oldFile in $oldFiles) {
-            if ($installed -contains $oldFile -or $oldFile -notmatch '^scripts/hikari-[^/\\]+\.lua\z|^script-opts/hikari-[^/\\]+\.conf\z') { continue }
+            if ($installed -contains $oldFile -or
+                $oldFile -notmatch '^scripts/hikari-[^/\\]+\.lua\z|^script-opts/hikari-[^/\\]+\.conf\z|^script-modules/hikari-[^/\\]+\.lua\z') { continue }
             if (-not (Test-HikariRecordPath $oldFile)) { continue }
             $p = Join-HikariPath $config ($oldFile -split '/')
             if (Test-Path -LiteralPath $p -PathType Leaf) {
@@ -3459,6 +3558,10 @@ function Uninstall-HikariTarget {
         if (Test-Path -LiteralPath $opts -PathType Container) {
             foreach ($f in @(Get-ChildItem -LiteralPath $opts -File -Filter 'hikari-*.conf' -Force)) { Remove-HikariItem -Path $f.FullName -Root $config }
         }
+        $modules = Join-HikariPath $config 'script-modules'
+        if (Test-Path -LiteralPath $modules -PathType Container) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $modules -File -Filter 'hikari-*.lua' -Force)) { Remove-HikariItem -Path $f.FullName -Root $config }
+        }
         # Anime4K shaders: only the ones the record says hikari installed.
         foreach ($rel in @($recordFiles | Where-Object { Test-HikariOwnShaderPath $_ })) {
             $p = Join-HikariPath $config ($rel -split '/')
@@ -3592,7 +3695,7 @@ function Uninstall-HikariTarget {
 
         # Folders left empty (hikari may have created them) go too; shaders only
         # when the record says hikari created it.
-        $emptyDirs = @('fonts', 'script-opts', 'scripts')
+        $emptyDirs = @('fonts', 'script-opts', 'scripts', 'script-modules')
         if ((& $wasThere 'shaders_preexisting') -eq $false) { $emptyDirs += $script:ShadersDir }
         foreach ($dirName in $emptyDirs) {
             $dir = Join-HikariPath $config $dirName

@@ -217,6 +217,9 @@ $OriginalThumbSha = $script:ThumbfastSha256
 $OriginalAnime4KSha = $script:Anime4KSha256
 # The graphics card the tests see unless they say otherwise.
 $script:HikariGpuProbe = { @('Intel(R) UHD Graphics 620') }
+# The Windows display language the tests see unless they say otherwise.
+$script:HikariUiCultureProbe = { 'en-US' }
+Remove-Item Env:\HIKARI_MPV_LANG -ErrorAction SilentlyContinue
 $Source = Get-HikariSource -TempDir $TestRoot
 
 # ---------------------------------------------------------------------------
@@ -487,7 +490,7 @@ Test-Case 'incomplete or repeated block is refused' {
 
 Test-Case 'mpv.conf block: options, includes last, [default] after a profile' {
     $b = Get-HikariMpvConfBlock "sub-font=Arial`n"
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|include="~~/hikari-palette.conf"|include="~~/hikari-subs.conf"|include="~~/hikari-upscale.conf"' 'lines'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|include="~~/hikari-palette.conf"|include="~~/hikari-subs.conf"|include="~~/hikari-upscale.conf"|include="~~/hikari-language.conf"' 'lines'
     Assert-True (-not ($b.Lines -contains 'border=no')) 'no border=no'
     $b = Get-HikariMpvConfBlock "vo=gpu`n[anime]`nprofile-cond=1`n"
     Assert-Equal $b.Lines[0] '[default]' 'default section'
@@ -522,7 +525,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
     [void](Update-HikariManagedFile -Path $p -Kind 'mpv')
     $t = Get-TestText $p
     Assert-True ($t.StartsWith("a=1`nsub-font-size=50`n" + $BlockB + "`n")) ('user lines first, block after: ' + $t)
-    Assert-True ($t.EndsWith('include="~~/hikari-upscale.conf"' + "`n" + $BlockE + "`n")) 'block last, LF kept'
+    Assert-True ($t.EndsWith('include="~~/hikari-language.conf"' + "`n" + $BlockE + "`n")) 'block last, LF kept'
     Assert-Equal @([regex]::Matches($t, [regex]::Escape($BlockB))).Count 1 'one block'
     [void](Update-HikariManagedFile -Path $p -Kind 'mpv')
     Assert-Equal (Get-TestText $p) $t 'idempotent once at the end'
@@ -547,7 +550,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
 Test-Case 'input.conf: taken keys are reported and left alone' {
     $text = "Alt+p cycle pause`nALT+s script-binding hikari_skip/skip  # mine`n# Alt+t commented`n"
     $b = Get-HikariInputBlock $text
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding hikari_subs/open-menu|Alt+u  script-binding hikari_update/open-menu' 'only Alt+t and Alt+u added'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding hikari_subs/open-menu|Alt+u  script-binding hikari_update/open-menu|Alt+l  script-binding hikari_language/open-menu' 'only Alt+t, Alt+u and Alt+l added'
     Assert-Equal @($b.Taken).Count 1 'taken'
     Assert-Equal $b.Taken[0].Key 'Alt+p' 'taken key'
     Assert-Equal @($b.Same).Count 1 'same'
@@ -872,6 +875,123 @@ Test-Case 'repository source is found next to the script' {
 }
 
 # ---------------------------------------------------------------------------
+# Language of hikari in mpv
+# ---------------------------------------------------------------------------
+
+$LangCodes = @('en', 'es', 'de', 'fr', 'it', 'pl', 'pt', 'ro', 'ru', 'tr', 'uk', 'zh-HK', 'zh-hans')
+$LangLua = $null
+if (Get-Command lua -ErrorAction SilentlyContinue) {
+    $LangLua = P @($TestRoot, 'lang.lua')
+    Set-TestFile $LangLua ("package.path = './tests/?.lua;' .. package.path`n" +
+        "local mock = require('mock_mp')`nmock.install('hikari_language')`nHIKARI_LANGUAGE_TEST = true`n" +
+        "local l = assert(loadfile('portable_config/scripts/hikari-language.lua'))()`n" +
+        "if arg[1] == 'conf' then io.write(l.persist_content(arg[2])) else io.write(l.i18n.normalize(arg[2]) or '-') end`n")
+}
+function Invoke-LangLua {
+    param([string]$What, [string]$Arg)
+    Push-Location $RepoRoot
+    try { return ((& lua $LangLua $What $Arg) -join "`n") }
+    finally { Pop-Location }
+}
+
+Test-Case 'language: locale names to the 13 codes, the same rules as hikari-i18n.lua' {
+    $cases = @{
+        'es-ES' = 'es'; 'es_ES.UTF-8' = 'es'; 'es-419' = 'es'; 'de-DE' = 'de'; 'de_DE@euro' = 'de'; 'pt-BR' = 'pt'
+        'fr-CA' = 'fr'; 'en-GB' = 'en'; 'ru-RU' = 'ru'; 'uk-UA' = 'uk'; 'tr-TR' = 'tr'; 'pl-PL' = 'pl'; 'ro-RO' = 'ro'
+        'it-IT' = 'it'; 'zh-CN' = 'zh-hans'; 'zh-SG' = 'zh-hans'; 'zh-Hans' = 'zh-hans'; 'zh-Hans-HK' = 'zh-hans'
+        'zh' = 'zh-hans'; 'zh-TW' = 'zh-HK'; 'zh-HK' = 'zh-HK'; 'zh-MO' = 'zh-HK'; 'zh-Hant' = 'zh-HK'
+        'zh-Hant-TW' = 'zh-HK'
+    }
+    foreach ($k in $cases.Keys) { Assert-Equal (ConvertTo-HikariMpvLanguage $k) $cases[$k] $k }
+    foreach ($k in @('C', 'POSIX', 'C.UTF-8', 'ja-JP', 'nl-NL', '', 'english')) { Assert-Equal (ConvertTo-HikariMpvLanguage $k) $null $k }
+    if ($LangLua) {
+        foreach ($k in @($cases.Keys) + @('C', 'POSIX', 'ja-JP', 'nl-NL', 'es419')) {
+            $mine = ConvertTo-HikariMpvLanguage $k
+            if ($null -eq $mine) { $mine = '-' }
+            Assert-Equal $mine (Invoke-LangLua 'code' $k) ('as hikari-i18n.lua: ' + $k)
+        }
+    }
+}
+
+Test-Case 'language: hikari-language.conf byte for byte what hikari-language.lua writes' {
+    Assert-Equal (Get-HikariLanguageConfText 'es') ("# Generated by hikari-language.lua. Language: es`n" +
+        "script-opts-append=hikari-language=es`nscript-opts-append=uosc-languages=es,en`n") 'es'
+    Assert-True ((Get-HikariLanguageConfText 'zh-HK').EndsWith("uosc-languages=~~/scripts/uosc/intl/zh-HK.json,zh-HK,en`n")) 'zh-HK by path too'
+    Assert-Equal (Get-HikariLanguageConfText "es`nx") (Get-HikariLanguageConfText 'en') 'unknown: English'
+    Assert-Equal (Get-HikariLanguageConfText 'ZH-hk') (Get-HikariLanguageConfText 'en') 'codes are exact'
+    if ($LangLua) {
+        foreach ($code in $LangCodes) {
+            Assert-Equal (Get-HikariLanguageConfText $code) ((Invoke-LangLua 'conf' $code) + "`n") $code
+        }
+    }
+}
+
+Test-Case 'language: the Windows display language, HIKARI_MPV_LANG first, English otherwise' {
+    $saved = $script:HikariUiCultureProbe
+    try {
+        $script:HikariUiCultureProbe = { 'pt-BR' }
+        Assert-Equal (Get-HikariMpvLanguage) 'pt' 'display language'
+        $script:HikariUiCultureProbe = { 'ja-JP' }
+        Assert-Equal (Get-HikariMpvLanguage) 'en' 'a language hikari does not have'
+        $script:HikariUiCultureProbe = { '' }
+        Assert-Equal (Get-HikariMpvLanguage) 'en' 'unknown'
+        $env:HIKARI_MPV_LANG = 'zh_TW'
+        Assert-Equal (Get-HikariMpvLanguage) 'zh-HK' 'HIKARI_MPV_LANG'
+    }
+    finally { $script:HikariUiCultureProbe = $saved; Remove-Item Env:\HIKARI_MPV_LANG -ErrorAction SilentlyContinue }
+}
+
+Test-Case 'language: install writes the system language once, keeps choices, and the module comes and goes' {
+    $d = New-TestDir 'lang-e2e'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv.net' -Exe '' -ConfigDir $cfg -Portable $false
+    $conf = P @($cfg, 'hikari-language.conf')
+    $saved = $script:HikariUiCultureProbe
+    $infos = New-Object System.Collections.Generic.List[string]
+    function Write-HikariInfo { param([string]$Text) $infos.Add($Text) }
+    try {
+        $script:HikariUiCultureProbe = { 'zh-Hant-TW' }
+        [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261009-100000')
+        Assert-Equal (Get-TestText $conf) (Get-HikariLanguageConfText 'zh-HK') 'display language written'
+        Assert-True (@($infos | Where-Object { $_ -like 'hikari language in mpv: zh-HK*' }).Count -eq 1) 'said so'
+        Assert-Equal (Get-TestText (P @($cfg, 'script-modules', 'hikari-i18n.lua'))) (Get-TestText (P @($RepoRoot, 'portable_config', 'script-modules', 'hikari-i18n.lua'))) 'module installed'
+        Assert-True ((Get-TestText (P @($cfg, 'scripts', 'hikari-language.lua'))).Length -gt 0) 'language script installed'
+        Assert-True (@((Read-HikariRecord $cfg).Files) -contains 'script-modules/hikari-i18n.lua') 'module recorded'
+        Assert-True ((Get-TestText (P @($cfg, 'input.conf'))).Contains('Alt+l  script-binding hikari_language/open-menu')) 'Alt+l'
+        Assert-True ((Get-TestText (P @($cfg, 'mpv.conf'))).Contains('include="~~/hikari-language.conf"')) 'include'
+
+        # A choice made in mpv is kept byte for byte on update.
+        $mine = (Get-HikariLanguageConfText 'fr') + "# mine`n"
+        Set-TestFile $conf $mine
+        $script:HikariUiCultureProbe = { 'de-DE' }
+        [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261009-100100')
+        Assert-Equal (Get-TestText $conf) $mine 'choice kept'
+        Assert-True (@($infos | Where-Object { $_ -like 'hikari-language.conf already exists: kept*' }).Count -eq 1) 'kept, said so'
+
+        # The copy from the hikari files has no choice in it: replaced.
+        Copy-Item -LiteralPath (P @($RepoRoot, 'portable_config', 'hikari-language.conf')) -Destination $conf -Force
+        Set-TestFile (P @($cfg, 'script-modules', 'hikari-old.lua')) '-- old'
+        Set-TestFile (P @($cfg, 'script-modules', 'mine.lua')) '-- mine'
+        Add-Content -LiteralPath (P @($cfg, 'hikari-installed.txt')) -Value 'file=script-modules/hikari-old.lua'
+        [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261009-100200')
+        Assert-Equal (Get-TestText $conf) (Get-HikariLanguageConfText 'de') 'no choice yet: the display language'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-old.lua')))) 'stale module removed'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'mine.lua'))) 'the user''s file left'
+
+        [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261009-100300')
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-i18n.lua')))) 'module removed'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'mine.lua'))) 'the user''s file still there'
+        Assert-True (Test-Path -LiteralPath $conf) 'language choice kept by default'
+        Remove-Item -LiteralPath (P @($cfg, 'script-modules', 'mine.lua'))
+        [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261009-100400')
+        [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261009-100500')
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules')))) 'empty script-modules removed'
+    }
+    finally { $script:HikariUiCultureProbe = $saved; Remove-Item Function:\Write-HikariInfo }
+}
+
+# ---------------------------------------------------------------------------
 # Install / update / uninstall end to end
 # ---------------------------------------------------------------------------
 
@@ -919,7 +1039,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True ($thumbConf.Contains('mpv_path=' + $exe)) 'mpv_path'
     $mpvAfter = Get-TestText (P @($cfg, 'mpv.conf'))
     Assert-True ($mpvAfter.StartsWith($mpvConf)) 'user mpv.conf lines untouched'
-    Assert-True ($mpvAfter.EndsWith('include="~~/hikari-upscale.conf"' + "`r`n" + $BlockE + "`r`n")) 'block at the end, CRLF'
+    Assert-True ($mpvAfter.EndsWith('include="~~/hikari-language.conf"' + "`r`n" + $BlockE + "`r`n")) 'block at the end, CRLF'
     Assert-True (-not $mpvAfter.Contains('border=no')) 'no border=no'
     Assert-True (-not $mpvAfter.Contains('alang')) 'no personal language lines'
     $inputAfter = Get-TestText (P @($cfg, 'input.conf'))
@@ -1013,10 +1133,11 @@ Test-Case 'uninstall answers can remove the saved choices and warn about include
     $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $cfg -Portable $false
     [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-140000')
     $script:NonInteractive = $false
-    function Read-HikariLine { param([string]$Prompt) if ($Prompt -like '*palette, subtitle and upscaling*') { return 'y' } return '' }
+    function Read-HikariLine { param([string]$Prompt) if ($Prompt -like '*palette, subtitle, upscaling and language*') { return 'y' } return '' }
     try { [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261005-140100') }
     finally { Remove-Item Function:\Read-HikariLine; $script:NonInteractive = $true }
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-palette.conf')))) 'palette deleted'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-language.conf')))) 'language deleted'
     Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*hikari-palette.conf*' }).Count -ge 1) 'include warning'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "include=`"~~/hikari-palette.conf`"`n" 'user line untouched'
 }
@@ -1184,7 +1305,7 @@ Test-Case 'uninstall finishes when hikari-originales was deleted by hand' {
     Assert-Equal @(Get-ChildItem -LiteralPath (P @($cfg, 'script-opts')) -Filter 'hikari-*').Count 0 'hikari options gone'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'uosc.conf'))) 'uosc.conf left (the earlier one is in the backup)'
     $left = @(Get-ChildItem -LiteralPath $cfg -Recurse -Force -File | ForEach-Object { Get-HikariRelativePath -Path $_.FullName -Root $cfg } | Sort-Object)
-    Assert-Equal ([string]::Join(',', $left)) 'hikari-palette.conf,hikari-subs.conf,hikari-upscale.conf,mpv.conf,script-opts/uosc.conf' 'only the user files and the saved choices are left'
+    Assert-Equal ([string]::Join(',', $left)) 'hikari-language.conf,hikari-palette.conf,hikari-subs.conf,hikari-upscale.conf,mpv.conf,script-opts/uosc.conf' 'only the user files and the saved choices are left'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "volume=50`n" 'mpv.conf as before'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'input.conf')))) 'input.conf created by hikari removed'
 }
