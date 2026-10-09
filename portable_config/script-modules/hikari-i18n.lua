@@ -8,7 +8,7 @@
 -- Usage (see the loader at the top of each hikari script):
 --   i18n.t('skip_opening')                      -> 'Saltar opening ›'
 --   i18n.t('update_notice', {version = '0.5.0'}) -> 'hikari 0.5.0 disponible · Alt+u'
---   i18n.on_change(function(lang) ... end)       -> after a language switch
+--   i18n.on_change(function(lang, variant) ... end) -> after a language switch
 --
 -- Decisions:
 -- - Why ~~/script-modules and a loader in each script: single-file mpv scripts
@@ -23,13 +23,21 @@
 --   and by hikari-language.lua). Every script sees it from its very first line,
 --   so nothing starts in the wrong language. A switch at run time changes the
 --   option (`change-list script-opts append`), every script observes
---   `options/script-opts` and on_change callbacks run when the language they
---   resolve to changes.
+--   `options/script-opts` and on_change callbacks run when the entry it
+--   resolves to changes.
+-- - Entries and texts: the option holds one entry of the language menu
+--   (VARIANTS): a language, or a regional variant of one (`es-ES`, `es-419`,
+--   `pt-BR`, `pt-PT`). Both variants of a language read the same texts
+--   (i18n.language() is `es` for either); they only differ in the tracks
+--   hikari-media-language.lua prefers. i18n.variant() is the entry itself. A
+--   value without a region (`es`, `pt`: what hikari 0.5 saved) is the
+--   language's default variant (REGIONAL), so old choices keep working.
 -- - No option, or `auto`: the system language from LC_ALL, LC_MESSAGES or LANG
---   (the first one set, as the C library does). On Windows and for apps
---   started from the macOS Finder those are usually unset: English. The
---   installers write the real system language into hikari-language.conf, so
---   this only matters for copies made by hand.
+--   (the first one set, as the C library does), with its region for the
+--   variant (`es_MX.UTF-8` -> es-419). On Windows and for apps started from
+--   the macOS Finder those are usually unset: English. The installers write
+--   the real system language into hikari-language.conf, so this only matters
+--   for copies made by hand.
 -- - Fallbacks: a text missing in a language is the English one; an unknown
 --   language is English; an unknown key is the key itself (and a warning).
 -- - Placeholders are `{name}`, replaced from a table, never through
@@ -61,6 +69,57 @@ M.LANGUAGES = {
 }
 local BY_CODE = {}
 for _, language in ipairs(M.LANGUAGES) do BY_CODE[language.code] = language end
+
+-- The entries of the language menu, in its order, each with its name in its
+-- own language and the language of its texts. Spanish and Portuguese come
+-- twice, once per regional variant (see REGIONAL).
+M.VARIANTS = {}
+for _, language in ipairs(M.LANGUAGES) do
+	if language.code == 'es' then
+		M.VARIANTS[#M.VARIANTS + 1] = {code = 'es-ES', name = 'Español (España)', language = 'es'}
+		M.VARIANTS[#M.VARIANTS + 1] = {code = 'es-419', name = 'Español (Latinoamérica)', language = 'es'}
+	elseif language.code == 'pt' then
+		M.VARIANTS[#M.VARIANTS + 1] = {code = 'pt-BR', name = 'Português (Brasil)', language = 'pt'}
+		M.VARIANTS[#M.VARIANTS + 1] = {code = 'pt-PT', name = 'Português (Portugal)', language = 'pt'}
+	else
+		M.VARIANTS[#M.VARIANTS + 1] = {code = language.code, name = language.name, language = language.code}
+	end
+end
+local VARIANT_BY_CODE = {}
+for _, variant in ipairs(M.VARIANTS) do VARIANT_BY_CODE[variant.code] = variant end
+
+-- Regional variants, per language of the texts:
+-- - default: the variant of a locale or a saved choice without a region
+--   (`es`, `pt.UTF-8`, hikari 0.5's `es`).
+-- - rest: the variant of a region that no variant lists (`es_MX`, `es-AR`,
+--   `pt_AO`).
+-- - untagged: the variant of a track tagged with the bare language (`es`,
+--   `spa`) whose title says nothing either; nil when such a track could be
+--   either. Crunchyroll tags both Spanish tracks `es` and only titles the
+--   Latin American one ("Spanish(Latin_America)" next to "Spanish"), so a
+--   bare Spanish track counts as Spain's ("not the Latin American one").
+--   Portuguese has no such habit.
+-- - variants: per variant, its regions (ISO 3166 codes or UN M.49 numbers,
+--   upper case) and the words that tell its tracks apart by their title
+--   (found anywhere in the lower-cased title; `tokens` only as a whole word).
+M.REGIONAL = {
+	es = {
+		default = 'es-ES', rest = 'es-419', untagged = 'es-ES',
+		variants = {
+			['es-ES'] = {regions = {ES = true},
+				words = {'españa', 'espana', 'spain', 'castilian', 'castellano', '[esp]', 'europe'}},
+			['es-419'] = {regions = {['419'] = true},
+				words = {'latin', 'latam', 'américa', 'america', '419'}},
+		},
+	},
+	pt = {
+		default = 'pt-BR', rest = 'pt-PT',
+		variants = {
+			['pt-BR'] = {regions = {BR = true}, words = {'brazil', 'brasil'}, tokens = {'br'}},
+			['pt-PT'] = {regions = {PT = true}, words = {'portugal', 'europe'}},
+		},
+	},
+}
 
 -- key -> {language code -> text}. `en` must be there for every key (the tests
 -- check it). Keep tooltip_* free of `,` and `?`: uosc's `controls` option uses
@@ -696,8 +755,9 @@ local STRINGS = {
 M.STRINGS = STRINGS
 
 -- Track languages: what hikari-media-language.lua puts in mpv's `alang` and
--- `slang` for each language of hikari, in order of preference, and the
--- original audio of anime (Japanese) that follows in `alang`.
+-- `slang` for each entry of the language menu (VARIANTS), in order of
+-- preference, and the original audio of anime (Japanese) that follows in
+-- `alang`.
 --
 -- How mpv compares them with the language of a track (misc/language.c,
 -- mp_match_lang, mpv 0.40 and 0.41):
@@ -714,6 +774,15 @@ M.STRINGS = STRINGS
 --   `es-AR`) still beats `ja-JP`, but not a bare `ja`/`jpn`.
 -- - Extra subtags in an entry are ignored when the track has none: `zh-Hant`
 --   matches a plain `zh`/`chi` track as well as `zh` itself would.
+-- Regional variants list their own region first and the other variant last,
+-- with the bare language in between: in mpv 0.36+ a track tagged `es` or
+-- `spa` matches `es-ES` as well as `es` itself, so for Spain `es-ES`, `es`
+-- and `spa` tie (mpv then goes by the default flag and the order of the
+-- tracks) and `es-419` comes after them, and the other way round for Latin
+-- America. Tracks that only the title tells apart (both `es`) are left to
+-- hikari-media-language.lua. The other variant still beats Japanese: a dub
+-- or subtitles with another accent rather than none. `es-MX` is the Latin
+-- American tag some releases use instead of `es-419`.
 -- Chinese: hikari's zh-HK is Traditional (Hong Kong, Taiwan), zh-hans
 -- Simplified. Each one lists its own script and regions first, then plain
 -- Chinese, then the other script last: a Chinese dub tagged with any code of
@@ -723,12 +792,14 @@ M.STRINGS = STRINGS
 -- subtag that no entry has, in both lists.
 M.MEDIA_LANGUAGES = {
 	en = {'en', 'eng', 'en-US', 'en-GB'},
-	es = {'es', 'spa', 'es-ES', 'es-419'},
+	['es-ES'] = {'es-ES', 'es', 'spa', 'es-419', 'es-MX'},
+	['es-419'] = {'es-419', 'es', 'spa', 'es-MX', 'es-ES'},
 	de = {'de', 'ger', 'deu', 'de-DE'},
 	fr = {'fr', 'fre', 'fra', 'fr-FR', 'fr-CA'},
 	it = {'it', 'ita', 'it-IT'},
 	pl = {'pl', 'pol', 'pl-PL'},
-	pt = {'pt', 'por', 'pt-BR', 'pt-PT'},
+	['pt-BR'] = {'pt-BR', 'pt', 'por', 'pt-PT'},
+	['pt-PT'] = {'pt-PT', 'pt', 'por', 'pt-BR'},
 	ro = {'ro', 'rum', 'ron', 'ro-RO'},
 	ru = {'ru', 'rus', 'ru-RU'},
 	tr = {'tr', 'tur', 'tr-TR'},
@@ -761,25 +832,63 @@ function M.normalize(text)
 	return nil
 end
 
+-- The region subtag of a language tag or locale name, upper case: `MX` in
+-- `es_MX.UTF-8`, `419` in `es-419`, `TW` in `zh-Hant-TW`. nil when it has
+-- none. Script subtags (4 letters) come before the region and are skipped.
+function M.region_of(text)
+	if type(text) ~= 'string' or #text > 64 then return nil end
+	local tag = text:gsub('_', '-'):match('^%s*([%w%-]*)')
+	for subtag in tag:gmatch('%-([^%-]+)') do
+		if subtag:match('^%a%a$') or subtag:match('^%d%d%d$') then return subtag:upper() end
+		if not subtag:match('^%a%a%a%a$') then return nil end
+	end
+	return nil
+end
+
+-- The entry of VARIANTS for a language of the texts and a region (upper case,
+-- or nil): the language itself when it has no variants, else the variant of
+-- that region, the default one without a region, the `rest` one for any
+-- other region (see REGIONAL).
+function M.region_variant(language, region)
+	local regional = M.REGIONAL[language]
+	if not regional then return language end
+	if not region then return regional.default end
+	for code, variant in pairs(regional.variants) do
+		if variant.regions[region] then return code end
+	end
+	return regional.rest
+end
+
+-- The entry of VARIANTS for a language tag or locale name, nil when its
+-- language is none of LANGUAGES: `es_ES.UTF-8` -> es-ES, `es_MX` -> es-419,
+-- `es` -> es-ES, `pt` -> pt-BR, `de_AT` -> de, `zh_TW` -> zh-HK.
+function M.variant_of(text)
+	local language = M.normalize(text)
+	if not language then return nil end
+	return M.region_variant(language, M.REGIONAL[language] and M.region_of(text) or nil)
+end
+
 -- Replaceable in tests.
 M.getenv = os.getenv
 
--- The system language: LC_ALL, LC_MESSAGES or LANG, the first one set (as the
--- C library picks them); English when that one is none of LANGUAGES.
+-- The system language, as an entry of VARIANTS: LC_ALL, LC_MESSAGES or LANG,
+-- the first one set (as the C library picks them); English when that one is
+-- none of LANGUAGES.
 function M.detect()
 	for _, name in ipairs({'LC_ALL', 'LC_MESSAGES', 'LANG'}) do
 		local value = M.getenv(name)
-		if type(value) == 'string' and value ~= '' then return M.normalize(value) or M.DEFAULT end
+		if type(value) == 'string' and value ~= '' then return M.variant_of(value) or M.DEFAULT end
 	end
 	return M.DEFAULT
 end
 
--- The language for a value of the `hikari-language` option: `auto` (or
--- nothing) is the system's, a known tag is itself, anything else English.
+-- The entry of VARIANTS for a value of the `hikari-language` option: `auto`
+-- (or nothing) is the system's, a known tag is its entry (`es` the default
+-- variant), anything else English.
 local warned_value = nil
 function M.resolve(value)
 	if value == nil or value == '' or value == 'auto' then return M.detect() end
-	local code = M.normalize(value)
+	local code = M.variant_of(value)
 	if not code then
 		-- Once per value: this runs again on every change of any script option.
 		if value ~= warned_value then
@@ -800,17 +909,31 @@ local current = nil
 local callbacks = {}
 local observing = false
 
--- The language in use: one of the codes of LANGUAGES.
-function M.language()
+-- The entry of the language menu in use: one of the codes of VARIANTS.
+function M.variant()
 	if not current then current = M.resolve(option_value(mp.get_property_native('options/script-opts'))) end
 	return current
 end
 
+-- The language of the texts of an entry of VARIANTS (`es` for es-419), nil
+-- when it is none.
+function M.language_of(code)
+	local variant = VARIANT_BY_CODE[code]
+	return variant and variant.language or nil
+end
+
+-- The language of the texts in use: one of the codes of LANGUAGES.
+function M.language()
+	return M.language_of(M.variant())
+end
+
 local warned = {}
 
--- The text for `key` in the current language (or `lang`), with `{name}`
--- replaced from `vars`. Placeholders without a value stay as they are.
+-- The text for `key` in the current language (or `lang`, a language or an
+-- entry of VARIANTS), with `{name}` replaced from `vars`. Placeholders without
+-- a value stay as they are.
 function M.t(key, vars, lang)
+	if lang then lang = M.language_of(lang) or lang end
 	local entry = STRINGS[key]
 	if not entry then
 		if not warned[key] then
@@ -838,17 +961,20 @@ function M.decimal(text)
 	return (text:gsub('%.', separator, 1))
 end
 
--- Calls fn(lang) after every switch to another language.
+-- Calls fn(lang, variant) after every switch to another entry of the menu:
+-- `lang` is the language of the texts, `variant` the entry. A switch between
+-- the two variants of a language calls it too, with the same `lang`.
 function M.on_change(fn)
 	callbacks[#callbacks + 1] = fn
 	if observing then return end
 	observing = true
-	M.language()
+	M.variant()
 	mp.observe_property('options/script-opts', 'native', function(_, script_opts)
-		local lang = M.resolve(option_value(script_opts))
-		if lang == current then return end
-		current = lang
-		for _, callback in ipairs(callbacks) do callback(lang) end
+		local variant = M.resolve(option_value(script_opts))
+		if variant == current then return end
+		current = variant
+		local lang = M.language_of(variant)
+		for _, callback in ipairs(callbacks) do callback(lang, variant) end
 	end)
 end
 
@@ -859,5 +985,7 @@ function M.name(code)
 end
 
 function M.is_language(code) return BY_CODE[code] ~= nil end
+
+function M.is_variant(code) return VARIANT_BY_CODE[code] ~= nil end
 
 return M

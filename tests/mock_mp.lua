@@ -22,6 +22,15 @@ M.set_fails = {}     -- property name -> true: mp.set_property fails for it
 M.files = {}        -- path -> mp.utils.file_info answer (nil: the file does not exist)
 M.config_files = {} -- name -> path that mp.find_config_file returns (nil: not found)
 M.sets = {}         -- every mp.set_property call, as {name, value}
+-- Tracks, for the tests that need mpv's track selection: when M.tracks is a
+-- list (the track-list entries, as get_property_native gives them), the
+-- `aid`/`sid` properties and options behave as in mpv: setting `aid` (or
+-- `file-local-options/aid`) to a track id sets the option `options/aid` to
+-- it and plays that track, `no` plays none, and `auto` lets M.pick(property)
+-- choose (mpv's own choice; false for none). The file-local form is put back
+-- by M.end_file().
+M.tracks = nil
+M.pick = nil
 -- Choice options whose choices include yes and no: like mpv, set_property
 -- stores those two as flags, so get_property_native gives true/false.
 M.flag_choices = {['subs-with-matching-audio'] = true}
@@ -65,6 +74,7 @@ function M.install(script_name)
 	M.async, M.set_fails, M.files = {}, {}, {}
 	M.config_files = {}
 	M.sets = {}
+	M.tracks, M.pick = nil, nil
 	-- The shared texts module is per script in mpv (one Lua state each): load it
 	-- again for every script the tests load, from the repository.
 	package.loaded['hikari-i18n'] = nil
@@ -113,6 +123,7 @@ function M.install(script_name)
 			return true
 		end,
 		get_property_native = function(name, def)
+			if name == 'track-list' and M.tracks then return M.tracks end
 			local v = M.props[name]
 			-- What the scripts' options come from: M.script_opts unless a test set it.
 			if v == nil and name == 'options/script-opts' then v = M.script_opts end
@@ -164,6 +175,21 @@ function M.install(script_name)
 			if M.set_fails[name] then return nil, 'property unavailable' end
 			if M.flag_choices[name] and (value == 'yes' or value == 'no') then value = value == 'yes' end
 			local option = name:match('^file%-local%-options/(.+)$')
+			local track_property = option or name
+			if M.tracks and (track_property == 'aid' or track_property == 'sid') then
+				local key = 'options/' .. track_property
+				if option and M.backups[key] == nil then M.backups[key] = M.props[key] end
+				if value == 'auto' then
+					M.props[key] = 'auto'
+					M.props[track_property] = M.pick and M.pick(track_property) or false
+				elseif value == 'no' then
+					M.props[key], M.props[track_property] = false, false
+				else
+					M.props[key] = tonumber(value)
+					M.props[track_property] = tonumber(value)
+				end
+				return true
+			end
 			if option then
 				if M.backups[option] == nil then M.backups[option] = M.props[option] or '' end
 				name = option

@@ -66,6 +66,50 @@ test('13 languages, the ones of uosc 5.13, each with its own name', function()
 	eq(i18n.name('es'), 'Español'); eq(i18n.name('zh-HK'), '中文（香港）'); eq(i18n.name('xx'), nil)
 end)
 
+test('the menu: the 13 languages, Spanish and Portuguese once per regional variant', function()
+	local i18n = fresh()
+	local codes, languages = {}, {}
+	for i, variant in ipairs(i18n.VARIANTS) do
+		codes[i], languages[i] = variant.code, variant.language
+		assert(i18n.is_language(variant.language), variant.code)
+		assert(type(variant.name) == 'string' and #variant.name > 0, variant.code)
+	end
+	eq(table.concat(codes, ' '), 'en es-ES es-419 de fr it pl pt-BR pt-PT ro ru tr uk zh-HK zh-hans', 'codes')
+	eq(table.concat(languages, ' '), 'en es es de fr it pl pt pt ro ru tr uk zh-HK zh-hans', 'languages')
+	eq(i18n.VARIANTS[3].name, 'Español (Latinoamérica)'); eq(i18n.VARIANTS[9].name, 'Português (Portugal)')
+	eq(i18n.is_variant('es-419'), true); eq(i18n.is_variant('es'), false); eq(i18n.is_variant('es-MX'), false)
+	eq(i18n.language_of('pt-PT'), 'pt'); eq(i18n.language_of('de'), 'de'); eq(i18n.language_of('es'), nil)
+	for language, regional in pairs(i18n.REGIONAL) do
+		for _, key in ipairs({'default', 'rest'}) do eq(i18n.language_of(regional[key]), language, language .. ' ' .. key) end
+		for code in pairs(regional.variants) do eq(i18n.language_of(code), language, code) end
+	end
+end)
+
+test('variants: locale names and tags to an entry of the menu, by region', function()
+	local i18n = fresh()
+	local cases = {
+		{'es', 'es-ES'}, {'es_ES.UTF-8', 'es-ES'}, {'es-es', 'es-ES'}, {'es_MX.UTF-8', 'es-419'}, {'es-419', 'es-419'},
+		{'es_AR', 'es-419'}, {'es-US', 'es-419'}, {'es-Latn-CO', 'es-419'}, {'ES_mx', 'es-419'}, {'es.UTF-8', 'es-ES'},
+		{'es@euro', 'es-ES'}, {'pt', 'pt-BR'}, {'pt_BR', 'pt-BR'}, {'pt_PT.UTF-8', 'pt-PT'}, {'pt-AO', 'pt-PT'},
+		{'de_AT', 'de'}, {'en_GB', 'en'}, {'zh_TW', 'zh-HK'}, {'zh-Hans-HK', 'zh-hans'}, {'ja_JP', nil}, {'C', nil},
+	}
+	for _, case in ipairs(cases) do eq(i18n.variant_of(case[1]), case[2], case[1]) end
+	eq(i18n.region_of('es-Latn-MX'), 'MX'); eq(i18n.region_of('es-419'), '419'); eq(i18n.region_of('es'), nil)
+	eq(i18n.region_of('zh-Hant'), nil); eq(i18n.region_of('es-x-private'), nil); eq(i18n.region_of(nil), nil)
+end)
+
+test('variants: the option, a saved choice of hikari 0.5 and the system', function()
+	eq(fresh({['hikari-language'] = 'es'}).variant(), 'es-ES', 'hikari 0.5 saved es: Spain')
+	eq(fresh({['hikari-language'] = 'pt'}).variant(), 'pt-BR', 'hikari 0.5 saved pt: Brazil')
+	local i18n = fresh({['hikari-language'] = 'es-419'})
+	eq(i18n.variant(), 'es-419'); eq(i18n.language(), 'es')
+	eq(i18n.t('skip_opening'), 'Saltar opening ›', 'the Spanish texts')
+	eq(fresh({}, {LANG = 'es_MX.UTF-8'}).variant(), 'es-419', 'system')
+	eq(fresh({}, {LANG = 'pt_PT.UTF-8'}).language(), 'pt', 'system, texts')
+	eq(fresh({}, {LANG = 'de_DE'}).variant(), 'de')
+	eq(fresh({['hikari-language'] = 'es'}).t('skip_opening', nil, 'pt-PT'), 'Pular abertura ›', 'an entry as `lang`')
+end)
+
 test('every text: English always, every language unless partial on purpose, only known languages', function()
 	local i18n = fresh()
 	local known = {}
@@ -197,6 +241,17 @@ test('on_change: called once per real switch, not for other options', function()
 	eq(i18n.t('skip_opening'), 'Passer l’opening ›', 'texts follow')
 	mock.set_script_opt('hikari-language', nil)
 	eq(i18n.language(), 'en', 'option removed: the system (none here)')
+end)
+
+test('on_change: a switch between variants calls back with the same language', function()
+	local i18n = fresh({['hikari-language'] = 'es'})
+	local calls = {}
+	i18n.on_change(function(lang, variant) calls[#calls + 1] = lang .. '/' .. variant end)
+	mock.set_script_opt('hikari-language', 'es-ES')
+	eq(#calls, 0, 'es is es-ES')
+	mock.set_script_opt('hikari-language', 'es-419')
+	mock.set_script_opt('hikari-language', 'pt')
+	eq(table.concat(calls, ' '), 'es/es-419 pt/pt-BR')
 end)
 
 -- The loader block, from its comment to the end of the function call.
