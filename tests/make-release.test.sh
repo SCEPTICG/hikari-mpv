@@ -50,9 +50,10 @@ base="$(git rev-parse HEAD)"
 commit_as() { git -c user.name=test -c user.email=test@example.invalid commit -q -am "$1"; }
 
 # --- refused before building anything --------------------------------------
-for bad in v1.2 1.2.3 v1.2.3-rc1 v01.2.3 'v1.2.3 ' ''; do
-    fails "refuses tag '$bad'" 'must look like vX.Y.Z' tools/make-release.sh "$bad"
+for bad in v1.2 1.2.3 v1.2.3-rc1 v01.2.3 'v1.2.3 ' '' v0.6 preview2 Preview PREVIEW 'preview ' ' preview' preview-ffebb37 preview/x vpreview; do
+    fails "refuses tag '$bad'" 'must look like vX.Y.Z (e.g. v0.1.0) or be preview' tools/make-release.sh "$bad"
 done
+fails 'refuses preview with a second argument' 'usage:' tools/make-release.sh preview v1.2.3
 fails 'refuses two arguments' 'usage:' tools/make-release.sh v1.2.3 v1.2.4
 check 'nothing built after the refusals' test ! -e dist/hikari.ps1
 
@@ -265,6 +266,100 @@ done
 check 'a download cut inside the last line never calls main' test -z "$cut_ran"
 head -c $((size - 1)) dist/hikari.sh | (cd "$tmp" && HOME="$home2" HIKARI_LANG=en "$bash_bin" -s -- --help) >"$tmp/cut.txt" 2>&1
 check 'without only its final line break it still runs (the check above can see main)' grep -q 'Usage' "$tmp/cut.txt"
+
+# --- a preview build ---------------------------------------------------------
+# The moving tag preview: the same checks, the version preview-<short hash>.
+git tag -d v1.2.3 >/dev/null
+rm -rf dist
+fails 'preview: refuses when the tag does not exist, says how to move it' 'git tag -f preview' tools/make-release.sh preview
+check 'preview: nothing built without the tag' test ! -e dist/hikari.ps1 -a ! -e dist/hikari.sh -a ! -e dist/hikari.zip -a ! -e dist/SHA256SUMS
+echo '# next' >>README.md
+commit_as 'next commit'
+git tag preview "$base"
+fails 'preview: refuses a tag that points elsewhere' 'not to HEAD' tools/make-release.sh preview
+fails 'preview: and says how to move it' 'git tag -f preview' tools/make-release.sh preview
+# A branch called preview on HEAD does not stand in for the tag.
+git branch preview HEAD
+fails 'preview: a branch named preview on HEAD is not the tag' 'not to HEAD' tools/make-release.sh preview
+git branch -D preview >/dev/null
+check 'preview: nothing built while refused' test ! -e dist/hikari.ps1
+echo '# local change' >>README.md
+git tag -f preview >/dev/null
+fails 'preview: refuses a modified work tree' 'not clean' tools/make-release.sh preview
+git checkout -q -- README.md
+# An annotated tag works as well as a light one.
+git tag -f -a -m 'preview build' preview >/dev/null
+if tools/make-release.sh preview >"$tmp/pv-out.txt" 2>&1; then ok 'preview: builds (annotated tag)'; else fail 'preview: builds (annotated tag)'; cat "$tmp/pv-out.txt"; fi
+git tag -f preview >/dev/null
+if tools/make-release.sh preview >"$tmp/pv-out.txt" 2>&1; then ok 'preview: builds'; else fail 'preview: builds'; cat "$tmp/pv-out.txt"; fi
+pv_version="preview-$(git rev-parse --short=7 HEAD)"
+pv_url='https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.zip'
+pv_zip_sha="$(sha256sum dist/hikari.zip | cut -d' ' -f1)"
+check 'preview: version is preview- and the 7-character commit hash' bash -c "[[ '$pv_version' =~ ^preview-[0-9a-f]{7}\$ ]]"
+check 'preview: dist has the four files' test -f dist/hikari.zip -a -f dist/hikari.ps1 -a -f dist/hikari.sh -a -f dist/SHA256SUMS
+check 'preview: SHA256SUMS matches the three files' bash -c 'cd dist && sha256sum --quiet -c SHA256SUMS'
+check 'preview: the work tree is still clean' test -z "$(git status --porcelain)"
+check 'preview: version marker' grep -qFx "\$script:HikariVersion = '$pv_version'" dist/hikari.ps1
+check 'preview: URL marker under the preview tag' grep -qFx "\$script:HikariReleaseUrl = '$pv_url'" dist/hikari.ps1
+check 'preview: hash marker is the zip hash' grep -qFx "\$script:HikariReleaseSha256 = '$pv_zip_sha'" dist/hikari.ps1
+check 'preview: only those three lines changed in hikari.ps1' test "$(diff install/hikari.ps1 dist/hikari.ps1 | grep -c '^[<>]')" = 6
+check 'preview: dist/hikari.ps1 is ASCII' test "$(LC_ALL=C tr -d '\000-\177' <dist/hikari.ps1 | wc -c)" = 0
+check 'preview: hikari.sh version marker' grep -qFx "    HIKARI_VERSION='$pv_version'" dist/hikari.sh
+check 'preview: hikari.sh URL marker' grep -qFx "    HIKARI_RELEASE_URL='$pv_url'" dist/hikari.sh
+check 'preview: hikari.sh hash marker is the zip hash' grep -qFx "    HIKARI_RELEASE_SHA256='$pv_zip_sha'" dist/hikari.sh
+check 'preview: only those three lines changed in hikari.sh' test "$(diff install/hikari.sh dist/hikari.sh | grep -c '^[<>]')" = 6
+unzip -Z1 dist/hikari.zip | grep -v '/$' | sort >"$tmp/pv-zip.txt"
+check 'preview: zip holds exactly portable_config, LICENSE and README.md' cmp -s "$tmp/pv-zip.txt" "$tmp/want.txt"
+check 'preview: the output names the version and the next steps for a moving tag' \
+    bash -c "grep -qF 'hikari $pv_version (preview) built from commit' '$tmp/pv-out.txt' && grep -qF 'git push -f origin preview' '$tmp/pv-out.txt' && grep -qF 'pre-release (never as Latest)' '$tmp/pv-out.txt'"
+check 'release output: push without -f, publish as Latest' \
+    bash -c "grep -qF 'git push origin v1.2.3,' '$tmp/out.txt' && grep -qF 'publish it as Latest.' '$tmp/out.txt'"
+
+# The preview hikari.sh piped into bash: it says it is a test version, how to
+# go back, and installs (the record says which build).
+sed -e "s/^\(    UOSC_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sh_sha "$fake/uosc.zip")'/" \
+    -e "s/^\(    THUMBFAST_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sh_sha "$fake/thumbfast.lua")'/" \
+    -e "s/^\(    ANIME4K_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sh_sha "$fake/anime4k.zip")'/" \
+    -e '$d' dist/hikari.sh >"$tmp/hikari-pv.sh"
+printf '. "%s"\n' "$tmp/overrides-pv.sh" >>"$tmp/hikari-pv.sh"
+tail -n 1 dist/hikari.sh >>"$tmp/hikari-pv.sh"
+sed -e "s|'$url')|'$pv_url')|" -e "s|sh-downloads.log|pv-downloads.log|" "$tmp/overrides.sh" >"$tmp/overrides-pv.sh"
+home="$tmp/home-pv"
+mkdir -p "$home" "$tmp/tmpdir-pv"
+for lang in en es; do
+    (cd "$tmp" && HOME="$home" TMPDIR="$tmp/tmpdir-pv" HIKARI_LANG=$lang "$bash_bin" -s -- --yes --anime4k no <"$tmp/hikari-pv.sh") >"$tmp/pv-$lang.txt" 2>&1
+    rc=$?
+    if [[ $rc == 0 ]]; then ok "preview curl | bash ($lang): exit code 0"; else fail "preview curl | bash ($lang): exit code $rc"; cat "$tmp/pv-$lang.txt"; fi
+done
+check 'preview curl | bash: release zip of the preview tag downloaded first' test "$(head -n 1 "$tmp/pv-downloads.log" 2>/dev/null)" = "$pv_url"
+check 'preview curl | bash: says it is a test version and how to go back (en)' \
+    grep -qFx "Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-en.txt"
+check 'preview curl | bash: in Spanish too' \
+    grep -qFx "Versión de prueba ($pv_version). Para volver a la estable: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-es.txt"
+check 'preview curl | bash: right after the title' test "$(sed -n 2p "$tmp/pv-en.txt")" = "Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash"
+check 'preview curl | bash: record says the build' grep -qx "hikari_version=$pv_version" "$home/.config/mpv/hikari-installed.txt"
+check 'a release (1.2.3) does not say it is a test version' bash -c "! grep -qE 'Preview build|preview-' '$tmp/sh-install.txt'"
+
+# The preview hikari.ps1 through iex: the same notice, and it installs.
+sed -e "s/^\(\$script:UoscSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/uosc.zip" | cut -d' ' -f1)'/" \
+    -e "s/^\(\$script:ThumbfastSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/thumbfast.lua" | cut -d' ' -f1)'/" \
+    -e "s/^\(\$script:Anime4KSha256 = '\)[0-9a-f]\{64\}'\$/\1$(sha256sum "$fake/anime4k.zip" | cut -d' ' -f1)'/" \
+    dist/hikari.ps1 >"$tmp/hikari-pv.ps1"
+python3 - "$tmp/dl-pv.json" "$pv_url" "$work/dist/hikari.zip" "$uosc_url" "$fake/uosc.zip" "$thumb_url" "$fake/thumbfast.lua" "$a4k_url" "$fake/anime4k.zip" <<'EOF'
+import json, sys
+a = sys.argv
+json.dump({a[2]: a[3], a[4]: a[5], a[6]: a[7], a[8]: a[9]}, open(a[1], 'w'))
+EOF
+pvcfg="$tmp/target-pv/mpv"
+mkdir -p "$tmp/target-pv" "$tmp/tmpdir-pv-ps"
+printf '1\n2\n%s\nn\n' "$pvcfg" | TMPDIR="$tmp/tmpdir-pv-ps" HIKARI_LANG=en "$pwsh_bin" -NoProfile -Command \
+    ". '$repo/tests/iex-harness.ps1' -Script '$tmp/hikari-pv.ps1' -Report '$tmp/report-pv.json' -Downloads '$tmp/dl-pv.json' -Mode iex" \
+    >"$tmp/install-pv.txt" 2>&1
+check 'preview iex: exit code 0' test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8-sig"))["ExitCode"])' "$tmp/report-pv.json" 2>/dev/null)" = 0
+check 'preview iex: says it is a test version and how to go back' \
+    grep -qF "Preview build ($pv_version). To go back to the stable version: irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex" "$tmp/install-pv.txt"
+check 'preview iex: record says the build' grep -q "^hikari_version=$pv_version" "$pvcfg/hikari-installed.txt"
+check 'a release (1.2.3) through iex does not say it is a test version' bash -c "! grep -qE 'Preview build|preview-' '$tmp/install.txt'"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ $failed -eq 0 ]]

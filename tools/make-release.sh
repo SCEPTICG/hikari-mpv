@@ -2,6 +2,7 @@
 # Builds the files of a hikari release in dist/. It uploads nothing.
 #
 #   tools/make-release.sh vX.Y.Z
+#   tools/make-release.sh preview
 #
 #   dist/hikari.zip   portable_config/, LICENSE and README.md of the current commit
 #                     (git archive: the committed files, nothing from the work tree)
@@ -19,6 +20,16 @@
 # dist/hikari.sh only install the hikari.zip published under that same tag, and only
 # if its SHA256 matches.
 #
+# preview builds a test version of the current commit (the dev branch) the same
+# way, for the moving tag preview: the tag preview must exist and point to the
+# current commit, the files point at .../releases/download/preview/hikari.zip
+# and the version written in them is preview-<short commit hash> (e.g.
+# preview-ffebb37), so the installers say it is a test version and record which
+# build is installed. hikari-update.lua only reads X.Y.Z versions, so a preview
+# install never looks for updates (as a copy of the repository, `dev`). It is
+# published as a GitHub pre-release, never as Latest (see docs/development.md,
+# "Preview builds").
+#
 # Needs: git, a SHA256 tool (sha256sum or shasum), awk, bash, and PowerShell 7
 # (pwsh in PATH, $PWSH, or ~/.local/opt/powershell/pwsh) to check that the
 # results parse.
@@ -29,10 +40,14 @@ die() { printf 'make-release: %s\n' "$*" >&2; exit 1; }
 readonly RELEASE_BASE='https://github.com/SCEPTICG/hikari-mpv/releases/download'
 
 tag="${1:-}"
-[[ $# -eq 1 ]] || die "usage: tools/make-release.sh vX.Y.Z"
-[[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
-    die "the tag must look like vX.Y.Z (e.g. v0.1.0), not '$tag'"
-version="${tag#v}"
+[[ $# -eq 1 ]] || die "usage: tools/make-release.sh vX.Y.Z | preview"
+if [[ "$tag" == preview ]]; then
+    preview=1
+elif [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    preview=0
+else
+    die "the tag must look like vX.Y.Z (e.g. v0.1.0) or be preview, not '$tag'"
+fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
@@ -43,10 +58,23 @@ cd "$root"
 commit="$(git rev-parse --verify HEAD)"
 # The release must be built from the very commit its tag names: the GitHub
 # release is created from that tag, and hikari.ps1 points at its hikari.zip.
+# preview is a moving tag: it is moved (-f) to each new build.
+if [[ $preview == 1 ]]; then tag_cmd="git tag -f $tag" push_cmd="git push -f origin $tag"
+else tag_cmd="git tag $tag" push_cmd="git push origin $tag"
+fi
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null ||
-    die "tag $tag does not exist: create it on this commit first (git tag $tag), build, then push it (git push origin $tag)"
-tagged="$(git rev-parse "$tag^{commit}")"
-[[ "$tagged" == "$commit" ]] || die "tag $tag points to $tagged, not to HEAD ($commit)"
+    die "tag $tag does not exist: create it on this commit first ($tag_cmd), build, then push it ($push_cmd)"
+# By its full name: a branch called like the tag must not be taken instead.
+tagged="$(git rev-parse "refs/tags/$tag^{commit}")"
+[[ "$tagged" == "$commit" ]] || die "tag $tag points to $tagged, not to HEAD ($commit): move it first ($tag_cmd)"
+
+if [[ $preview == 1 ]]; then
+    version="preview-$(git rev-parse --short=7 HEAD)"
+else
+    version="${tag#v}"
+fi
+# Written between single quotes in both installers: only these characters.
+[[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+|preview-[0-9a-f]{7,40})$ ]] || die "unexpected version '$version'"
 
 if command -v sha256sum >/dev/null 2>&1; then
     sha256() { sha256sum "$1" | cut -d' ' -f1; }
@@ -82,8 +110,8 @@ zip_sha="$(sha256 dist/hikari.zip)"
 [[ "$zip_sha" =~ ^[0-9a-f]{64}$ ]] || die "could not hash dist/hikari.zip"
 url="$RELEASE_BASE/$tag/hikari.zip"
 
-# Whole lines, each exactly once. The values are a checked tag, a URL built
-# from it and a hex hash: nothing in them can break out of the quotes.
+# Whole lines, each exactly once. The values are a checked version, a URL built
+# from the checked tag and a hex hash: nothing in them can break out of the quotes.
 git show "HEAD:install/hikari.ps1" | awk \
     -v m1="\$script:HikariVersion = 'dev'" -v r1="\$script:HikariVersion = '$version'" \
     -v m2="\$script:HikariReleaseUrl = ''" -v r2="\$script:HikariReleaseUrl = '$url'" \
@@ -145,12 +173,22 @@ sh_sha="$(sha256 dist/hikari.sh)"
 printf '%s  hikari.ps1\n%s  hikari.sh\n%s  hikari.zip\n' "$ps1_sha" "$sh_sha" "$zip_sha" >dist/SHA256SUMS
 
 cat <<EOF
-hikari $tag built from commit $commit:
+hikari $version ($tag) built from commit $commit:
   dist/hikari.ps1  $ps1_sha
   dist/hikari.sh   $sh_sha
   dist/hikari.zip  $zip_sha
   dist/SHA256SUMS
 hikari.ps1 and hikari.sh install from $url
-Nothing was uploaded. Next: git push origin $tag, create the GitHub release
+EOF
+if [[ $preview == 1 ]]; then
+    cat <<EOF
+Nothing was uploaded. Next: $push_cmd, wait until GitHub has the moved tag,
+delete the old preview release, create it again from that tag, attach the four
+files with these names and publish it as a pre-release (never as Latest).
+EOF
+else
+    cat <<EOF
+Nothing was uploaded. Next: $push_cmd, create the GitHub release
 from that tag, attach the four files with these names, publish it as Latest.
 EOF
+fi
