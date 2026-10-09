@@ -34,7 +34,7 @@ The one-line installs download `https://github.com/SCEPTICG/hikari-mpv/releases/
 
    It needs a clean work tree and builds, from that commit, `dist/hikari.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/hikari.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.zip` and that zip's SHA256 filled in), `dist/hikari.sh` (the macOS and Linux installer, with the same three values) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
 
-2. Push the tag to the original repository: `git push origin v0.1.0`. The GitHub repository is a mirror of a Forgejo one (see [Contributing](about.md#contributing)), so the tag reaches GitHub through the mirror: wait until `v0.1.0` shows up in GitHub's tag list (or sync the mirror by hand) before the next step.
+2. Push the tag (`git push origin v0.1.0`) and wait until `v0.1.0` shows up in GitHub's tag list before the next step.
 
 3. On GitHub, create the release **from that existing tag** (choose `v0.1.0` in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).
 

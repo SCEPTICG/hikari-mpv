@@ -2,7 +2,7 @@
 
 ## Contributing
 
-The GitHub repository is a read-only mirror of a self-hosted Forgejo repository, where the work happens. Issues are welcome on GitHub. Pull requests are not merged on GitHub, because the next sync of the mirror would overwrite them: a good one is applied by hand in the original repository, crediting its author, and reaches GitHub with the next sync.
+Issues and pull requests are welcome on [GitHub](https://github.com/SCEPTICG/hikari-mpv).
 
 Running the tests and making a release: [docs/development.md](development.md).
 
