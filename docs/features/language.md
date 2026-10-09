@@ -37,14 +37,14 @@ To bind another key, use `script-binding hikari_language/open-menu` in `input.co
 hikari's language also decides which audio and subtitle tracks mpv picks on its own, with a recipe made for anime:
 
 - **Audio**: a dub in your language when the file has one, otherwise Japanese.
-- **Subtitles**: in your language, except when the audio already is (a dub needs no subtitles on top).
+- **Subtitles**: in your language. When the audio already is in your language, the dialogue subtitles stay off (a dub needs no subtitles on top), but forced subtitles still show: the track that only translates signs, on-screen text and song lyrics, which the dub does not cover. mpv knows it by the *forced* mark of the track.
 
 With Spanish, that is the same as these three lines in `mpv.conf`:
 
 ```
 alang=es,spa,es-ES,es-419,ja,jpn
 slang=es,spa,es-ES,es-419
-subs-with-matching-audio=no
+subs-with-matching-audio=forced
 ```
 
 There is nothing to turn on: it follows the language menu. Each language has its own list of codes:
@@ -65,7 +65,7 @@ There is nothing to turn on: it follows the language menu. Each language has its
 | 中文（香港） | `zh-Hant,zh-HK,zh-TW,zh,chi,zho,zh-Hans,zh-CN` |
 | 简体中文 | `zh-Hans,zh-CN,zh,chi,zho,zh-Hant,zh-TW` |
 
-Japanese (`ja,jpn`) follows in the audio list. The regional codes are there because of how mpv 0.40 ranks tracks: a dub tagged `es-419` or `pt-BR`, as many releases tag them, would otherwise lose to a `jpn` track. A region that is not in the list (say `es-AR`) still beats Japanese tagged `ja-JP`, but not a plain `ja` or `jpn`. Chinese lists its own script first and the other one last, so a Chinese dub of either kind still beats Japanese. Tracks with no language at all are left to mpv's usual rules.
+Japanese (`ja,jpn`) follows in the audio list. The regional codes are there because of how mpv 0.40 ranks tracks: a dub tagged `es-419` or `pt-BR`, as many releases tag them, would otherwise lose to a `jpn` track. A region that is not in the list (say `es-AR`) still beats Japanese tagged `ja-JP`, but not a plain `ja` or `jpn`. Chinese lists its own script first and the other one last, so a Chinese dub tagged with any code of its list (or just `zh`) beats Japanese, whatever its script. A longer tag such as `zh-Hans-CN` or `zh-Hant-TW` is in neither list and, like an unlisted region, loses to a plain `ja` or `jpn`. Tracks with no language at all are left to mpv's usual rules.
 
 ### When it applies
 
@@ -76,17 +76,22 @@ hikari only sets these options while mpv runs; it writes them to no file, so uni
 
 ### Your own settings win
 
-If you already set `alang`, `slang` or `subs-with-matching-audio` yourself, hikari leaves that option alone and still sets the other two. It checks each option when mpv starts and takes it as yours when:
+If you already set `alang`, `slang` or `subs-with-matching-audio` yourself, hikari leaves that option alone:
+
+- **Audio and subtitles are separate.** With an `alang` of your own, hikari still sets the subtitles, and the other way round.
+- **The subtitles go together, all or nothing.** `subs-with-matching-audio` only makes sense with the `slang` it goes with, so with a `slang` of your own hikari leaves `subs-with-matching-audio` alone too, even if you never set it (mpv's default then applies). With only `subs-with-matching-audio` of your own, hikari still sets `slang`.
+
+It checks each option when mpv starts and takes it as yours when:
 
 - it was set on the command line, or
 - it no longer holds mpv's default value: from your `mpv.conf`, a file it includes, a profile applied at start, the settings of mpv.net or another script, or
-- your `mpv.conf` has a line for it outside the hikari block and outside any `[profile]`, even one that writes mpv's default value (`subs-with-matching-audio=yes`).
+- the `mpv.conf` of your config folder (`~~/mpv.conf`) has a line for it outside the hikari block and outside any `[profile]`, even one that writes mpv's default value (`subs-with-matching-audio=yes`).
 
 It also stays away from an option that someone changed after hikari set it (`set alang ...` in the console, another script, an auto profile while it is active).
 
-The only setting hikari cannot see is one that writes mpv's default value from somewhere other than `mpv.conf` itself (an included file, or a profile applied at start). Profiles that apply on their own later (with `profile-cond`) set their values over hikari's while they are active, as usual.
+The only setting hikari cannot see is one that writes mpv's default value from somewhere other than that `mpv.conf` (an included file, `/etc/mpv/mpv.conf`, or a profile applied at start). Profiles that apply on their own later (with `profile-cond`) set their values over hikari's while they are active, as usual.
 
-**To let hikari decide**, delete your `alang`, `slang` and `subs-with-matching-audio` lines from `mpv.conf` (all of them, or just the ones you want hikari to take over) and restart mpv. To keep some preference of your own, keep only that line: for example, `alang=ja,jpn` always plays the Japanese audio, and hikari still picks the subtitles in your language.
+**To let hikari decide**, delete your `alang`, `slang` and `subs-with-matching-audio` lines from `mpv.conf` (all of them, or just the ones you want hikari to take over) and restart mpv. To keep some preference of your own, keep only that line: for example, `alang=ja,jpn` always plays the Japanese audio, and hikari still picks the subtitles in your language. A `slang` line takes the subtitles out of hikari's hands, as said above: add your own `subs-with-matching-audio` line if mpv's default (`yes`) is not what you want.
 
 ## By hand
 
