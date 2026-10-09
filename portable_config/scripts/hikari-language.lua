@@ -290,7 +290,7 @@ end
 -- of the languages. Every script (this one too) follows through the option.
 local function select_language(code)
 	if not i18n.is_language(code) then
-		msg.warn('Ignoring unknown language: ' .. tostring(code))
+		msg.warn('Ignoring unknown language: ' .. (tostring(code):sub(1, 64):gsub('%c', '?')))
 		return
 	end
 	if code ~= i18n.language() then

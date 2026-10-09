@@ -366,7 +366,7 @@ local function selector(by_id, what, apply)
 	return function(id)
 		local entry = by_id[id]
 		if not entry then
-			msg.warn('Ignoring unknown subtitle ' .. what .. ': ' .. tostring(id))
+			msg.warn('Ignoring unknown subtitle ' .. what .. ': ' .. (tostring(id):sub(1, 64):gsub('%c', '?')))
 			return
 		end
 		if apply(entry) then

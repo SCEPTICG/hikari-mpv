@@ -54,7 +54,7 @@ end
 local function select_speed(arg)
 	local speed = by_arg[arg]
 	if not speed then
-		msg.warn('Ignoring unknown speed: ' .. tostring(arg))
+		msg.warn('Ignoring unknown speed: ' .. (tostring(arg):sub(1, 64):gsub('%c', '?')))
 		return
 	end
 	mp.commandv('set', 'speed', speed.arg)

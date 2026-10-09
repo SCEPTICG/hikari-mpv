@@ -242,6 +242,11 @@ test('unknown codes are ignored; a save that fails says so', function()
 	for _, bad in ipairs({'xx', 'es,en', 'es\n', '../x', ''}) do l.select_language(bad) end
 	eq(#mock.commands, 0, 'nothing done')
 	eq(#mock.osd, 0)
+	mock.logs.warn = {}
+	l.select_language('es\nhikari: fake line ' .. string.rep('x', 200))
+	local line = mock.logs.warn[1]
+	assert(not line:find('%c'), 'no control characters in the log')
+	assert(#line <= #'Ignoring unknown language: ' + 64, 'cut to 64 characters')
 	mock.expand['~~/hikari-language.conf'] = '/nonexistent-dir/hikari-language.conf'
 	l.select_language('de')
 	eq(mock.osd[#mock.osd], 'hikari: Sprache konnte nicht gespeichert werden', 'in the language picked')

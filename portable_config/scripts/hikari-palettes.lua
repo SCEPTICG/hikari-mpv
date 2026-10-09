@@ -330,7 +330,7 @@ end
 local function select_palette(id)
 	local palette = by_id[id]
 	if not palette then
-		msg.warn('Ignoring unknown palette id: ' .. tostring(id))
+		msg.warn('Ignoring unknown palette id: ' .. (tostring(id):sub(1, 64):gsub('%c', '?')))
 		return
 	end
 	if apply(palette) then save(palette) end

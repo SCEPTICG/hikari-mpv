@@ -424,7 +424,7 @@ end
 local function set_mode(id)
 	local mode = mode_by_id[id]
 	if not mode then
-		msg.warn('Ignoring unknown upscale mode: ' .. tostring(id))
+		msg.warn('Ignoring unknown upscale mode: ' .. (tostring(id):sub(1, 64):gsub('%c', '?')))
 		return
 	end
 	if mode.id ~= 'off' and not refresh_installed() then
@@ -442,7 +442,7 @@ end
 local function set_quality(id)
 	local quality = quality_by_id[id]
 	if not quality then
-		msg.warn('Ignoring unknown upscale quality: ' .. tostring(id))
+		msg.warn('Ignoring unknown upscale quality: ' .. (tostring(id):sub(1, 64):gsub('%c', '?')))
 		return
 	end
 	if not refresh_installed() then
