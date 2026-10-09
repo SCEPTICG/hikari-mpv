@@ -82,9 +82,13 @@ function M.install(script_name)
 		add_key_binding = function(key, name, fn) M.bindings[name] = fn end,
 		register_script_message = function(name, fn) M.messages[name] = fn end,
 		register_event = function(name, fn) M.events[name] = fn end,
+		-- Like mpv: user-data/ holds nodes, and get_property formats a string node
+		-- as JSON, quotes included ("hikari-language"). Only get_property_native
+		-- gives the bare string back.
 		get_property = function(name, def)
 			local v = M.props[name]
 			if v == nil then return def end
+			if type(v) == 'string' and name:sub(1, 10) == 'user-data/' then return '"' .. v .. '"' end
 			return tostring(v)
 		end,
 		get_time = function() return M.clock end,

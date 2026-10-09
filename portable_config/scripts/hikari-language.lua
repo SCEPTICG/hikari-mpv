@@ -305,7 +305,7 @@ mp.register_script_message('select-language', select_language)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 i18n.on_change(function()
 	apply_tooltips()
-	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
 end)
 apply_tooltips()
 

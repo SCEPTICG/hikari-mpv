@@ -472,7 +472,7 @@ mp.register_script_message('set-quality', set_quality)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open upscale menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
 end)
 mp.register_event('file-loaded', on_video_change)
 mp.observe_property('height', 'native', on_video_change)

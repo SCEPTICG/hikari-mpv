@@ -97,7 +97,7 @@ mp.register_script_message('select-speed', select_speed)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open speed menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
 end)
 
 if HIKARI_SPEED_TEST then

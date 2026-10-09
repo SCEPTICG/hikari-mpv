@@ -648,7 +648,7 @@ mp.register_script_message('dismiss', dismiss)
 mp.register_event('file-loaded', on_file_loaded)
 -- Another language: an open update menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE and pending_version() then send_menu('update-menu') end
+	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE and pending_version() then send_menu('update-menu') end
 end)
 
 if HIKARI_UPDATE_TEST then

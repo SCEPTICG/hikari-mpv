@@ -372,7 +372,7 @@ mp.register_script_message('select-palette', select_palette)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open palette menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
 end)
 
 -- Re-apply from the table at start-up so edits to a palette (e.g. SCEPTIC) take
