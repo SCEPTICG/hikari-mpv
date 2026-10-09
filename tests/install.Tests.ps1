@@ -1,7 +1,10 @@
 # Tests for install/hikari.ps1, without Pester. Run from anywhere:
 #   pwsh -NoProfile -File tests/install.Tests.ps1
 # Exit code 0 when everything passes. Windows paths are simulated with temporary
-# folders and an injected environment; nothing is downloaded.
+# folders and an injected environment; nothing is downloaded. Runs on Windows
+# and Linux. With Lua 5.1 or LuaJIT (lua, or the one HIKARI_TEST_LUA
+# names) it also compares the installer's language rules with the ones of the
+# mpv scripts; without it that part is skipped.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
@@ -879,18 +882,23 @@ Test-Case 'repository source is found next to the script' {
 # ---------------------------------------------------------------------------
 
 $LangCodes = @('en', 'es-ES', 'es-419', 'de', 'fr', 'it', 'pl', 'pt-BR', 'pt-PT', 'ro', 'ru', 'tr', 'uk', 'zh-HK', 'zh-hans')
+# The Lua of mpv is 5.1 (or LuaJIT): HIKARI_TEST_LUA names it when it is not
+# called lua. Without it (e.g. on Windows) the comparisons are skipped.
+$LuaBin = 'lua'
+if ($env:HIKARI_TEST_LUA) { $LuaBin = $env:HIKARI_TEST_LUA }
 $LangLua = $null
-if (Get-Command lua -ErrorAction SilentlyContinue) {
+if (Get-Command $LuaBin -CommandType Application -ErrorAction SilentlyContinue) {
     $LangLua = P @($TestRoot, 'lang.lua')
     Set-TestFile $LangLua ("package.path = './tests/?.lua;' .. package.path`n" +
         "local mock = require('mock_mp')`nmock.install('hikari_language')`nHIKARI_LANGUAGE_TEST = true`n" +
         "local l = assert(loadfile('portable_config/scripts/hikari-language.lua'))()`n" +
         "if arg[1] == 'conf' then io.write(l.persist_content(arg[2])) else io.write(l.i18n.variant_of(arg[2]) or '-') end`n")
 }
+else { Write-Host ('skip language: no ' + $LuaBin + ' to compare with (set HIKARI_TEST_LUA)') }
 function Invoke-LangLua {
     param([string]$What, [string]$Arg)
     Push-Location $RepoRoot
-    try { return ((& lua $LangLua $What $Arg) -join "`n") }
+    try { return ((& $LuaBin $LangLua $What $Arg) -join "`n") }
     finally { Pop-Location }
 }
 
@@ -3135,6 +3143,7 @@ if ($gitOk) {
     & tar -xf $tar -C $SoscRepo
     $SoscOriginal = [string]::Join("`n", @(& git -C $RepoRoot show 'v0.3.0:install/sosc.ps1')) + "`n"
 }
+else { Write-Host 'skip migration from sosc 0.3.0: no git or no v0.3.0 tag in this copy' }
 
 # Runs sosc 0.3.0 with -Yes on a folder (artifacts from New-FakeArtifacts in
 # $Dl): exit code, and its output in $script:SoscOut.

@@ -1,0 +1,8 @@
+# Text files are checked out with LF on every system, also on Windows (where
+# git would otherwise turn them into CRLF): the tests compare installed files
+# with the ones of the repository byte for byte and find marker lines of the
+# installers, and mpv, bash and PowerShell all read LF. The images are never
+# converted.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
