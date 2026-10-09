@@ -957,6 +957,8 @@ Test-Case 'language: install writes the system language once, keeps choices, and
         Assert-True (@($infos | Where-Object { $_ -like 'hikari language in mpv: zh-HK*' }).Count -eq 1) 'said so'
         Assert-Equal (Get-TestText (P @($cfg, 'script-modules', 'hikari-i18n.lua'))) (Get-TestText (P @($RepoRoot, 'portable_config', 'script-modules', 'hikari-i18n.lua'))) 'module installed'
         Assert-True ((Get-TestText (P @($cfg, 'scripts', 'hikari-language.lua'))).Length -gt 0) 'language script installed'
+        Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'hikari-media-language.lua'))) (Get-TestText (P @($RepoRoot, 'portable_config', 'scripts', 'hikari-media-language.lua'))) 'audio and subtitle language script installed'
+        Assert-True (@((Read-HikariRecord $cfg).Files) -contains 'scripts/hikari-media-language.lua') 'audio and subtitle language script recorded'
         Assert-True (@((Read-HikariRecord $cfg).Files) -contains 'script-modules/hikari-i18n.lua') 'module recorded'
         Assert-True ((Get-TestText (P @($cfg, 'input.conf'))).Contains('Alt+l  script-binding hikari_language/open-menu')) 'Alt+l'
         Assert-True ((Get-TestText (P @($cfg, 'mpv.conf'))).Contains('include="~~/hikari-language.conf"')) 'include'
@@ -981,6 +983,7 @@ Test-Case 'language: install writes the system language once, keeps choices, and
 
         [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261009-100300')
         Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-i18n.lua')))) 'module removed'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'hikari-media-language.lua')))) 'audio and subtitle language script removed'
         Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'mine.lua'))) 'the user''s file still there'
         Assert-True (Test-Path -LiteralPath $conf) 'language choice kept by default'
         Remove-Item -LiteralPath (P @($cfg, 'script-modules', 'mine.lua'))

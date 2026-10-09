@@ -587,6 +587,7 @@ check 'language: macOS, first install: the system language (pt), not LANG' same 
 check 'language: the installer says it, in its own language' has "$out" 'hikari language in mpv: pt (the system'"'"'s; change it in mpv with Alt+l).'
 check 'language: the texts module installed and recorded' test -f "$cfg/script-modules/hikari-i18n.lua" -a "$(grep -c '^file=script-modules/hikari-i18n.lua$' "$cfg/hikari-installed.txt")" = 1
 check 'language: the language script installed' same "$repo/portable_config/scripts/hikari-language.lua" "$cfg/scripts/hikari-language.lua"
+check 'language: the audio and subtitle language script installed and recorded' test -f "$cfg/scripts/hikari-media-language.lua" -a "$(grep -c '^file=scripts/hikari-media-language.lua$' "$cfg/hikari-installed.txt")" = 1
 (export LANG=de_DE.UTF-8; run "$h" --yes --anime4k no)
 check 'language: update: the choice kept' same "$cfg/hikari-language.conf" "$(want_lang pt)"
 check 'language: update: said so' has "$out" 'hikari-language.conf already exists: kept'
@@ -614,6 +615,7 @@ run "$h" --yes --anime4k no
 check 'language: stale hikari module removed on update, the user'"'"'s left' test ! -e "$cfg/script-modules/hikari-old.lua" -a -f "$cfg/script-modules/mine.lua"
 run "$h" --uninstall --yes
 check 'language: uninstall: the module goes, the user'"'"'s file stays' test ! -e "$cfg/script-modules/hikari-i18n.lua" -a -f "$cfg/script-modules/mine.lua"
+check 'language: uninstall: the audio and subtitle language script goes' test ! -e "$cfg/scripts/hikari-media-language.lua"
 check 'language: uninstall: the language choice kept by default' test -f "$cfg/hikari-language.conf"
 rm -f "$cfg/script-modules/mine.lua"
 run "$h" --yes --anime4k no
