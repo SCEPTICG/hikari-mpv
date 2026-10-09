@@ -43,13 +43,34 @@ $script:HikariConsoleProbe = { $false }
 
 $script:Passed = 0
 $script:Failed = 0
-$TestRoot = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'hikari-tests-' + [guid]::NewGuid().ToString('N'))
+# Run as administrator (the Windows runners of GitHub Actions always are), the
+# installer on purpose takes with -Yes only folders under Program Files or
+# ProgramData, and without -Yes it first asks whether to go on. The installer is
+# not changed for the tests: in an elevated run the test folders go under
+# ProgramData, so the runs with the real machine (-Yes, iex, -File, sosc 0.3.0)
+# still install and uninstall, now through the elevated code; the interactive
+# ones answer that question ($AdminAnswer); and 'administrator for real' checks
+# that a folder in the user's TEMP is refused. Without administrator rights
+# (Linux, a normal Windows user) nothing changes and that last case is skipped.
+$RealAdmin = [bool](Test-HikariAdmin)
+$UserTemp = [System.IO.Path]::GetTempPath()
+$TestBase = $UserTemp
+if ($RealAdmin) {
+    if (-not $env:ProgramData) { throw 'running as administrator, but ProgramData is not set' }
+    $TestBase = $env:ProgramData
+}
+$AdminAnswer = @()
+if ($RealAdmin) { $AdminAnswer = @('y') }
+$TestRoot = [System.IO.Path]::Combine($TestBase, 'hikari-tests-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $TestRoot | Out-Null
+if ($RealAdmin) { Write-Host ('note running as administrator: test folders in ' + $TestRoot) }
 
 function Test-Case {
     param([string]$Name, [scriptblock]$Body)
     $script:HikariWarnings.Clear()
     $script:NonInteractive = $true
+    # Invoke-HikariMain sets it from the real machine; one case must not pass it on.
+    $script:HikariElevated = $false
     try {
         & $Body
         $script:Passed++
@@ -2978,6 +2999,9 @@ function Invoke-IexHarness {
     if ($Target) { $cmd += ' -Target ' + (& $q $Target) }
     if ($YesValue) { $cmd += ' -YesValue ' + $YesValue }
     if ($StrictLatest) { $cmd += ' -StrictLatest' }
+    # Windows PowerShell 5.1 turns a native command's stderr under 2>&1 into an
+    # error that 'Stop' would throw; the exit code and the text are checked instead.
+    $ErrorActionPreference = 'Continue'
     $saved = @($env:TMPDIR, $env:TEMP, $env:TMP)
     if ($TempDir) { $env:TMPDIR = $TempDir; $env:TEMP = $TempDir; $env:TMP = $TempDir }
     try {
@@ -3004,6 +3028,12 @@ function Assert-SessionClean {
     Assert-True $r.CtrlCSame 'TreatControlCAsInput untouched'
 }
 
+# Elevated, the installer says so (and asks, without -Yes); otherwise it must not.
+function Assert-AdminWarning {
+    param($Run)
+    Assert-Equal ($Run.Text.Contains('running as administrator')) $RealAdmin ('administrator warning; output: ' + $Run.Text)
+}
+
 function Get-HikariTempLeftovers {
     param([string]$Dir)
     return @(Get-ChildItem -LiteralPath $Dir -Force -Filter 'hikari-install-*')
@@ -3028,8 +3058,9 @@ Test-Case 'iex of the repository version: no release yet, nothing downloaded' {
     $d = New-TestDir 'iex-dev'
     $tmp = New-TestDir 'iex-dev-tmp'
     # Install, "type the folder myself" (no player on this machine), the folder.
-    $run = Invoke-IexHarness -Script $InstallScript -Stdin @('1', '2', (P @($d, 'mpv'))) -TempDir $tmp
+    $run = Invoke-IexHarness -Script $InstallScript -Stdin (@('1', '2', (P @($d, 'mpv'))) + $AdminAnswer) -TempDir $tmp
     Assert-SessionClean $run 1
+    Assert-AdminWarning $run
     Assert-True ($run.Text.Contains('no published release')) ('message; output: ' + $run.Text)
     Assert-Equal @($run.Report.Downloads).Count 0 'no download'
     Assert-Equal @(Get-HikariTempLeftovers $tmp).Count 0 'temp folder removed'
@@ -3041,9 +3072,10 @@ Test-Case 'release through iex: its zip comes from the downloader, is checked an
     $tmp = New-TestDir 'iex-release-tmp'
     $rel = New-TestRelease -Dir $d -Zip (New-TestReleaseZip $d)
     $cfg = P @($d, 'mpv')
-    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('1', '2', $cfg) -TempDir $tmp
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin (@('1', '2', $cfg) + $AdminAnswer) -TempDir $tmp
     Assert-SessionClean $run 0
-    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
+    Assert-AdminWarning $run
+    Assert-True $run.Report.TlsTouched ('the downloader changed SecurityProtocol, so putting it back was tested; downloads: ' + [string]::Join(' ', @($run.Report.Downloads)) + '; output: ' + $run.Text)
     Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl, $script:Anime4KUrl))) 'downloads, release zip first, Anime4K when the folder needs it'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl'))) 'Anime4K installed (default answer)'
     foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
@@ -3096,7 +3128,8 @@ Test-Case 'release with a wrong hash: zip refused, nothing installed, temp remov
     $cfg = P @($d, 'mpv')
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'install' -Target $cfg -YesValue 'true' -TempDir $tmp
     Assert-SessionClean $run 1
-    Assert-True $run.Report.TlsTouched 'the downloader changed SecurityProtocol, so putting it back was tested'
+    Assert-AdminWarning $run
+    Assert-True $run.Report.TlsTouched ('the downloader changed SecurityProtocol, so putting it back was tested; downloads: ' + [string]::Join(' ', @($run.Report.Downloads)) + '; output: ' + $run.Text)
     Assert-True ($run.Text.Contains('does not match its expected SHA256')) ('message; output: ' + $run.Text)
     Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) $TestReleaseUrl 'only the zip was fetched'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed'
@@ -3112,6 +3145,9 @@ Test-Case 'options through [scriptblock]::Create: -Yes:$false is not -Yes' {
 }
 
 Test-Case '-File: the exit code reaches the caller' {
+    # An invalid -Action is reported on stderr; Windows PowerShell 5.1 would throw
+    # on it here (2>&1 with 'Stop') instead of letting the exit code be checked.
+    $ErrorActionPreference = 'Continue'
     $saved = $env:HIKARI_INSTALL_TEST
     $env:HIKARI_INSTALL_TEST = ''
     try {
@@ -3124,6 +3160,35 @@ Test-Case '-File: the exit code reaches the caller' {
     }
     finally { $env:HIKARI_INSTALL_TEST = $saved }
 }
+
+# Only in an elevated run (the Windows runners of GitHub Actions): the real
+# machine, no fake environment. The rule itself is also tested with a fake
+# administrator above ('administrator: warned and asked ...').
+if ($RealAdmin) {
+    Test-Case 'administrator for real: -Yes refuses a folder in the user''s TEMP, in the session and with -File' {
+        $base = P @($UserTemp, ('hikari-admin-' + [guid]::NewGuid().ToString('N')))
+        $cfg = P @($base, 'mpv')
+        try {
+            Assert-True (-not (Test-HikariUnderSystemDirs -Env (New-HikariEnvironment) -Path $cfg)) ('the user TEMP is not under Program Files or ProgramData: ' + $cfg)
+            Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true) 2 'install refused'
+            Assert-True $script:HikariElevated 'seen as administrator'
+            Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*running as administrator*' }).Count -eq 1) 'warned once'
+            Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing created'
+            # The same through a real run of the file, as a user would start it.
+            $ErrorActionPreference = 'Continue'
+            $saved = $env:HIKARI_INSTALL_TEST
+            $env:HIKARI_INSTALL_TEST = ''
+            try { $out = @(& $script:Pwsh -NoProfile -NonInteractive -File $InstallScript -Action install -Target $cfg -Yes 2>&1 | ForEach-Object { [string]$_ }) }
+            finally { $env:HIKARI_INSTALL_TEST = $saved }
+            $text = [string]::Join("`n", $out)
+            Assert-Equal $LASTEXITCODE 2 ('-File exit code; output: ' + $text)
+            Assert-True ($text.Contains('only folders under Program Files or ProgramData are allowed')) ('-File message; output: ' + $text)
+            Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing created by -File'
+        }
+        finally { Remove-Item -LiteralPath $base -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+else { Write-Host 'skip administrator for real: this run is not elevated (the rule is tested with a fake administrator)' }
 
 # ---------------------------------------------------------------------------
 # Migration from sosc (the name of hikari until v0.3.0)
@@ -3149,6 +3214,8 @@ else { Write-Host 'skip migration from sosc 0.3.0: no git or no v0.3.0 tag in th
 # $Dl): exit code, and its output in $script:SoscOut.
 function Invoke-Sosc030 {
     param([string]$Cfg, [string]$Dl, [string]$Action, [string]$Anime4K = '')
+    # As in Invoke-IexHarness: stderr of the child must not throw under 5.1.
+    $ErrorActionPreference = 'Continue'
     $text = $SoscOriginal
     $text = $text -replace "(?m)^\`$script:UoscSha256 = '[0-9a-f]{64}'", ("`$script:UoscSha256 = '" + $script:UoscSha256 + "'")
     $text = $text -replace "(?m)^\`$script:ThumbfastSha256 = '[0-9a-f]{64}'", ("`$script:ThumbfastSha256 = '" + $script:ThumbfastSha256 + "'")
@@ -3414,11 +3481,16 @@ Test-Case 'links where sosc''s choices and record go: nothing written through th
     Set-TestFile (P @($cfg, 'sosc-palette.conf')) "script-opts-append=sosc_palettes-palette=nord`n"
     Set-TestFile (P @($cfg, 'sosc-subs.conf')) "script-opts-append=sosc_subs-style=box`n"
     Set-TestFile (P @($cfg, 'sosc-installed.txt')) "sosc_version=0.3.0`n"
+    # Links to files that are not there. Windows PowerShell 5.1 only makes a link
+    # to something that exists, so the targets are made first and removed after.
+    $targets = @((P @($outside, 'palette.conf')), (P @($outside, 'record.txt')))
+    foreach ($t in $targets) { Set-TestFile $t 'x' }
     try {
-        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-palette.conf')) -Target (P @($outside, 'palette.conf')) | Out-Null
-        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-installed.txt')) -Target (P @($outside, 'record.txt')) | Out-Null
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-palette.conf')) -Target $targets[0] | Out-Null
+        New-Item -ItemType SymbolicLink -Path (P @($cfg, 'hikari-installed.txt')) -Target $targets[1] | Out-Null
     }
     catch { Write-Host '     (symlinks not available, skipped)'; return }
+    foreach ($t in $targets) { Remove-Item -LiteralPath $t -Force }
     Invoke-HikariSoscMigration $cfg
     Assert-Equal @(Get-ChildItem -LiteralPath $outside -Force).Count 0 'nothing written outside'
     Assert-Equal @($script:HikariWarnings | Where-Object { $_ -like '*is a link (junction or symbolic link), nothing is written*' }).Count 2 'said so, twice'

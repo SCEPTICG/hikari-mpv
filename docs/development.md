@@ -37,6 +37,8 @@ GitHub runs the tests on every push to any branch (except `gh-pages`) and on eve
 | make-release.sh | Ubuntu, PowerShell 7 | `tests/make-release.test.sh` |
 | Website | Ubuntu | `mkdocs build --strict` with the versions of `docs/requirements.txt` |
 
+The Windows runners of GitHub run as administrator. As administrator the installer, on purpose, takes with `-Yes` only folders under Program Files or ProgramData, and asks before going on without `-Yes`; the tests do not weaken that. When they run elevated they put their folders under `%ProgramData%` instead of `%TEMP%` and answer that question, so on Windows the CI tests the elevated code of the installer, and one more case checks that a folder in the user's `%TEMP%` is refused (skipped when not elevated). The code for a normal user is the one tested on Ubuntu and on a development machine.
+
 On Windows the language comparison is skipped (no Lua there). The Windows PowerShell 5.1 job is marked experimental (`continue-on-error`): the tests were written with PowerShell 7, so until it has passed once its failures are shown but do not make the run fail. When it is green, set its `experimental` to `false` in `ci.yml`.
 
 The workflows only use actions pinned to a full commit SHA, with the version in a comment. To move one to a newer version, look up the commit of the new tag (for an annotated tag, the commit it points to, not the tag object) and change both the SHA and the comment. Check the workflows with [actionlint](https://github.com/rhysd/actionlint) before committing: `actionlint .github/workflows/*.yml`.
