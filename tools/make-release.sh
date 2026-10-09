@@ -15,7 +15,7 @@
 # The tag vX.Y.Z must already exist and point to the current commit. Then push
 # the tag, create the GitHub release of SCEPTICG/hikari-mpv from it, attach
 # dist/hikari.ps1, dist/hikari.sh, dist/hikari.zip and dist/SHA256SUMS with those names
-# and publish it as Latest (see README, "Making a release"). dist/hikari.ps1 and
+# and publish it as Latest (see docs/development.md, "Making a release"). dist/hikari.ps1 and
 # dist/hikari.sh only install the hikari.zip published under that same tag, and only
 # if its SHA256 matches.
 #
