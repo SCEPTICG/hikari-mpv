@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://scepticg.github.io/hikari-mpv/features/update-check/">
       
       
-        <link rel="prev" href="../speed/">
+        <link rel="prev" href="../language/">
       
       
         <link rel="next" href="../../faq/">
@@ -758,7 +758,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -787,6 +787,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -959,6 +987,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1024,11 +1080,11 @@
 
 <h1 id="update-check">Update check<a class="headerlink" href="#update-check" title="Permanent link">&para;</a></h1>
 <p><code>hikari-update.lua</code> tells you when a new version of hikari is out. It only tells you: it never downloads or installs anything by itself.</p>
-<p>When there is one, opening a file shows <em>hikari 0.4.1 disponible · Alt+u</em> for a few seconds, and an <em>Actualizar hikari</em> button (download icon) appears in the controls bar, before <em>fullscreen</em>. The button, or <code>Alt+u</code>, opens a menu with:</p>
+<p>When there is one, opening a file shows <em>hikari 0.5.1 is out · Alt+u</em> for a few seconds (in hikari's <a href="../language/">language</a>), and an <em>Update hikari</em> button (download icon) appears in the controls bar, before <em>fullscreen</em>. The button, or <code>Alt+u</code>, opens a menu with:</p>
 <ul>
-<li><strong>Ver novedades de la 0.4.1</strong>: opens that version's release page on GitHub in your browser.</li>
-<li><strong>Copiar comando de actualización</strong>: copies the update command, the same one as in <a href="../../install/windows/">Install</a>: <code>irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex</code> on Windows (paste it into PowerShell), <code>curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash</code> on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.</li>
-<li><strong>No avisar de esta versión</strong>: no more notice or button for that version. The next one is announced as usual, and <code>Alt+u</code> still opens the menu.</li>
+<li><strong>What's new in 0.5.1</strong>: opens that version's release page on GitHub in your browser.</li>
+<li><strong>Copy the update command</strong>: copies the update command, the same one as in <a href="../../install/windows/">Install</a>: <code>irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex</code> on Windows (paste it into PowerShell), <code>curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash</code> on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.</li>
+<li><strong>Don't remind me of this version</strong>: no more notice or button for that version. The next one is announced as usual, and <code>Alt+u</code> still opens the menu.</li>
 </ul>
 <p>How it checks: on the first file you open after starting mpv (never at start-up, so nothing waits for it), and at most once a day, hikari runs <code>curl</code> in the background to ask <code>https://github.com/SCEPTICG/hikari-mpv/releases/latest</code> where it points, and reads the version from the answer. That is the only request: no GitHub API, no account, nothing about you or your files is sent beyond what any visit to that page sends (your IP address and curl's name). Without <code>curl</code> or without network nothing is shown, and it tries again the next day. The installed version comes from <code>hikari-installed.txt</code>, which the installer writes; a copy installed by hand or from the repository (<code>dev</code>) is never checked. The time of the last check, the latest version found and the one you dismissed are kept in <code>hikari-update.txt</code> in the config folder. If that file cannot be written (a read-only config folder), it still asks only once per mpv session, but every new session asks again. On Windows it runs <code>curl.exe</code> (and, from the menu, <code>cmd.exe</code>, <code>clip.exe</code> and PowerShell) only from the <code>System32</code> folder of Windows, never from mpv's folder or the video's.</p>
 <p>It is on by default. To turn it off, set <code>enabled=no</code> in <code>script-opts/hikari-update.conf</code>; updating hikari replaces that file, so to keep it off for good add this line to your own <code>mpv.conf</code> instead (outside the hikari block):</p>
@@ -1073,7 +1129,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../speed/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Speed menu">
+          <a href="../language/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Languages">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1083,7 +1139,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Speed menu
+                Languages
               </div>
             </div>
           </a>

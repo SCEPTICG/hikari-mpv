@@ -849,7 +849,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -878,6 +878,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -1040,6 +1068,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1173,7 +1229,7 @@
 <li>sets aside other on-screen controllers that would clash with uosc (nothing is deleted);</li>
 <li>copies the scripts and their settings, and adds a marked block to <code>mpv.conf</code> and <code>input.conf</code>, leaving the rest of both files as it is.</li>
 </ul>
-<p>It only touches that config folder and the backup next to it, plus a temporary folder that it deletes when it ends (and, only if you choose it when no player is found, installs mpv.net with <code>winget</code>). No administrator rights, no registry, no <code>PATH</code> changes. Through <code>iex</code> it does not close or change your PowerShell window: it only leaves its result in <code>$LASTEXITCODE</code>. Messages are in Spanish when Windows is set to Spanish, in English otherwise. Restart the player afterwards.</p>
+<p>It only touches that config folder and the backup next to it, plus a temporary folder that it deletes when it ends (and, only if you choose it when no player is found, installs mpv.net with <code>winget</code>). No administrator rights, no registry, no <code>PATH</code> changes. Through <code>iex</code> it does not close or change your PowerShell window: it only leaves its result in <code>$LASTEXITCODE</code>. Messages are in Spanish when Windows is set to Spanish, in English otherwise; hikari itself, inside mpv, gets the Windows display language if it is one of its <a href="../../features/language/">13 languages</a>. Restart the player afterwards.</p>
 <p>If <code>irm</code> itself fails with an error about a secure channel (SSL/TLS), your Windows PowerShell 5.1 does not use TLS 1.2 by default (older Windows 10 builds). Switch it on for that window and run the line again:</p>
 <div class="highlight"><pre><span></span><code>[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex
 </code></pre></div>
@@ -1238,12 +1294,12 @@ powershell -ExecutionPolicy Bypass -File .\hikari.ps1
 <p>Pick one or several (or, with <code>-NoMenu</code>, type their numbers: <code>1,3</code>), or type another folder (<code>%APPDATA%\mpv</code> and relative paths work). If you type the player's own folder, the one with <code>mpv.exe</code> or <code>mpvnet.exe</code>, the installer uses its <code>portable_config</code> or offers the config folder that player reads. Drive roots and your bare user folder are refused, and a folder with no sign of mpv in it (no <code>mpv.conf</code>, <code>input.conf</code>, <code>scripts</code>, <code>script-opts</code> and no mpv next to it) is only used if you confirm it; with <code>-Yes</code> it is refused. If <code>MPV_HOME</code> is set, mpv reads that folder before any <code>portable_config</code>, and so does the installer for mpv (not for mpv.net, which picks its own folder). A folder you cannot write to (a <code>portable_config</code> under <code>Program Files</code>, say) is flagged, and the installer offers the user folder instead; note that a player with a <code>portable_config</code> only reads that folder. If no player is found at all, it offers to install mpv.net with <code>winget</code> (asking first), to type a folder, or to prepare <code>%APPDATA%\mpv</code> for an mpv installed later. Ways to get mpv: <a href="https://mpv.io/installation/">https://mpv.io/installation/</a>.</p>
 <p>For each folder it:</p>
 <ol>
-<li>Copies the files it may change to <code>&lt;folder&gt;-respaldo-hikari-&lt;date&gt;</code> next to it, and shows the size of that copy: <code>mpv.conf</code>, <code>input.conf</code>, <code>scripts</code>, <code>script-opts</code>, <code>fonts</code>, <code>hikari-palette.conf</code>, <code>hikari-subs.conf</code>, <code>hikari-upscale.conf</code>, <code>hikari-installed.txt</code>, and <code>scripts-desactivados</code>, <code>shaders-desactivados</code> and <code>hikari-originales</code> if they exist. Nothing else in the folder is copied (<code>cache</code>, <code>watch_later</code>...); in <code>shaders</code> hikari only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so <code>shaders</code> is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before hikari's first install (the only one with your config as it was before hikari, marked with a <code>hikari-backup-original.txt</code> file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly <code>&lt;folder&gt;-respaldo-hikari-&lt;date&gt;</code> next to it count: nothing else is touched.</li>
+<li>Copies the files it may change to <code>&lt;folder&gt;-respaldo-hikari-&lt;date&gt;</code> next to it, and shows the size of that copy: <code>mpv.conf</code>, <code>input.conf</code>, <code>scripts</code>, <code>script-opts</code>, <code>script-modules</code>, <code>fonts</code>, <code>hikari-palette.conf</code>, <code>hikari-subs.conf</code>, <code>hikari-upscale.conf</code>, <code>hikari-language.conf</code>, <code>hikari-installed.txt</code>, and <code>scripts-desactivados</code>, <code>shaders-desactivados</code> and <code>hikari-originales</code> if they exist. Nothing else in the folder is copied (<code>cache</code>, <code>watch_later</code>...); in <code>shaders</code> hikari only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so <code>shaders</code> is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before hikari's first install (the only one with your config as it was before hikari, marked with a <code>hikari-backup-original.txt</code> file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly <code>&lt;folder&gt;-respaldo-hikari-&lt;date&gt;</code> next to it count: nothing else is touched.</li>
 <li>Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom <code>osc.lua</code>, <code>mpv-osc-*</code>...) to <code>scripts-desactivados</code>, together with their <code>script-opts</code> and fonts. Nothing is deleted. It also offers to move there the <code>.lua</code> files in <code>scripts</code> that are really the error page of a failed download (first line <code>404: Not Found</code>, <code>Not Found</code> or an HTML page), for which mpv logs an error at every start; they come back on uninstall.</li>
 <li>Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own <code>uosc.conf</code> is not installed: hikari's is.</li>
-<li>Copies the hikari scripts and <code>script-opts</code>. <code>hikari-palette.conf</code> and <code>hikari-subs.conf</code> are only copied when missing, so your saved palette and subtitle choices survive updates.</li>
-<li>Anime4K: asks whether to install it (see <a href="../../features/anime4k/">Anime4K upscaling</a>) and writes <code>hikari-upscale.conf</code> if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in <em>Automático</em>.</li>
-<li>Adds a marked block at the end of <code>mpv.conf</code> (<code>osc=no</code>, <code>osd-bar=no</code> and the three <code>include</code> lines) and of <code>input.conf</code> (<code>Alt+p</code>, <code>Alt+s</code>, <code>Alt+t</code>, <code>Alt+u</code>, and <code>Ctrl+0</code> to <code>Ctrl+7</code> when hikari installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in <code>mpv.conf</code> it is moved back to the end, so the saved subtitle style still wins over <code>sub-*</code> lines you added later; in <code>input.conf</code> it stays where it is. If <code>mpv.conf</code> ends inside a <code>[profile]</code>, the block starts with <code>[default]</code>. A key you already use for something else is left to you, and the installer says so.</li>
+<li>Copies the hikari scripts, <code>script-opts</code> and <code>script-modules/hikari-i18n.lua</code> (the texts the scripts share). <code>hikari-palette.conf</code> and <code>hikari-subs.conf</code> are only copied when missing, so your saved palette and subtitle choices survive updates. <code>hikari-language.conf</code> is written with the Windows display language when it holds no choice yet (see <a href="../../features/language/">Languages</a>); a language you picked is kept.</li>
+<li>Anime4K: asks whether to install it (see <a href="../../features/anime4k/">Anime4K upscaling</a>) and writes <code>hikari-upscale.conf</code> if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in <em>Automatic</em>.</li>
+<li>Adds a marked block at the end of <code>mpv.conf</code> (<code>osc=no</code>, <code>osd-bar=no</code> and the four <code>include</code> lines) and of <code>input.conf</code> (<code>Alt+p</code>, <code>Alt+s</code>, <code>Alt+t</code>, <code>Alt+u</code>, <code>Alt+l</code>, and <code>Ctrl+0</code> to <code>Ctrl+7</code> when hikari installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in <code>mpv.conf</code> it is moved back to the end, so the saved subtitle style still wins over <code>sub-*</code> lines you added later; in <code>input.conf</code> it stays where it is. If <code>mpv.conf</code> ends inside a <code>[profile]</code>, the block starts with <code>[default]</code>. A key you already use for something else is left to you, and the installer says so.</li>
 <li>For mpv.net and AnimeJaNai, writes <code>mpv_path=&lt;path to mpvnet.exe&gt;</code> into <code>script-opts/thumbfast.conf</code>, because some mpv.net builds do not tell thumbfast where they are (see <a href="../../features/thumbnails/">Thumbnails</a>).</li>
 <li>Writes <code>hikari-installed.txt</code> with the versions installed and what was already there, for updates and uninstalling.</li>
 </ol>

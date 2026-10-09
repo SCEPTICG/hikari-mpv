@@ -768,7 +768,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -797,6 +797,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -959,6 +987,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1023,10 +1079,10 @@
 
 
 <h1 id="anime4k-upscaling">Anime4K upscaling<a class="headerlink" href="#anime4k-upscaling" title="Permanent link">&para;</a></h1>
-<p><a href="https://github.com/bloc97/Anime4K">Anime4K</a> (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. hikari does not include it: the installer downloads release v4.0.1 (<code>Anime4K_v4.0.zip</code>) from GitHub, checks its SHA256 and copies its <code>Anime4K_*.glsl</code> files, and nothing else, into <code>shaders/</code>. Once installed it starts in <strong>Automático</strong> (see below); pick another mode, or <em>Apagado</em>, at any time.</p>
-<p>The <strong>Escalado</strong> button in the controls bar (sparkles icon, <code>auto_awesome</code>) opens a menu with two groups; picking an option applies it straight away and the menu stays open:</p>
+<p><a href="https://github.com/bloc97/Anime4K">Anime4K</a> (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. hikari does not include it: the installer downloads release v4.0.1 (<code>Anime4K_v4.0.zip</code>) from GitHub, checks its SHA256 and copies its <code>Anime4K_*.glsl</code> files, and nothing else, into <code>shaders/</code>. Once installed it starts in <strong>Automatic</strong> (see below); pick another mode, or <em>Off</em>, at any time.</p>
+<p>The <strong>Upscaling</strong> button in the controls bar (sparkles icon, <code>auto_awesome</code>) opens a menu with two groups (in hikari's <a href="../language/">language</a>; <em>Escalado</em> in Spanish, as in the screenshots); picking an option applies it straight away and the menu stays open:</p>
 <ul>
-<li><strong>Modo</strong>: <em>Apagado</em>, <em>Automático</em> and Anime4K's six official modes. <em>Automático</em> picks the mode from the height of each video, with the chosen quality: C up to 576 lines (480p, 576p), B up to 810 (720p), A+A up to 1100 (1080p), and no shaders for taller videos (1440p, 4K), which do not need upscaling. It works it out again for every file (and whenever the height changes), so a playlist that mixes resolutions gets the right mode for each one. The guide of Anime4K says the right mode is the one that looks best; roughly:</li>
+<li><strong>Mode</strong>: <em>Off</em>, <em>Automatic</em> and Anime4K's six official modes. <em>Automatic</em> picks the mode from the height of each video, with the chosen quality: C up to 576 lines (480p, 576p), B up to 810 (720p), A+A up to 1100 (1080p), and no shaders for taller videos (1440p, 4K), which do not need upscaling. It works it out again for every file (and whenever the height changes), so a playlist that mixes resolutions gets the right mode for each one. The guide of Anime4K says the right mode is the one that looks best; roughly:</li>
 </ul>
 <table>
 <thead>
@@ -1055,25 +1111,25 @@
 </tbody>
 </table>
 <ul>
-<li><strong>Calidad</strong>: <em>Alta</em> (Anime4K's <em>HQ</em> shader lists, for capable graphics cards) or <em>Rápida</em> (its <em>Fast</em> lists).</li>
+<li><strong>Quality</strong>: <em>High</em> (Anime4K's <em>HQ</em> shader lists, for capable graphics cards) or <em>Fast</em> (its <em>Fast</em> lists).</li>
 </ul>
-<p><code>Ctrl+1</code> to <code>Ctrl+6</code> pick the modes in the same order and <code>Ctrl+0</code> turns Anime4K off, as in Anime4K's own instructions; <code>Ctrl+7</code> is <em>Automático</em>. Each shows a short message such as <em>Anime4K: Modo A (Rápido)</em> or <em>Anime4K: Automático (B, 720p)</em>. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (<em>Anime4K no está instalado: ejecuta el instalador</em>) and the button stays hidden.</p>
-<p>The choice is saved to <code>~~/hikari-upscale.conf</code>, which <code>mpv.conf</code> includes, so a fixed mode is active from the first frame on the next start. With <em>Apagado</em> that file sets no <code>glsl-shaders</code> at all, so your own <code>glsl-shaders</code> line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and <em>Apagado</em> puts your list back. <em>Automático</em> cannot know the height before a file is open, so its file only says <code>mode=auto</code>: the script sets the shaders when each file loads, and with no mode for a video (too tall, or no video) your own list applies, as with <em>Apagado</em>. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (<code>;</code> on Windows, <code>:</code> elsewhere). The button needs mpv 0.36 or newer (it is shown through a <code>user-data</code> property); with an older mpv use the keys.</p>
+<p><code>Ctrl+1</code> to <code>Ctrl+6</code> pick the modes in the same order and <code>Ctrl+0</code> turns Anime4K off, as in Anime4K's own instructions; <code>Ctrl+7</code> is <em>Automatic</em>. Each shows a short message such as <em>Anime4K: Mode A (Fast)</em> or <em>Anime4K: Automatic (B, 720p)</em>. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (<em>Anime4K is not installed: run the installer</em>) and the button stays hidden.</p>
+<p>The choice is saved to <code>~~/hikari-upscale.conf</code>, which <code>mpv.conf</code> includes, so a fixed mode is active from the first frame on the next start. With <em>Off</em> that file sets no <code>glsl-shaders</code> at all, so your own <code>glsl-shaders</code> line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and <em>Off</em> puts your list back. <em>Automatic</em> cannot know the height before a file is open, so its file only says <code>mode=auto</code>: the script sets the shaders when each file loads, and with no mode for a video (too tall, or no video) your own list applies, as with <em>Off</em>. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (<code>;</code> on Windows, <code>:</code> elsewhere). The button needs mpv 0.36 or newer (it is shown through a <code>user-data</code> property); with an older mpv use the keys.</p>
 <p>What the installer does:</p>
 <ul>
 <li><strong>AnimeJaNai</strong>: nothing. It already upscales with AI and uses <code>Ctrl+1</code> to <code>Ctrl+9</code> for it.</li>
-<li><strong>No Anime4K yet</strong>: it explains what it is and asks <em>Install Anime4K?</em> (yes by default; with <code>-Yes</code>, yes). Installed, it starts in <em>Automático</em>: <code>hikari-upscale.conf</code> is written with <code>mode=auto</code> and the quality for your card, even if an earlier one said <em>Apagado</em>. If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of hikari; Anime4K is offered again next time, yes by default.</li>
+<li><strong>No Anime4K yet</strong>: it explains what it is and asks <em>Install Anime4K?</em> (yes by default; with <code>-Yes</code>, yes). Installed, it starts in <em>Automatic</em>: <code>hikari-upscale.conf</code> is written with <code>mode=auto</code> and the quality for your card, even if an earlier one said <em>Off</em>. If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of hikari; Anime4K is offered again next time, yes by default.</li>
 <li><strong>Already installed by hikari</strong>: an update leaves it alone when it is the same version and every shader hikari needs is there; if one is missing or the version changed, it is downloaded and installed again. The mode you chose is kept.</li>
-<li><strong>Anime4K installed by hand</strong> (<code>Anime4K_*.glsl</code> in <code>shaders/</code> that hikari did not put there): it offers to take it over (no by default; with <code>-Yes</code>, no). If you accept, hikari first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to <code>shaders-desactivados/</code> (nothing is deleted), hikari installs its own copy (in <em>Automático</em>), and <code>Ctrl+0</code> to <code>Ctrl+6</code> lines of yours that change <code>glsl-shaders</code> (<code>CTRL+1</code> and <code>Ctrl+1</code> alike) can be turned off by putting <code># hikari:</code> in front of them, so the hikari keys can use those keys. A <code>glsl-shaders=</code> line with Anime4K shaders in your <code>mpv.conf</code> (Anime4K's templates have one; so do <code>[profile]</code>s that pick a mode by height, which <em>Automático</em> replaces) is turned off the same way (yes by default, and with <code>-Yes</code>): otherwise that mode would be on at every start, even with <em>Apagado</em>. The same happens if hikari installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the <em>Escalado</em> menu does not know what they turned on.</li>
+<li><strong>Anime4K installed by hand</strong> (<code>Anime4K_*.glsl</code> in <code>shaders/</code> that hikari did not put there): it offers to take it over (no by default; with <code>-Yes</code>, no). If you accept, hikari first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to <code>shaders-desactivados/</code> (nothing is deleted), hikari installs its own copy (in <em>Automatic</em>), and <code>Ctrl+0</code> to <code>Ctrl+6</code> lines of yours that change <code>glsl-shaders</code> (<code>CTRL+1</code> and <code>Ctrl+1</code> alike) can be turned off by putting <code># hikari:</code> in front of them, so the hikari keys can use those keys. A <code>glsl-shaders=</code> line with Anime4K shaders in your <code>mpv.conf</code> (Anime4K's templates have one; so do <code>[profile]</code>s that pick a mode by height, which <em>Automatic</em> replaces) is turned off the same way (yes by default, and with <code>-Yes</code>): otherwise that mode would be on at every start, even with <em>Off</em>. The same happens if hikari installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the <em>Upscaling</em> menu does not know what they turned on.</li>
 <li><code>-Anime4K yes</code> installs it (and takes over one installed by hand) without asking; <code>-Anime4K no</code> leaves it out (an Anime4K that hikari installed earlier is left as it is).</li>
 </ul>
-<p>The quality is chosen from your graphics card the first time <code>hikari-upscale.conf</code> is written, and the installer says so in one line (<em>Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta</em>). When there are several cards, the most capable one decides. The line follows <a href="https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md">Anime4K's own guide</a>, which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets <em>Rápida</em>:</p>
+<p>The quality is chosen from your graphics card the first time <code>hikari-upscale.conf</code> is written, and the installer says so in one line (<em>Graphics card: NVIDIA GeForce RTX 3060 → quality High</em>). When there are several cards, the most capable one decides. The line follows <a href="https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md">Anime4K's own guide</a>, which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets <em>Fast</em>:</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th><em>Alta</em></th>
-<th><em>Rápida</em></th>
+<th><em>High</em></th>
+<th><em>Fast</em></th>
 </tr>
 </thead>
 <tbody>
@@ -1109,7 +1165,7 @@
 </tr>
 </tbody>
 </table>
-<p>It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use <em>Rápida</em> or a mode without <code>+</code>.</p>
+<p>It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use <em>Fast</em> or a mode without <code>+</code>.</p>
 <p>The modes, qualities and shader lists are defined in <code>portable_config/scripts/hikari-upscale.lua</code>. To open the menu from the keyboard, bind <code>script-binding hikari_upscale/open-menu</code> in <code>input.conf</code>; to pick a mode, <code>script-message-to hikari_upscale set-mode &lt;off|auto|a|b|c|aa|bb|ca&gt;</code> (and <code>set-quality &lt;hq|fast&gt;</code>).</p>
 
 
@@ -1166,13 +1222,13 @@
         
         
           
-          <a href="../titles/" class="md-footer__link md-footer__link--next" aria-label="Next: Stream titles">
+          <a href="../titles/" class="md-footer__link md-footer__link--next" aria-label="Next: Titles">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Stream titles
+                Titles
               </div>
             </div>
             <div class="md-footer__button md-icon">

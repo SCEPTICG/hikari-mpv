@@ -768,7 +768,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -797,6 +797,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -959,6 +987,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1026,12 +1082,12 @@
 <p>Open Terminal and run:</p>
 <div class="highlight"><pre><span></span><code>curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
 </code></pre></div>
-<p><code>curl</code> downloads the installer of the latest release and <code>bash</code> runs it. It is the same installer as on Windows, written for the <code>bash</code> 3.2 that comes with macOS: the same menus (<code>↑</code>/<code>↓</code>, <code>Enter</code>, <code>Esc</code>, <code>Space</code>, <code>Y</code>/<code>N</code>, <code>S</code>/<code>N</code> in Spanish), messages, backups and rotation, marked blocks, record, set-aside interfaces, Anime4K questions and uninstall (see <a href="../windows/#how-the-installer-works">How the installer works</a>). The questions are read from the terminal even though the script itself comes through the pipe. Messages are in Spanish when <code>LC_ALL</code>, <code>LC_MESSAGES</code> or <code>LANG</code> (the first one set) starts with <code>es</code>, in English otherwise. What is different:</p>
+<p><code>curl</code> downloads the installer of the latest release and <code>bash</code> runs it. It is the same installer as on Windows, written for the <code>bash</code> 3.2 that comes with macOS: the same menus (<code>↑</code>/<code>↓</code>, <code>Enter</code>, <code>Esc</code>, <code>Space</code>, <code>Y</code>/<code>N</code>, <code>S</code>/<code>N</code> in Spanish), messages, backups and rotation, marked blocks, record, set-aside interfaces, Anime4K questions and uninstall (see <a href="../windows/#how-the-installer-works">How the installer works</a>). The questions are read from the terminal even though the script itself comes through the pipe. Messages are in Spanish when <code>LC_ALL</code>, <code>LC_MESSAGES</code> or <code>LANG</code> (the first one set) starts with <code>es</code>, in English otherwise. Inside mpv, hikari gets the system language if it is one of its <a href="../../features/language/">13 languages</a>: on macOS the first language of <em>System Settings</em> (mpv started from the Finder never sees the terminal's <code>LANG</code>), on Linux <code>LC_ALL</code>, <code>LC_MESSAGES</code> or <code>LANG</code>. What is different:</p>
 <ul>
 <li><strong>Config folder</strong>. On macOS, <code>$MPV_HOME</code> if it is set, otherwise <code>~/.config/mpv</code>, the folder both Homebrew's mpv and mpv.app read. IINA keeps its own settings and is not touched (the installer says so if it finds IINA). On Linux, <code>$MPV_HOME</code> or <code>${XDG_CONFIG_HOME:-~/.config}/mpv</code> for a native mpv, plus <code>~/.var/app/io.mpv.Mpv/config/mpv</code> for the Flatpak and <code>~/snap/mpv/current/.config/mpv</code> for the Snap when those are installed; with more than one, you pick in a list.</li>
 <li><strong>No mpv</strong>. On macOS with Homebrew it offers to run <code>brew install mpv</code> (asking first, never without questions); without Homebrew it explains how to get mpv and stops. On Linux it names the package of the usual distributions (<code>sudo apt install mpv</code>, <code>sudo dnf install mpv</code>...) and stops: it never runs <code>sudo</code> itself.</li>
 <li><strong>thumbfast</strong>. It writes the full path of mpv (<code>mpv_path=/opt/homebrew/bin/mpv</code>, say) into <code>script-opts/thumbfast.conf</code>: an mpv started from Finder or from another app (Seanime...) does not have <code>/opt/homebrew/bin</code> in its <code>PATH</code>, and the thumbnails would come out black. Not for the Flatpak or Snap, where <code>mpv</code> inside the sandbox is the right one.</li>
-<li><strong>Graphics card</strong>. The Anime4K quality comes from the chip on macOS (<code>Apple M… Pro</code>, <code>Max</code> and <code>Ultra</code>: <em>Alta</em>; the base M chips and Intel Macs: <em>Rápida</em>) and from <code>lspci</code> on Linux (a dedicated NVIDIA or AMD card: <em>Alta</em>; anything else, or no <code>lspci</code>: <em>Rápida</em>).</li>
+<li><strong>Graphics card</strong>. The Anime4K quality comes from the chip on macOS (<code>Apple M… Pro</code>, <code>Max</code> and <code>Ultra</code>: <em>High</em>; the base M chips and Intel Macs: <em>Fast</em>) and from <code>lspci</code> on Linux (a dedicated NVIDIA or AMD card: <em>High</em>; anything else, or no <code>lspci</code>: <em>Fast</em>).</li>
 <li>No AnimeJaNai or mpv.net there, and no administrator questions: run it as your own user. As root (<code>sudo</code>) it warns and asks, and without questions it refuses.</li>
 </ul>
 <p>Run the same line to update. To uninstall:</p>

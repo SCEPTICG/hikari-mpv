@@ -768,7 +768,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -797,6 +797,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -959,6 +987,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1023,9 +1079,9 @@
 
 
 <h1 id="subtitle-styles">Subtitle styles<a class="headerlink" href="#subtitle-styles" title="Permanent link">&para;</a></h1>
-<p>The subtitles button with the text icon (<code>text_fields</code>) in the controls bar, or <code>Alt+t</code>, opens a <strong>Subtítulos</strong> menu with three groups. Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.</p>
+<p>The subtitle style button with the text icon (<code>text_fields</code>) in the controls bar, or <code>Alt+t</code>, opens a <strong>Subtitle style</strong> menu with three groups (in hikari's <a href="../language/">language</a>; <em>Subtítulos</em> in Spanish). Picking an option applies it straight away and the menu stays open, with the new choice marked, so several things can be adjusted in a row.</p>
 <ul>
-<li><strong>Style</strong>: <em>Original</em> (sets nothing: mpv's defaults or your own <code>sub-*</code> lines in <code>mpv.conf</code>), <em>Caja oscura</em> (white text on a translucent black box, Netflix-like), <em>Borde grueso</em> (bold white text, thick black outline, soft shadow, Crunchyroll-like) and <em>Amarillo clásico</em> (yellow text, black outline and shadow).</li>
+<li><strong>Style</strong>: <em>Original</em> (sets nothing: mpv's defaults or your own <code>sub-*</code> lines in <code>mpv.conf</code>), <em>Dark box</em> (white text on a translucent black box, Netflix-like), <em>Thick outline</em> (bold white text, thick black outline, soft shadow, Crunchyroll-like) and <em>Classic yellow</em> (yellow text, black outline and shadow).</li>
 <li><strong>Size</strong>: <code>sub-scale</code> 0.85, <em>Normal</em>, 1.2 or 1.4.</li>
 <li><strong>Height</strong>: <code>sub-pos</code> <em>Normal</em>, 95 or 90.</li>
 </ul>
@@ -1034,8 +1090,8 @@
 <p>ASS subtitles keep their own styling: hikari leaves mpv's <code>sub-ass-override=scale</code> alone, so the style only applies to text subtitles (SRT, WebVTT...). With that setting mpv still applies <code>sub-scale</code> to ASS, so the size options do change them. <code>sub-pos</code> is passed to libass as the line position and moves ASS dialogue too; lines placed with <code>\pos</code> (signs, karaoke) should stay where they are. This last point still has to be checked in mpv with real files.</p>
 <p>mpv 0.39 changed the subtitle border options, and the script adapts to the version it runs on, always writing the real option name (never an alias):</p>
 <ul>
-<li>mpv 0.39 and newer: <code>sub-outline-color</code>/<code>sub-outline-size</code>, <code>sub-back-color</code> for the shadow colour (<code>sub-shadow-color</code> is an alias of it), and <code>sub-border-style</code>. <em>Caja oscura</em> uses <code>sub-border-style=opaque-box</code>.</li>
-<li>mpv 0.38 and older: <code>sub-border-color</code>/<code>sub-border-size</code>, a separate <code>sub-shadow-color</code>, and no <code>sub-border-style</code>. <em>Caja oscura</em> still gets its box: a translucent <code>sub-back-color</code> makes mpv draw a background box in that colour. The other styles never give <code>sub-back-color</code> any opacity of their own (they put back the value it had at start-up), so no box appears with them.</li>
+<li>mpv 0.39 and newer: <code>sub-outline-color</code>/<code>sub-outline-size</code>, <code>sub-back-color</code> for the shadow colour (<code>sub-shadow-color</code> is an alias of it), and <code>sub-border-style</code>. <em>Dark box</em> uses <code>sub-border-style=opaque-box</code>.</li>
+<li>mpv 0.38 and older: <code>sub-border-color</code>/<code>sub-border-size</code>, a separate <code>sub-shadow-color</code>, and no <code>sub-border-style</code>. <em>Dark box</em> still gets its box: a translucent <code>sub-back-color</code> makes mpv draw a background box in that colour. The other styles never give <code>sub-back-color</code> any opacity of their own (they put back the value it had at start-up), so no box appears with them.</li>
 </ul>
 <p>A <code>hikari-subs.conf</code> written by mpv 0.39 or newer uses option names that mpv 0.38 and older don't know: if the same config folder is used with an older mpv, it logs an unknown-option error for those lines and starts normally, without that style until it is picked again.</p>
 

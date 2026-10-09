@@ -838,7 +838,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -867,6 +867,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -1029,6 +1057,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../development/" class="md-nav__link">
         
   
@@ -1160,12 +1216,16 @@
 <td>New hikari version: release notes, update command (see <a href="../features/update-check/">Update check</a>)</td>
 </tr>
 <tr>
+<td><code>Alt+l</code></td>
+<td>Language of hikari (and of uosc after a restart) (see <a href="../features/language/">Languages</a>)</td>
+</tr>
+<tr>
 <td><code>Ctrl+1</code> … <code>Ctrl+6</code></td>
 <td>Anime4K modes A, B, C, A+A, B+B, C+A (when hikari installed Anime4K)</td>
 </tr>
 <tr>
 <td><code>Ctrl+7</code></td>
-<td>Anime4K <em>Automático</em>: the mode from each video's resolution</td>
+<td>Anime4K <em>Automatic</em>: the mode from each video's resolution</td>
 </tr>
 <tr>
 <td><code>Ctrl+0</code></td>
@@ -1173,7 +1233,7 @@
 </tr>
 </tbody>
 </table>
-<p>The controls bar has up to five hikari buttons before <em>fullscreen</em>: subtitles (text icon), <em>Escalado</em> (sparkles icon, only for videos and only when Anime4K is installed), speed, palettes and <em>Actualizar hikari</em> (download icon, only when a new hikari version is out). The <em>Saltar opening ›</em> button appears at the bottom right during openings, intros and endings; click it or press <code>Alt+s</code>. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).</p>
+<p>The controls bar has up to five hikari buttons before <em>fullscreen</em>: subtitle style (text icon), <em>Upscaling</em> (sparkles icon, only for videos and only when Anime4K is installed), speed, palettes and <em>Update hikari</em> (download icon, only when a new hikari version is out). Their tooltips, like every hikari text, are in your <a href="../features/language/">language</a>. The <em>Skip opening ›</em> button appears at the bottom right during openings, intros and endings; click it or press <code>Alt+s</code>. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Everything lives in the player's config folder (the one the installer showed you):</p>
 <table>
@@ -1198,15 +1258,19 @@
 </tr>
 <tr>
 <td><code>script-opts/hikari-title.conf</code></td>
-<td>Stream titles: on/off and tidying of release names.</td>
+<td>Titles: on/off and tidying of release names.</td>
 </tr>
 <tr>
 <td><code>script-opts/hikari-update.conf</code></td>
 <td>Update check: on/off and hours between checks.</td>
 </tr>
 <tr>
-<td><code>hikari-palette.conf</code>, <code>hikari-subs.conf</code>, <code>hikari-upscale.conf</code></td>
-<td>Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update.</td>
+<td><code>hikari-palette.conf</code>, <code>hikari-subs.conf</code>, <code>hikari-upscale.conf</code>, <code>hikari-language.conf</code></td>
+<td>Your chosen palette, subtitle style, Anime4K mode and quality, and language, saved by the menus. Kept on update.</td>
+</tr>
+<tr>
+<td><code>script-modules/hikari-i18n.lua</code></td>
+<td>hikari's texts in its 13 languages, shared by its scripts (replaced on update).</td>
 </tr>
 </tbody>
 </table>

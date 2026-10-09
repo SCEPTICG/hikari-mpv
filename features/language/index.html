@@ -6,33 +6,35 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="How to run hikari's tests and how a release of the mpv theme is made.">
+        <meta name="description" content="hikari's menus, buttons and messages in mpv come in the 13 languages of uosc. It follows your system, Alt+l changes it, and uosc follows hikari.">
       
       
         <meta name="author" content="SCEPTICG">
       
       
-        <link rel="canonical" href="https://scepticg.github.io/hikari-mpv/development/">
+        <link rel="canonical" href="https://scepticg.github.io/hikari-mpv/features/language/">
       
       
-        <link rel="prev" href="../compatibility/">
+        <link rel="prev" href="../speed/">
       
+      
+        <link rel="next" href="../update-check/">
       
       
         
       
       
-      <link rel="icon" href="../images/icon-64.png">
+      <link rel="icon" href="../../images/icon-64.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
-  <title>hikari development: tests and releases</title>
+  <title>hikari in your language: 13 languages for mpv and uosc</title>
 
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,25 +53,25 @@
       
     
     
-      <link rel="stylesheet" href="../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     <meta property="og:type" content="website">
   <meta property="og:site_name" content="hikari">
-  <meta property="og:title" content="hikari development: tests and releases">
-  <meta property="og:description" content="How to run hikari's tests and how a release of the mpv theme is made.">
-  <meta property="og:url" content="https://scepticg.github.io/hikari-mpv/development/">
+  <meta property="og:title" content="hikari in your language: 13 languages for mpv and uosc">
+  <meta property="og:description" content="hikari's menus, buttons and messages in mpv come in the 13 languages of uosc. It follows your system, Alt+l changes it, and uosc follows hikari.">
+  <meta property="og:url" content="https://scepticg.github.io/hikari-mpv/features/language/">
   <meta property="og:image" content="https://scepticg.github.io/hikari-mpv/images/social.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta property="og:image:alt" content="hikari, a modern theme for the mpv video player, built on uosc">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="hikari development: tests and releases">
-  <meta name="twitter:description" content="How to run hikari's tests and how a release of the mpv theme is made.">
+  <meta name="twitter:title" content="hikari in your language: 13 languages for mpv and uosc">
+  <meta name="twitter:description" content="hikari's menus, buttons and messages in mpv come in the 13 languages of uosc. It follows your system, Alt+l changes it, and uosc follows hikari.">
   <meta name="twitter:image" content="https://scepticg.github.io/hikari-mpv/images/social.png">
 
   </head>
@@ -91,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#development" class="md-skip">
+        <a href="#languages" class="md-skip">
           Skip to content
         </a>
       
@@ -105,9 +107,9 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="hikari" class="md-header__button md-logo" aria-label="hikari" data-md-component="logo">
+    <a href="../.." title="hikari" class="md-header__button md-logo" aria-label="hikari" data-md-component="logo">
       
-  <img src="../images/icon-64.png" alt="logo">
+  <img src="../../images/icon-64.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -124,7 +126,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              hikari development: tests and releases
+              hikari in your language: 13 languages for mpv and uosc
             
           </span>
         </div>
@@ -237,7 +239,7 @@
   
   
     <li class="md-tabs__item">
-      <a href=".." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -258,7 +260,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../install/windows/" class="md-tabs__link">
+        <a href="../../install/windows/" class="md-tabs__link">
           
   
   
@@ -274,11 +276,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../usage/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../usage/" class="md-tabs__link">
           
   
   
@@ -296,7 +300,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../faq/" class="md-tabs__link">
+      <a href="../../faq/" class="md-tabs__link">
         
   
   
@@ -313,13 +317,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../about/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../about/" class="md-tabs__link">
           
   
   
@@ -353,9 +355,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="hikari" class="md-nav__button md-logo" aria-label="hikari" data-md-component="logo">
+    <a href="../.." title="hikari" class="md-nav__button md-logo" aria-label="hikari" data-md-component="logo">
       
-  <img src="../images/icon-64.png" alt="logo">
+  <img src="../../images/icon-64.png" alt="logo">
 
     </a>
     hikari
@@ -382,7 +384,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -461,7 +463,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../install/windows/" class="md-nav__link">
+      <a href="../../install/windows/" class="md-nav__link">
         
   
   
@@ -489,7 +491,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../install/macos-linux/" class="md-nav__link">
+      <a href="../../install/macos-linux/" class="md-nav__link">
         
   
   
@@ -521,26 +523,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -558,7 +565,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -576,7 +583,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../usage/" class="md-nav__link">
+      <a href="../../usage/" class="md-nav__link">
         
   
   
@@ -604,7 +611,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/palettes/" class="md-nav__link">
+      <a href="../palettes/" class="md-nav__link">
         
   
   
@@ -632,7 +639,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/skip/" class="md-nav__link">
+      <a href="../skip/" class="md-nav__link">
         
   
   
@@ -660,7 +667,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/thumbnails/" class="md-nav__link">
+      <a href="../thumbnails/" class="md-nav__link">
         
   
   
@@ -688,7 +695,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/subtitles/" class="md-nav__link">
+      <a href="../subtitles/" class="md-nav__link">
         
   
   
@@ -716,7 +723,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/anime4k/" class="md-nav__link">
+      <a href="../anime4k/" class="md-nav__link">
         
   
   
@@ -744,7 +751,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/titles/" class="md-nav__link">
+      <a href="../titles/" class="md-nav__link">
         
   
   
@@ -772,7 +779,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../features/speed/" class="md-nav__link">
+      <a href="../speed/" class="md-nav__link">
         
   
   
@@ -780,209 +787,6 @@
     
   
     Speed menu
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/language/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Languages
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../features/update-check/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Update check
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../faq/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    FAQ
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-    
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    About
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    About
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../about/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing, credits and license
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../compatibility/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Compatibility
   
 
     
@@ -1019,7 +823,7 @@
   <span class="md-ellipsis">
     
   
-    Development
+    Languages
   
 
     
@@ -1037,7 +841,7 @@
   <span class="md-ellipsis">
     
   
-    Development
+    Languages
   
 
     
@@ -1063,10 +867,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#tests" class="md-nav__link">
+  <a href="#your-systems-language-by-default" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tests
+        Your system's language, by default
       
     </span>
   </a>
@@ -1074,10 +878,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#translations" class="md-nav__link">
+  <a href="#changing-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Translations
+        Changing it
       
     </span>
   </a>
@@ -1085,10 +889,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#making-a-release" class="md-nav__link">
+  <a href="#by-hand" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Making a release
+        By hand
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uoscs-own-language-setting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uosc's own language setting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-button-tooltips-are-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the button tooltips are translated
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#better-translations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Better translations
       
     </span>
   </a>
@@ -1099,6 +936,204 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../update-check/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Update check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing, credits and license
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1138,10 +1173,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#tests" class="md-nav__link">
+  <a href="#your-systems-language-by-default" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tests
+        Your system's language, by default
       
     </span>
   </a>
@@ -1149,10 +1184,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#translations" class="md-nav__link">
+  <a href="#changing-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Translations
+        Changing it
       
     </span>
   </a>
@@ -1160,10 +1195,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#making-a-release" class="md-nav__link">
+  <a href="#by-hand" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Making a release
+        By hand
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uoscs-own-language-setting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uosc's own language setting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-button-tooltips-are-translated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the button tooltips are translated
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#better-translations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Better translations
       
     </span>
   </a>
@@ -1187,45 +1255,72 @@
 
 
 
-<h1 id="development">Development<a class="headerlink" href="#development" title="Permanent link">&para;</a></h1>
-<p>How to run the tests and how a hikari release is made. For what hikari is and how to install it, see the <a href="../">home page</a>.</p>
-<h2 id="tests">Tests<a class="headerlink" href="#tests" title="Permanent link">&para;</a></h2>
-<p>From the repository root:</p>
-<div class="highlight"><pre><span></span><code>for f in tests/test_*.lua; do lua "$f"; done
-pwsh -NoProfile -File tests/install.Tests.ps1
-bash tests/install.test.sh
-bash tests/make-release.test.sh
+<h1 id="languages">Languages<a class="headerlink" href="#languages" title="Permanent link">&para;</a></h1>
+<p>Everything hikari shows in mpv (its menus, the tooltips of its buttons, the <em>Skip opening ›</em> button, its messages and the season and episode labels of <a href="../titles/">titles</a>) comes in the 13 languages of uosc 5.13:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>English</td>
+<td>Español</td>
+<td>Deutsch</td>
+<td>Français</td>
+</tr>
+<tr>
+<td>Italiano</td>
+<td>Polski</td>
+<td>Português</td>
+<td>Română</td>
+</tr>
+<tr>
+<td>Русский</td>
+<td>Türkçe</td>
+<td>Українська</td>
+<td>中文（香港）</td>
+</tr>
+<tr>
+<td>简体中文</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Palette names (Catppuccin, Nord, SCEPTIC...) are names, so they stay as they are. The installer itself only speaks English and Spanish.</p>
+<h2 id="your-systems-language-by-default">Your system's language, by default<a class="headerlink" href="#your-systems-language-by-default" title="Permanent link">&para;</a></h2>
+<p>On a first install, the installer writes your system's language to <code>~~/hikari-language.conf</code>: the Windows display language, the first preferred language of macOS, or <code>LC_ALL</code>, <code>LC_MESSAGES</code> or <code>LANG</code> on Linux. Portuguese from Brazil or Portugal is <em>Português</em>; Simplified Chinese (China, Singapore) is <em>简体中文</em>; Traditional Chinese (Taiwan, Hong Kong, Macau) is <em>中文（香港）</em>; any other language is English. Updates keep your choice.</p>
+<p>Without that file (a copy made by hand), hikari follows <code>LC_ALL</code>, <code>LC_MESSAGES</code> or <code>LANG</code> and otherwise speaks English.</p>
+<h2 id="changing-it">Changing it<a class="headerlink" href="#changing-it" title="Permanent link">&para;</a></h2>
+<p><code>Alt+l</code> opens the language menu, with each language written in itself and the current one marked. Pick one and hikari switches at once: open menus are redrawn, the skip button and the title of the file playing change, and the choice is saved for the next start.</p>
+<p>uosc's own menus and buttons (<em>Subtitles</em>, <em>Playlist</em>, <em>Chapters</em>...) are translated by uosc, which only reads its translations when mpv starts. hikari tells uosc the same language (the <code>uosc-languages</code> script option), so after a switch a short message reminds you to restart mpv to translate uosc's menus too. Until then, uosc follows the language it started with.</p>
+<p><code>Alt+l</code> is listed in uosc's <em>Key bindings</em> menu, but not in uosc's main menu: uosc only builds that menu from <code>input.conf</code> when <code>input.conf</code> describes all of it, and hikari leaves uosc's default menu as it is.</p>
+<p>To bind another key, use <code>script-binding hikari_language/open-menu</code> in <code>input.conf</code>.</p>
+<h2 id="by-hand">By hand<a class="headerlink" href="#by-hand" title="Permanent link">&para;</a></h2>
+<p><code>~~/hikari-language.conf</code> (in the mpv config folder, <code>portable_config/</code> in a portable install) holds two lines, which you can also write yourself:</p>
+<div class="highlight"><pre><span></span><code>script-opts-append=hikari-language=es
+script-opts-append=uosc-languages=es,en
 </code></pre></div>
-<p>The Lua tests (<code>test_i18n</code>, <code>test_language</code>, <code>test_palettes</code>, <code>test_skip</code>, <code>test_speed</code>, <code>test_subs</code>, <code>test_title</code>, <code>test_update</code>, <code>test_upscale</code>) load each script with a small stand-in for mpv's API (<code>tests/mock_mp.lua</code>); they need Lua 5.1 or LuaJIT, as mpv uses. When <code>lua</code> is there, both installer test files also check that the installers write <code>hikari-language.conf</code> byte for byte as <code>hikari-language.lua</code> does, and read locale names with the same rules as <code>hikari-i18n.lua</code>.</p>
-<p>The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new <code>pwsh</code> and run the installer through <code>iex</code>, as a user would, to check that it neither exits nor leaves anything behind in the session. <code>tests/install.test.sh</code> tests <code>install/hikari.sh</code> with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs <code>python3</code>. It runs the installer with the same <code>bash</code> that runs it, so run it also with a <code>bash</code> 3.2 (the one of macOS) to check the installer there: <code>/path/to/bash-3.2/bash tests/install.test.sh</code>. <code>tests/make-release.test.sh</code> builds a release in a throw-away copy of the repository and installs hikari from it, through <code>iex</code> and through <code>bash -s</code> as <code>curl ... | bash</code> does. To test the move from sosc, both installer test files also run the real installer of sosc 0.3.0, taken from the <code>v0.3.0</code> tag with <code>git</code> (skipped in a copy without that tag), and then install and uninstall hikari over it.</p>
-<h2 id="translations">Translations<a class="headerlink" href="#translations" title="Permanent link">&para;</a></h2>
-<p>Every text hikari shows in mpv lives in <code>portable_config/script-modules/hikari-i18n.lua</code>, one entry per text with all 13 languages side by side (<code>en</code> is required, the others fall back to it). Scripts get them with <code>i18n.t('key', {name = value})</code>; placeholders are <code>{name}</code>. <code>tests/test_i18n.lua</code> checks that every text has every language (except the few title labels that use the English form on purpose), keeps the placeholders of the English text, and that button tooltips have no <code>,</code> or <code>?</code>. The module is loaded with the same few lines at the top of every script (single-file mpv scripts get no mpv folder in Lua's <code>package.path</code>); the tests check that all of them are identical.</p>
-<h2 id="making-a-release">Making a release<a class="headerlink" href="#making-a-release" title="Permanent link">&para;</a></h2>
-<p>The one-line installs download <code>https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1</code> and <code>.../hikari.sh</code>, which only works when every step below is done. For a release <code>v0.1.0</code>:</p>
-<ol>
-<li>Commit everything and tag that commit. The tag must exist before building and point to the current commit, or the script refuses:</li>
-</ol>
-<div class="highlight"><pre><span></span><code>git tag v0.1.0
-tools/make-release.sh v0.1.0
+<p>The codes are those of the menu: <code>en</code>, <code>es</code>, <code>de</code>, <code>fr</code>, <code>it</code>, <code>pl</code>, <code>pt</code>, <code>ro</code>, <code>ru</code>, <code>tr</code>, <code>uk</code>, <code>zh-HK</code> and <code>zh-hans</code>. Uninstalling asks whether to delete this file together with your other choices.</p>
+<h2 id="uoscs-own-language-setting">uosc's own language setting<a class="headerlink" href="#uoscs-own-language-setting" title="Permanent link">&para;</a></h2>
+<p>The second line sets uosc's <code>languages</code> option, and a script option set in <code>mpv.conf</code> wins over the same option in <code>script-opts/uosc.conf</code>. So once the installer or <code>Alt+l</code> has written this file, hikari's language also decides uosc's: a <code>languages=</code> line of yours in <code>uosc.conf</code> is ignored, and uosc no longer follows <code>slang</code> (its default, <code>slang,en</code>, picks the language of your preferred subtitles).</p>
+<p>To give that back to uosc and keep hikari's language for hikari only, add a file of your own after hikari's, for example <code>~~/my-uosc-language.conf</code> with this line:</p>
+<div class="highlight"><pre><span></span><code>script-opts-remove=uosc-languages
 </code></pre></div>
-<p>It needs a clean work tree and builds, from that commit, <code>dist/hikari.zip</code> (<code>portable_config/</code>, <code>LICENSE</code>, <code>README.md</code>), <code>dist/hikari.ps1</code> (the installer with the version, the URL <code>https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.zip</code> and that zip's SHA256 filled in), <code>dist/hikari.sh</code> (the macOS and Linux installer, with the same three values) and <code>dist/SHA256SUMS</code>. It uploads nothing; <code>dist/</code> is not tracked.</p>
-<ol>
-<li>
-<p>Push the tag (<code>git push origin v0.1.0</code>) and wait until <code>v0.1.0</code> shows up in GitHub's tag list before the next step.</p>
-</li>
-<li>
-<p>On GitHub, create the release <strong>from that existing tag</strong> (choose <code>v0.1.0</code> in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).</p>
-</li>
-<li>
-<p>Attach <code>dist/hikari.ps1</code>, <code>dist/hikari.sh</code>, <code>dist/hikari.zip</code> and <code>dist/SHA256SUMS</code> with exactly those names: <code>hikari.ps1</code> and <code>hikari.sh</code> look for <code>hikari.zip</code> under that tag, and the install lines look for <code>hikari.ps1</code> and <code>hikari.sh</code>.</p>
-</li>
-<li>
-<p>Publish it as the <strong>Latest</strong> release: not a draft and not a pre-release. <code>releases/latest/download/...</code> only sees the release marked Latest.</p>
-</li>
-</ol>
-<p>To try it before it becomes the Latest release, publish it first as a pre-release (a draft cannot be downloaded) and use the fixed address of its files, which works for any published release; then mark it Latest:</p>
-<div class="highlight"><pre><span></span><code>irm https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.ps1 | iex
+<p>and include it at the end of your <code>mpv.conf</code>, after the hikari block:</p>
+<div class="highlight"><pre><span></span><code>include="~~/my-uosc-language.conf"
 </code></pre></div>
+<p>It has to be an <code>include</code>: mpv reads the included files after the rest of <code>mpv.conf</code>, in order, so a <code>script-opts-remove</code> line written straight into <code>mpv.conf</code> would run before hikari's file and change nothing. <code>Alt+l</code> rewrites <code>hikari-language.conf</code>, but not your file, so this keeps working after every switch; uosc then reads <code>languages</code> from <code>uosc.conf</code> again (or uses <code>slang,en</code>). The only side effect is that the reminder to restart mpv shows after every switch, since hikari no longer knows uosc's language. To undo it, delete the <code>include</code> line.</p>
+<h2 id="how-the-button-tooltips-are-translated">How the button tooltips are translated<a class="headerlink" href="#how-the-button-tooltips-are-translated" title="Permanent link">&para;</a></h2>
+<p>uosc translates the tooltips of its own buttons, but the tooltip of a custom button is the text after <code>?</code> in the <code>controls</code> line of <code>script-opts/uosc.conf</code>, shown as it is. hikari's <code>uosc.conf</code> writes them in English; <code>hikari-language.lua</code> gives hikari's buttons (subtitle style, upscaling, speed, palettes, update) the tooltip in your language when mpv starts and after every switch. Your own buttons and the rest of the <code>controls</code> line are left exactly as you wrote them.</p>
+<h2 id="better-translations">Better translations<a class="headerlink" href="#better-translations" title="Permanent link">&para;</a></h2>
+<p>The translations are in <code>portable_config/script-modules/hikari-i18n.lua</code>, one entry per text with every language side by side. If a text reads wrong in your language, <a href="https://github.com/SCEPTICG/hikari-mpv/issues">open an issue</a> or a pull request with a better one.</p>
 
 
 
@@ -1264,7 +1359,7 @@ tools/make-release.sh v0.1.0
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../compatibility/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Compatibility">
+          <a href="../speed/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Speed menu">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1274,11 +1369,27 @@ tools/make-release.sh v0.1.0
                 Previous
               </span>
               <div class="md-ellipsis">
-                Compatibility
+                Speed menu
               </div>
             </div>
           </a>
         
+        
+          
+          <a href="../update-check/" class="md-footer__link md-footer__link--next" aria-label="Next: Update check">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Update check
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
         
       </nav>
     
@@ -1328,10 +1439,10 @@ tools/make-release.sh v0.1.0
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "navigation.instant", "search.suggest", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "navigation.instant", "search.suggest", "search.highlight", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

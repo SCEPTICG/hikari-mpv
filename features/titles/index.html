@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="hikari turns streamed links from Seanime and similar apps into readable titles in mpv, such as Sousou no Frieren · E05, and keeps access tokens out of the title bar.">
+        <meta name="description" content="hikari turns anime release names into readable titles in mpv, such as Sousou no Frieren · E05, for local files and for streamed links from Seanime and similar apps, keeping access tokens out of the title bar.">
       
       
         <meta name="author" content="SCEPTICG">
@@ -28,7 +28,7 @@
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
-  <title>Readable stream titles in mpv (Seanime and similar apps)</title>
+  <title>Readable anime titles in mpv, for local files and streams</title>
 
     
       <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
@@ -62,16 +62,16 @@
     
     <meta property="og:type" content="website">
   <meta property="og:site_name" content="hikari">
-  <meta property="og:title" content="Readable stream titles in mpv (Seanime and similar apps)">
-  <meta property="og:description" content="hikari turns streamed links from Seanime and similar apps into readable titles in mpv, such as Sousou no Frieren · E05, and keeps access tokens out of the title bar.">
+  <meta property="og:title" content="Readable anime titles in mpv, for local files and streams">
+  <meta property="og:description" content="hikari turns anime release names into readable titles in mpv, such as Sousou no Frieren · E05, for local files and for streamed links from Seanime and similar apps, keeping access tokens out of the title bar.">
   <meta property="og:url" content="https://scepticg.github.io/hikari-mpv/features/titles/">
   <meta property="og:image" content="https://scepticg.github.io/hikari-mpv/images/social.png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta property="og:image:alt" content="hikari, a modern theme for the mpv video player, built on uosc">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Readable stream titles in mpv (Seanime and similar apps)">
-  <meta name="twitter:description" content="hikari turns streamed links from Seanime and similar apps into readable titles in mpv, such as Sousou no Frieren · E05, and keeps access tokens out of the title bar.">
+  <meta name="twitter:title" content="Readable anime titles in mpv, for local files and streams">
+  <meta name="twitter:description" content="hikari turns anime release names into readable titles in mpv, such as Sousou no Frieren · E05, for local files and for streamed links from Seanime and similar apps, keeping access tokens out of the title bar.">
   <meta name="twitter:image" content="https://scepticg.github.io/hikari-mpv/images/social.png">
 
   </head>
@@ -93,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#stream-titles" class="md-skip">
+        <a href="#titles" class="md-skip">
           Skip to content
         </a>
       
@@ -126,7 +126,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Readable stream titles in mpv (Seanime and similar apps)
+              Readable anime titles in mpv, for local files and streams
             
           </span>
         </div>
@@ -760,6 +760,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Titles
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -767,7 +785,7 @@
   <span class="md-ellipsis">
     
   
-    Stream titles
+    Titles
   
 
     
@@ -776,6 +794,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-a-title" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets a title
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-names-are-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How names are read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -797,6 +867,34 @@
     
   
     Speed menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
   
 
     
@@ -959,6 +1057,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../development/" class="md-nav__link">
         
   
@@ -1007,6 +1133,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-a-title" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets a title
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-names-are-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How names are read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1022,34 +1189,51 @@
 
 
 
-<h1 id="stream-titles">Stream titles<a class="headerlink" href="#stream-titles" title="Permanent link">&para;</a></h1>
-<p>When mpv plays an http(s) URL with a query string, such as the links Seanime hands out (<code>https://host/&lt;id&gt;?token=...&amp;filename=Show.S01E01.mkv</code>), <code>hikari-title.lua</code> sets the title to the decoded <code>filename</code> parameter without its video extension, or to the last path segment when there is no <code>filename</code>. The title is set as the file starts, so the token is kept out of the top bar except, at most, for an instant while the stream opens. Local files and URLs without a query keep mpv's own title, and a <code>force-media-title</code> you set yourself is left alone. The title only lasts for that file.</p>
-<p>It also leaves alone playlist entries that carry their own title (M3U <code>#EXTINF</code>), and when there is no <code>filename</code> the path segment it falls back to (<code>stream</code>, <code>master.m3u8</code>...) gives way to the file's own <code>title</code> tag once the file has loaded.</p>
-<p>Scope: this covers uosc's top bar and the window title. The full URL is still visible in uosc's playlist menu, in mpv's stats overlay, and in mpv's logs and <code>watch_later</code> files.</p>
-<p>With <code>pretty=yes</code> (the default) a title taken from <code>filename</code> is tidied up: dots and underscores become spaces, release groups, hashes and technical tags go, and the episode marker is shown as <code>T&lt;season&gt; E&lt;episode&gt;</code> (T for <em>temporada</em>, season):</p>
+<h1 id="titles">Titles<a class="headerlink" href="#titles" title="Permanent link">&para;</a></h1>
+<p>mpv shows a file's own title, or its file name. For anime releases neither reads well: a name like <code>[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv</code>, a title that is just the release group, or, for streaming apps such as Seanime, a whole URL with its access token. <code>hikari-title.lua</code> shows a tidy title instead, in uosc's top bar and the window title:</p>
 <table>
 <thead>
 <tr>
-<th><code>filename</code></th>
+<th>File name</th>
 <th>Title</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>Reborn.as.a.Space.Mercenary.I.Woke.Up.Piloting.the.Strongest.Starship.S01E01.1080p.CR.WEB-DL.DUAL.AAC2.0.H.264.MSubs-ToonsHub.mkv</code></td>
-<td><code>Reborn as a Space Mercenary I Woke Up Piloting the Strongest Starship · T1 E01</code></td>
-</tr>
-<tr>
 <td><code>[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv</code></td>
 <td><code>Sousou no Frieren · E05</code></td>
 </tr>
 <tr>
-<td><code>Show.S01E01-E02.mkv</code></td>
-<td><code>Show · T1 E01-E02</code></td>
+<td><code>[Erai-raws] Mushoku Tensei II - Isekai Ittara Honki Dasu 2nd Season - 05 [1080p][MultiSub].mkv</code></td>
+<td><code>Mushoku Tensei II - Isekai Ittara Honki Dasu · S2 E05</code></td>
+</tr>
+<tr>
+<td><code>[Judas] Vinland Saga (Season 2) - 05 [1080p][HEVC x265 10bit].mkv</code></td>
+<td><code>Vinland Saga · S2 E05</code></td>
+</tr>
+<tr>
+<td><code>Frieren.Beyond.Journeys.End.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv</code></td>
+<td><code>Frieren Beyond Journeys End · S1 E05</code></td>
+</tr>
+<tr>
+<td><code>Frieren (2023) - S01E05 - The Hero's Party.mkv</code></td>
+<td><code>Frieren (2023) · S1 E05 · The Hero's Party</code></td>
+</tr>
+<tr>
+<td><code>Show - 12.5.mkv</code>, <code>Show - 05v2.mkv</code></td>
+<td><code>Show · E12.5</code>, <code>Show · E05</code></td>
+</tr>
+<tr>
+<td><code>[Group] Show - OVA [1080p].mkv</code>, <code>Show - SP01.mkv</code></td>
+<td><code>Show · OVA</code>, <code>Show · Special E01</code></td>
 </tr>
 <tr>
 <td><code>Show.S00E03.mkv</code></td>
-<td><code>Show · Especial E03</code> (season 0 holds the specials)</td>
+<td><code>Show · Special E03</code> (season 0 holds the specials)</td>
+</tr>
+<tr>
+<td><code>Show.S01E01-E02.mkv</code></td>
+<td><code>Show · S1 E01-E02</code></td>
 </tr>
 <tr>
 <td><code>Movie.Name.2023.1080p.BluRay.x264.mkv</code></td>
@@ -1057,8 +1241,25 @@
 </tr>
 </tbody>
 </table>
-<p>Recognised markers: <code>S01E01</code>, <code>s1e1</code>, <code>S01E01v2</code>, <code>S01E01-E02</code>, <code>E01</code>, <code>EP01</code>, <code>Episode 01</code> and anime-style <code>- 01</code> / <code>- 01v2</code>. A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...); if nothing sensible is left, the name is shown as it comes. The path-segment fallback and playlist titles are never changed. A name written all in lower case, as some groups do (Erai-raws calls one series just <code>jukishi</code>), gets a capital first letter (<code>Jukishi · E15</code>); a name with any capital letter is left as it was written. Only the filename is available: the full series title (which Seanime knows) is not passed to mpv. Set <code>pretty=no</code> to get the filename as it comes, without its video extension.</p>
-<p>Disable the whole script with <code>enabled=no</code> in <code>script-opts/hikari-title.conf</code>.</p>
+<p>The labels follow hikari's <a href="../language/">language</a>: <code>S1 E05</code> in English, <code>T1 E05</code> in Spanish and Portuguese (<em>temporada</em>), <code>S1 B05</code> in Turkish (<em>bölüm</em>), <code>第1季 第05集</code> in Chinese, and <em>Special</em> translated. The title of the file playing changes with the language.</p>
+<h2 id="what-gets-a-title">What gets a title<a class="headerlink" href="#what-gets-a-title" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Local files</strong> with a video extension (<code>.mkv</code>, <code>.mp4</code>, <code>.webm</code>...), opened by path or as <code>file://</code>: when the file name looks like a release (an episode marker, a technical tail such as <code>1080p.WEB-DL</code>, or <code>[group]</code> / <code>(1080p)</code> brackets to drop), its tidy title replaces mpv's, even if the file has a title of its own (in these releases it is often just the group). Any other name, such as <code>Holiday video.mkv</code>, keeps mpv's title.</li>
+<li><strong>Streamed links with a <code>filename</code> parameter</strong>, such as the ones Seanime hands out (<code>https://host/&lt;id&gt;?token=...&amp;filename=Show.S01E01.mkv</code>): the decoded <code>filename</code>, always. The title is set as the file starts, so the token is kept out of the top bar except, at most, for an instant while the stream opens.</li>
+<li><strong>Links whose last part is a video file name</strong> that looks like a release (<code>https://host/files/[SubsPlease] Show - 05 (1080p).mkv</code>), as for local files.</li>
+<li><strong>Other http(s) links with a query</strong> (<code>https://host/videos/abc/stream?api_key=...</code>): the last path segment without the query, so the key does not show. It gives way to the file's own title once the file has loaded.</li>
+<li>Anything else keeps mpv's own title: <code>ytdl://</code>, <code>rtsp://</code>, discs, other protocols. Sites played through yt-dlp, such as YouTube, get their real title from yt-dlp, which replaces hikari's as the video opens. A <code>force-media-title</code> you set yourself and playlist entries with their own title (M3U <code>#EXTINF</code>) are left alone too. The title only lasts for that file.</li>
+</ul>
+<h2 id="how-names-are-read">How names are read<a class="headerlink" href="#how-names-are-read" title="Permanent link">&para;</a></h2>
+<p>Recognised episode markers: <code>S01E01</code>, <code>s1e1</code>, <code>S01E01v2</code>, <code>S01E01-E02</code>, <code>E01</code>, <code>EP01</code>, <code>Episode 01</code>, anime-style <code>- 01</code>, <code>- 01v2</code> and <code>- 12.5</code>, specials <code>SP01</code> and <code>Special 01</code>, and <code>OVA</code>, <code>OAD</code> and <code>ONA</code> (alone or with a number). A season written before an anime-style number is read too: <code>S2</code>, <code>Season 2</code>, <code>2nd Season</code>, <code>Second Season</code>, <code>(Season 2)</code>. Release groups, hashes and technical tags go. After the marker, an episode title is kept when it is clearly one: after <code>-</code> in names with spaces (<code>Show - S01E05 - Title [1080p]</code>, the Plex, Jellyfin and Sonarr style), or up to the technical tail in dotted names (<code>Show.S01E05.Title.1080p.WEB</code>).</p>
+<p>A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...), keeping its year as <code>(2023)</code>; if nothing sensible is left, the name is shown as it comes. A name written all in lower case, as some groups do (Erai-raws calls one series just <code>jukishi</code>), gets a capital first letter (<code>Jukishi · E15</code>); a name with any capital letter is left as it was written. Only the file name is available: the full series title (which Seanime knows) is not passed to mpv.</p>
+<p>Scope: this covers uosc's top bar and the window title. For streams, the full URL is still visible in uosc's playlist menu, in mpv's stats overlay, and in mpv's logs and <code>watch_later</code> files.</p>
+<h2 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h2>
+<p>In <code>script-opts/hikari-title.conf</code>:</p>
+<ul>
+<li><code>pretty=no</code>: no tidying. Local files keep mpv's own title, and streamed links get their <code>filename</code> as it comes, without its video extension.</li>
+<li><code>enabled=no</code>: the whole script off.</li>
+</ul>
 
 
 
