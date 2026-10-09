@@ -219,7 +219,7 @@ local STRINGS = {
 		tr = 'Kalın kenar', uk = 'Товстий контур', ['zh-HK'] = '粗邊框', ['zh-hans'] = '粗描边',
 	},
 	subs_style_yellow = {
-		en = 'Classic yellow', es = 'Amarillo clásico', de = 'Klassisch gelb', fr = 'Jaune classique',
+		en = 'Classic yellow', es = 'Amarillo clásico', de = 'Klassisches Gelb', fr = 'Jaune classique',
 		it = 'Giallo classico', pl = 'Klasyczny żółty', pt = 'Amarelo clássico', ro = 'Galben clasic',
 		ru = 'Классический жёлтый', tr = 'Klasik sarı', uk = 'Класичний жовтий',
 		['zh-HK'] = '經典黃色', ['zh-hans'] = '经典黄色',
