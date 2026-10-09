@@ -200,6 +200,7 @@ if [ "$rc" = 0 ]; then ok 'clean install: exit 0'; else fail "clean install: exi
 check 'clean install: says there is no terminal? no: --yes is quiet about it' hasnt "$out" 'No terminal'
 all_same=true
 for f in "$repo"/portable_config/scripts/*.lua "$repo"/portable_config/script-opts/hikari-*.conf \
+    "$repo"/portable_config/script-modules/*.lua \
     "$repo"/portable_config/hikari-palette.conf "$repo"/portable_config/hikari-subs.conf; do
     rel="${f#"$repo"/portable_config/}"
     same "$f" "$cfg/$rel" || { all_same=false; echo "     differs: $rel"; }
@@ -219,6 +220,7 @@ osd-bar=no
 include="~~/hikari-palette.conf"
 include="~~/hikari-subs.conf"
 include="~~/hikari-upscale.conf"
+include="~~/hikari-language.conf"
 # <<< hikari <<<
 EOF
 check 'clean install: mpv.conf is exactly the block' same "$tmp/want-mpv.conf" "$cfg/mpv.conf"
@@ -228,6 +230,7 @@ Alt+p  script-binding hikari_palettes/open-menu
 Alt+s  script-binding hikari_skip/skip
 Alt+t  script-binding hikari_subs/open-menu
 Alt+u  script-binding hikari_update/open-menu
+Alt+l  script-binding hikari_language/open-menu
 Ctrl+1  script-message-to hikari_upscale set-mode a
 Ctrl+2  script-message-to hikari_upscale set-mode b
 Ctrl+3  script-message-to hikari_upscale set-mode c
@@ -297,7 +300,7 @@ printf 'timeline_style=line\n' >"$cfg/script-opts/uosc.conf"
 cp "$cfg/mpv.conf" "$tmp/b-mpv"; cp "$cfg/input.conf" "$tmp/b-input"; cp "$cfg/script-opts/uosc.conf" "$tmp/b-uosc"
 run "$h" --yes
 check 'byte test: install exit 0' test "$rc" = 0
-check 'byte test: CRLF kept for the block' test "$(grep -c $'\r$' "$cfg/mpv.conf")" = 11
+check 'byte test: CRLF kept for the block' test "$(grep -c $'\r$' "$cfg/mpv.conf")" = 12
 check 'byte test: Alt+p of the user left alone and reported' test "$(count_of "$cfg/input.conf" 'Alt+p')" = 1 -a -n "$(grep 'Alt+p is already bound' "$out")"
 check 'byte test: original uosc.conf kept aside' same "$tmp/b-uosc" "$cfg/hikari-originales/script-opts/uosc.conf"
 check 'byte test: the first backup is marked as the original' test -f "$(rec "$cfg" first_backup)/hikari-backup-original.txt"
@@ -436,7 +439,7 @@ check_mac_installed() {
     check "$l: no Anime4K line left on in mpv.conf" test "$(grep -c '^glsl-shaders' "$c/mpv.conf")" = 0
     check "$l: the profiles otherwise untouched" test "$(grep -c '^profile-cond=get("height", 0)' "$c/mpv.conf")/$(grep -c '^profile-restore=copy$' "$c/mpv.conf")" = 3/3
     check "$l: user options untouched" bash -c "for l in 'hwdec=videotoolbox' 'target-trc=gamma2.2' 'deband=yes' 'alang=es,spa,es-ES,es-419,ja,jpn' 'osd-font=\"Helvetica Neue\"'; do grep -qxF \"\$l\" '$c/mpv.conf' || exit 1; done"
-    check "$l: block at the end, starting with [default]" test "$(tail -n 8 "$c/mpv.conf" | head -n 2 | tr '\n' '|')" = '# >>> hikari (managed block, do not edit) >>>|[default]|' -a "$(tail -n 1 "$c/mpv.conf")" = '# <<< hikari <<<'
+    check "$l: block at the end, starting with [default]" test "$(tail -n 9 "$c/mpv.conf" | head -n 2 | tr '\n' '|')" = '# >>> hikari (managed block, do not edit) >>>|[default]|' -a "$(tail -n 1 "$c/mpv.conf")" = '# <<< hikari <<<'
     check "$l: the 7 CTRL+0..6 lines turned off" test "$(grep -c '^# hikari: CTRL+[0-6] no-osd change-list glsl-shaders' "$c/input.conf")" = 7
     check "$l: CTRL+t and WHEEL_* untouched" test "$(grep -c '^CTRL+t cycle-values\|^WHEEL_' "$c/input.conf")" = 5
     check "$l: hikari binds Ctrl+0..7 (keys free now)" test "$(grep -c '^Ctrl+[0-7]  script-message-to hikari_upscale set-mode ' "$c/input.conf")" = 8
@@ -531,6 +534,86 @@ check 'macOS in Spanish, LANG=en_US: messages in Spanish' has "$out" 'Instalando
 check 'macOS in English, LANG=es_ES: messages in English' has "$out" 'Installing hikari into'
 (export LANG=es_ES.UTF-8 HIKARI_TEST_OS=Linux HIKARI_TEST_APPLE_LANGS='(\n    "en-GB"\n)'; HIKARI_LANG='' run "$h" --yes --anime4k no)
 check 'Linux: the macOS language list is not read' has "$out" 'Instalando hikari en'
+
+# --- language of hikari in mpv --------------------------------------------------
+
+# The installer's hikari-language.conf and locale rules against the ones of
+# hikari-language.lua and hikari-i18n.lua (when lua is there to ask them).
+sed -n '/^hikari_defaults() {/,/^}/p; /^lower() /p; /^mpv_language_code() {/,/^}/p; /^language_conf_text() {/,/^}/p' \
+    "$repo/install/hikari.sh" >"$tmp/lang-funcs.sh"
+lang_conf() { "$under" -c '. "$1"; hikari_defaults; language_conf_text "$2"' _ "$tmp/lang-funcs.sh" "$1"; }
+want_lang() { lang_conf "$1" >"$tmp/want-lang-$1"; printf '%s' "$tmp/want-lang-$1"; }
+lang_code() { "$under" -c '. "$1"; mpv_language_code "$2" || printf -' _ "$tmp/lang-funcs.sh" "$1"; }
+LANG_CODES='en es de fr it pl pt ro ru tr uk zh-HK zh-hans'
+LANG_LOCALES='es_ES.UTF-8 de_DE@euro pt_BR fr_CA.utf8 en_GB ru_RU.KOI8-R uk_UA tr_TR pl_PL ro_RO it_IT zh_CN.UTF-8 zh_SG zh-Hans zh-Hans-HK zh zh_TW zh_HK zh-MO zh-Hant zh-Hant-TW C POSIX C.UTF-8 ja_JP.UTF-8 nl_NL es-419'
+if command -v lua >/dev/null 2>&1; then
+    cat >"$tmp/lang.lua" <<'EOF'
+package.path = './tests/?.lua;' .. package.path
+local mock = require('mock_mp')
+mock.install('hikari_language')
+HIKARI_LANGUAGE_TEST = true
+local l = assert(loadfile('portable_config/scripts/hikari-language.lua'))()
+if arg[1] == 'conf' then io.write(l.persist_content(arg[2])) else io.write(l.i18n.normalize(arg[2]) or '-') end
+EOF
+    same_lang=true
+    for code in $LANG_CODES; do
+        lang_conf "$code" >"$tmp/lang-sh"
+        (cd "$repo" && lua "$tmp/lang.lua" conf "$code") >"$tmp/lang-lua"
+        same "$tmp/lang-sh" "$tmp/lang-lua" || { same_lang=false; echo "     differs: $code"; }
+    done
+    check 'language: hikari-language.conf byte for byte what hikari-language.lua writes, 13 languages' $same_lang
+    same_rules=true
+    for loc in $LANG_LOCALES; do
+        a=$(lang_code "$loc")
+        b=$(cd "$repo" && lua "$tmp/lang.lua" code "$loc")
+        [ "$a" = "$b" ] || { same_rules=false; echo "     differs: $loc ($a / $b)"; }
+    done
+    check 'language: the same locale rules as hikari-i18n.lua' $same_rules
+else
+    echo 'skip language: no lua to compare with'
+fi
+check 'language: zh-HK also by the path of the uosc file' test "$(lang_conf zh-HK | tail -n 1)" = 'script-opts-append=uosc-languages=~~/scripts/uosc/intl/zh-HK.json,zh-HK,en'
+check 'language: an unknown code is written as English' test "$(lang_conf 'es\nx' | head -n 1)" = '# Generated by hikari-language.lua. Language: en'
+
+h=$(newhome lang)
+cfg="$h/.config/mpv"
+(export LANG=de_DE.UTF-8 HIKARI_TEST_APPLE_LANGS='(\n    "pt-BR",\n    "en-US"\n)'; run "$h" --yes --anime4k no)
+check 'language: macOS, first install: the system language (pt), not LANG' same "$cfg/hikari-language.conf" "$(want_lang pt)"
+check 'language: the installer says it, in its own language' has "$out" 'hikari language in mpv: pt (the system'"'"'s; change it in mpv with Alt+l).'
+check 'language: the texts module installed and recorded' test -f "$cfg/script-modules/hikari-i18n.lua" -a "$(grep -c '^file=script-modules/hikari-i18n.lua$' "$cfg/hikari-installed.txt")" = 1
+check 'language: the language script installed' same "$repo/portable_config/scripts/hikari-language.lua" "$cfg/scripts/hikari-language.lua"
+(export LANG=de_DE.UTF-8; run "$h" --yes --anime4k no)
+check 'language: update: the choice kept' same "$cfg/hikari-language.conf" "$(want_lang pt)"
+check 'language: update: said so' has "$out" 'hikari-language.conf already exists: kept'
+lang_conf fr >"$cfg/hikari-language.conf"
+printf '# mine\n' >>"$cfg/hikari-language.conf"
+cp "$cfg/hikari-language.conf" "$tmp/lang-mine"
+(export LANG=de_DE.UTF-8; run "$h" --yes --anime4k no)
+check 'language: update: a choice made in mpv kept byte for byte' same "$tmp/lang-mine" "$cfg/hikari-language.conf"
+# The copy from the hikari files (no choice in it) is replaced by the system language.
+cp "$repo/portable_config/hikari-language.conf" "$cfg/hikari-language.conf"
+(export HIKARI_TEST_OS=Linux LANG=zh_TW.UTF-8 HIKARI_TEST_APPLE_LANGS='(\n    "es-ES"\n)'; run "$h" --yes --anime4k no)
+check 'language: no choice yet: the system language (Linux, zh_TW -> zh-HK, LANG read)' same "$cfg/hikari-language.conf" "$(want_lang zh-HK)"
+rm -f "$cfg/hikari-language.conf"
+(export HIKARI_TEST_OS=Linux LANG=ja_JP.UTF-8; run "$h" --yes --anime4k no)
+check 'language: a language hikari does not have: English' same "$cfg/hikari-language.conf" "$(want_lang en)"
+rm -f "$cfg/hikari-language.conf"
+(export HIKARI_MPV_LANG=uk LANG=de_DE.UTF-8; run "$h" --yes --anime4k no)
+check 'language: HIKARI_MPV_LANG wins' same "$cfg/hikari-language.conf" "$(want_lang uk)"
+# A module left by an older hikari that is no longer shipped goes on update;
+# a file of someone else in script-modules stays.
+printf -- '-- old\n' >"$cfg/script-modules/hikari-old.lua"
+printf -- '-- mine\n' >"$cfg/script-modules/mine.lua"
+printf 'file=script-modules/hikari-old.lua\n' >>"$cfg/hikari-installed.txt"
+run "$h" --yes --anime4k no
+check 'language: stale hikari module removed on update, the user'"'"'s left' test ! -e "$cfg/script-modules/hikari-old.lua" -a -f "$cfg/script-modules/mine.lua"
+run "$h" --uninstall --yes
+check 'language: uninstall: the module goes, the user'"'"'s file stays' test ! -e "$cfg/script-modules/hikari-i18n.lua" -a -f "$cfg/script-modules/mine.lua"
+check 'language: uninstall: the language choice kept by default' test -f "$cfg/hikari-language.conf"
+rm -f "$cfg/script-modules/mine.lua"
+run "$h" --yes --anime4k no
+run "$h" --uninstall --yes
+check 'language: uninstall: script-modules removed once empty' test ! -e "$cfg/script-modules"
 
 # --- chip and card -> quality ---------------------------------------------------
 

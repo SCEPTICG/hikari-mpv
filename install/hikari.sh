@@ -87,6 +87,7 @@ hikari_defaults() {
         'Alt+s|script-binding hikari_skip/skip'
         'Alt+t|script-binding hikari_subs/open-menu'
         'Alt+u|script-binding hikari_update/open-menu'
+        'Alt+l|script-binding hikari_language/open-menu'
     )
     MPV_CONF_LINES=(
         'osc=no'
@@ -94,10 +95,14 @@ hikari_defaults() {
         'include="~~/hikari-palette.conf"'
         'include="~~/hikari-subs.conf"'
         'include="~~/hikari-upscale.conf"'
+        'include="~~/hikari-language.conf"'
     )
     SHADERS_DIR='shaders'
     SHADERS_DISABLED_DIR='shaders-desactivados'
     UPSCALE_CONF='hikari-upscale.conf'
+    LANGUAGE_CONF='hikari-language.conf'
+    # The languages of hikari in mpv: those of uosc 5.13 (script-modules/hikari-i18n.lua).
+    MPV_LANGUAGES=('en' 'es' 'de' 'fr' 'it' 'pl' 'pt' 'ro' 'ru' 'tr' 'uk' 'zh-HK' 'zh-hans')
     # What hikari puts in front of a line of the user's it turns off (never deleted).
     COMMENT_PREFIX='# hikari: '
     # mpv.conf lines (outside the hikari block, also inside profiles) of an Anime4K
@@ -108,7 +113,9 @@ hikari_defaults() {
     BLOCK_BEGIN='# >>> hikari (managed block, do not edit) >>>'
     BLOCK_END='# <<< hikari <<<'
     # Files of hikari that hold the user's choices: only copied when missing.
-    USER_CHOICE_FILES=('hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf')
+    # hikari-upscale.conf and hikari-language.conf are written by the installer
+    # itself (graphics card quality, system language).
+    USER_CHOICE_FILES=('hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-language.conf')
     # script-opts not named hikari-*: removed on uninstall only if hikari put them there.
     SHARED_CONFS=('uosc.conf' 'thumbfast.conf')
     RECORD_NAME='hikari-installed.txt'
@@ -120,8 +127,8 @@ hikari_defaults() {
     # What the backup copies: only what the installer can change (and the files
     # of sosc, which a migration changes).
     BACKUP_ITEMS=(
-        'mpv.conf' 'input.conf' 'scripts' 'script-opts' 'fonts'
-        'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-installed.txt'
+        'mpv.conf' 'input.conf' 'scripts' 'script-opts' 'script-modules' 'fonts'
+        'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-language.conf' 'hikari-installed.txt'
         'scripts-desactivados' 'hikari-originales' 'shaders-desactivados'
         'sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf' 'sosc-installed.txt' 'sosc-originales' 'sosc-update.txt'
     )
@@ -224,6 +231,7 @@ hikari_text_en() {
         thumbfast_done) s='thumbfast installed.' ;;
         hikari_files_done) s='hikari files copied (%s).' ;;
         kept_user_file) s='%s already exists: kept (it holds your choice).' ;;
+        language_set) s='hikari language in mpv: %s (the system'"'"'s; change it in mpv with Alt+l).' ;;
         removed_stale) s='Removed old hikari file %s.' ;;
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
         block_updated) s='%s: hikari block written.' ;;
@@ -240,7 +248,7 @@ hikari_text_en() {
         ask_remove_thumbfast) s='Remove thumbfast too?' ;;
         ask_restore) s='Move back the interfaces hikari set aside (%s)?' ;;
         ask_restore_broken) s='Move back the broken scripts hikari set aside (%s)?' ;;
-        ask_delete_choices) s='Delete your saved palette, subtitle and upscaling choices (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?' ;;
+        ask_delete_choices) s='Delete your saved palette, subtitle, upscaling and language choices (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf, hikari-language.conf)?' ;;
         restore_skipped) s='%s not moved back: %s already exists.' ;;
         conf_restored) s='%s: your version from before hikari was put back.' ;;
         conf_left) s='%s was there before hikari and is left as it is now. Your earlier version is in %s.' ;;
@@ -383,6 +391,7 @@ hikari_text_es() {
         thumbfast_done) s='thumbfast instalado.' ;;
         hikari_files_done) s='Ficheros de hikari copiados (%s).' ;;
         kept_user_file) s='%s ya existe: se conserva (guarda tu elección).' ;;
+        language_set) s='Idioma de hikari en mpv: %s (el del sistema; cámbialo en mpv con Alt+l).' ;;
         removed_stale) s='Borrado el fichero antiguo de hikari %s.' ;;
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
         block_updated) s='%s: bloque de hikari escrito.' ;;
@@ -399,7 +408,7 @@ hikari_text_es() {
         ask_remove_thumbfast) s='¿Quitar también thumbfast?' ;;
         ask_restore) s='¿Devolver a su sitio las interfaces que hikari apartó (%s)?' ;;
         ask_restore_broken) s='¿Devolver a su sitio los scripts rotos que hikari apartó (%s)?' ;;
-        ask_delete_choices) s='¿Borrar tus elecciones guardadas de paleta, subtítulos y escalado (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?' ;;
+        ask_delete_choices) s='¿Borrar tus elecciones guardadas de paleta, subtítulos, escalado e idioma (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf, hikari-language.conf)?' ;;
         restore_skipped) s='%s no se devuelve: ya existe %s.' ;;
         conf_restored) s='%s: se ha devuelto tu versión de antes de hikari.' ;;
         conf_left) s='%s ya existía antes de hikari y se deja como está ahora. Tu versión anterior está en %s.' ;;
@@ -511,6 +520,54 @@ hikari_language() {
     fi
     [ -n "$v" ] || v=${LANG:-}
     case $v in es*) printf es ;; *) printf en ;; esac
+}
+
+# The hikari language for mpv (one of MPV_LANGUAGES) of a locale name or a
+# language tag, the same rules as normalize() in script-modules/hikari-i18n.lua:
+# es_ES.UTF-8 -> es, pt_BR -> pt, de_DE@euro -> de, zh_CN / zh_SG / zh-Hans ->
+# zh-hans, zh_TW / zh_HK / zh-Hant -> zh-HK. Fails (prints nothing) for C,
+# POSIX and any other language.
+mpv_language_code() {
+    local tag lang
+    tag=$(lower "$1" | tr '_' '-')
+    tag=${tag#"${tag%%[![:space:]]*}"}
+    tag=${tag%%[!a-z0-9-]*}
+    case $tag in '' | c | posix) return 1 ;; esac
+    lang=${tag%%-*}
+    if [ "$lang" = zh ]; then
+        case "-$tag-" in
+            *-hans-*) printf zh-hans ;;
+            *-hant-* | *-tw-* | *-hk-* | *-mo-*) printf zh-HK ;;
+            *) printf zh-hans ;;
+        esac
+        return 0
+    fi
+    case $lang in en | es | de | fr | it | pl | pt | ro | ru | tr | uk) printf '%s' "$lang" ;; *) return 1 ;; esac
+}
+
+# The language hikari speaks in mpv after a first install: HIKARI_MPV_LANG when
+# set (tests, or whoever wants another one), else the system's. On macOS that
+# is the first preferred language of the system (mpv started from the Finder
+# never sees the terminal's LANG); elsewhere LC_ALL, LC_MESSAGES or LANG, the
+# first one set. English when it is none of MPV_LANGUAGES.
+hikari_mpv_language() {
+    local v first
+    if [ -n "${HIKARI_MPV_LANG:-}" ]; then
+        mpv_language_code "$HIKARI_MPV_LANG" || printf en
+        return 0
+    fi
+    if [ "$(hikari_uname)" = Darwin ]; then
+        # First entry of the list: the line after "(", without blanks, quotes or commas.
+        first=$(hikari_apple_languages | tr -d ' \t",' | grep -v '^($' | head -n 1)
+        if [ -n "$first" ] && [ "$first" != ')' ]; then
+            mpv_language_code "$first" || printf en
+            return 0
+        fi
+    fi
+    v=${LC_ALL:-}
+    [ -n "$v" ] || v=${LC_MESSAGES:-}
+    [ -n "$v" ] || v=${LANG:-}
+    mpv_language_code "$v" || printf en
 }
 
 # ---------------------------------------------------------------------------
@@ -2030,6 +2087,37 @@ upscale_conf_text() { # <quality> <mode>: what hikari-upscale.lua writes for the
     printf "$UPSCALE_CONF_FORMAT" "$m" "$q" "$m" "$q"
 }
 
+# hikari-language.conf for a language code, byte for byte what
+# hikari-language.lua writes for it (the tests compare both). uosc gets the
+# same language; zh-HK also by the path of its file (uosc looks for it in
+# lower case, which a case-sensitive file system does not find).
+language_conf_text() {
+    local code=$1 uosc c ok=0
+    for c in "${MPV_LANGUAGES[@]}"; do [ "$c" = "$code" ] && ok=1; done
+    [ "$ok" = 1 ] || code=en
+    case $code in
+        en) uosc=en ;;
+        zh-HK) uosc='~~/scripts/uosc/intl/zh-HK.json,zh-HK,en' ;;
+        *) uosc="$code,en" ;;
+    esac
+    printf '# Generated by hikari-language.lua. Language: %s\nscript-opts-append=hikari-language=%s\nscript-opts-append=uosc-languages=%s\n' \
+        "$code" "$code" "$uosc"
+}
+
+# Writes hikari-language.conf with the system language when it holds no
+# choice yet: missing, or the copy that comes with the hikari files (only
+# comments). One with a hikari-language= line is the user's and is kept.
+init_language_conf() {
+    local path="$CFG/$LANGUAGE_CONF" code
+    if [ -f "$path" ] && grep -q '^script-opts-append=hikari-language=' "$path"; then
+        info "$(T kept_user_file "$LANGUAGE_CONF")"
+        return 0
+    fi
+    code=$(hikari_mpv_language)
+    language_conf_text "$code" | write_file "$path" || return 1
+    info "$(T language_set "$code")"
+}
+
 # ---------------------------------------------------------------------------
 # Migration from sosc (the name of hikari until v0.3.0)
 # ---------------------------------------------------------------------------
@@ -2610,6 +2698,15 @@ install_steps() {
         cp "$f" "$CFG/scripts/$name" || return 1
         installed[${#installed[@]}]="scripts/$name"
     done
+    # The texts module the scripts share (not a script: mpv would run any .lua in scripts/).
+    mkdir -p "$CFG/script-modules" || return 1
+    for f in "$SRC_CONFIG"/script-modules/hikari-*.lua; do
+        [ -f "$f" ] || continue
+        name=${f##*/}
+        rm -f "$CFG/script-modules/$name"
+        cp "$f" "$CFG/script-modules/$name" || return 1
+        installed[${#installed[@]}]="script-modules/$name"
+    done
     mkdir -p "$CFG/script-opts" || return 1
     for f in "$SRC_CONFIG"/script-opts/*.conf; do
         [ -f "$f" ] || continue
@@ -2626,15 +2723,17 @@ install_steps() {
     done
     for name in "${USER_CHOICE_FILES[@]}"; do
         [ "$name" = "$UPSCALE_CONF" ] && continue
+        [ "$name" = "$LANGUAGE_CONF" ] && continue
         if [ -f "$CFG/$name" ]; then info "$(T kept_user_file "$name")"
         else cp "$SRC_CONFIG/$name" "$CFG/$name" || return 1; fi
     done
+    init_language_conf || return 1
     local old keep
     for old in ${OLD_FILES[@]+"${OLD_FILES[@]}"}; do
         keep=0
         for f in "${installed[@]}"; do [ "$f" = "$old" ] && keep=1; done
         [ "$keep" = 0 ] || continue
-        [[ $old =~ ^scripts/hikari-[^/]+\.lua$ || $old =~ ^script-opts/hikari-[^/]+\.conf$ ]] || continue
+        [[ $old =~ ^scripts/hikari-[^/]+\.lua$ || $old =~ ^script-opts/hikari-[^/]+\.conf$ || $old =~ ^script-modules/hikari-[^/]+\.lua$ ]] || continue
         record_path_ok "$old" || continue
         if [ -f "$CFG/$old" ]; then
             remove_item "$CFG/$old" "$CFG" || return 1
@@ -2772,7 +2871,7 @@ uninstall_steps() {
         prune_backups "$CFG" "$protect"
     fi
 
-    for f in "$CFG"/scripts/hikari-*.lua "$CFG"/script-opts/hikari-*.conf; do
+    for f in "$CFG"/scripts/hikari-*.lua "$CFG"/script-opts/hikari-*.conf "$CFG"/script-modules/hikari-*.lua; do
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     # Anime4K shaders: only the ones the record says hikari installed.
@@ -2909,7 +3008,7 @@ uninstall_steps() {
     # Folders left empty (hikari may have created them) go too; shaders only when
     # the record says hikari created it.
     local d dirs
-    dirs=(fonts script-opts scripts)
+    dirs=(fonts script-opts scripts script-modules)
     [ "$(was_there shaders_preexisting)" = no ] && dirs[${#dirs[@]}]=$SHADERS_DIR
     for d in "${dirs[@]}"; do
         if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(ls -A "$CFG/$d" 2>/dev/null)" ]; then rmdir "$CFG/$d" || return 1; fi
