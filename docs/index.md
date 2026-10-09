@@ -41,7 +41,7 @@ hikari is a *skin* for mpv in the sense people usually mean: a ready-made, good-
 
     Details: [Install on macOS and Linux](install/macos-linux.md).
 
-A menu opens: choose *Install or update* and the player. Run the same line again to update or to uninstall. Coming from **sosc**, hikari's old name? The same line carries everything over: [Coming from sosc](install/from-sosc.md).
+A menu opens: choose *Install or update* and the player. Run the same line again to update or to uninstall.
 
 ## What you get
 

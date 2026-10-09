@@ -15,8 +15,6 @@ installed with one command on Windows, macOS and Linux
 
 </div>
 
-> hikari was called **sosc** until v0.3.0. Installing hikari over sosc carries everything over: see [Coming from sosc](#coming-from-sosc).
-
 hikari is a *skin* for mpv in the sense people usually mean: a ready-made, good-looking setup for watching series and anime, not a new on-screen controller written from scratch. It installs the official [uosc](https://github.com/tomasklaen/uosc) and [thumbfast](https://github.com/po5/thumbfast), configures them, and adds a few small Lua scripts of its own on top. Everything it changes in your config folder is backed up first, and it can be uninstalled.
 
 https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
@@ -81,7 +79,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
 ## Documentation
 
-[Requirements](#requirements) · [Install](#install) · [macOS and Linux](#macos-and-linux) · [Coming from sosc](#coming-from-sosc) · [Usage](#usage) · [Configuration](#configuration) · [Palettes](#palettes) · [Stream titles](#stream-titles) · [Speed menu](#speed-menu) · [Subtitle styles](#subtitle-styles) · [Anime4K upscaling](#anime4k-upscaling) · [Skip openings and endings](#skip-openings-and-endings) · [Update check](#update-check) · [Thumbnails](#thumbnails) · [Contributing](#contributing)
+[Requirements](#requirements) · [Install](#install) · [macOS and Linux](#macos-and-linux) · [Usage](#usage) · [Configuration](#configuration) · [Palettes](#palettes) · [Stream titles](#stream-titles) · [Speed menu](#speed-menu) · [Subtitle styles](#subtitle-styles) · [Anime4K upscaling](#anime4k-upscaling) · [Skip openings and endings](#skip-openings-and-endings) · [Update check](#update-check) · [Thumbnails](#thumbnails) · [Contributing](#contributing)
 
 ## Requirements
 
@@ -188,17 +186,6 @@ Lines you added to `mpv.conf` or `input.conf` by hand, for a copy of hikari inst
 
 </details>
 
-### Coming from sosc
-
-hikari was called sosc until v0.3.0. Both installers recognise a folder with sosc in it (its `sosc-installed.txt`, or `sosc-*` files) and, after the usual backup, which includes the files of sosc, carry it over to hikari:
-
-- Your palette, subtitle and upscaling choices move to `hikari-palette.conf`, `hikari-subs.conf` and `hikari-upscale.conf`.
-- The sosc blocks in `mpv.conf` and `input.conf` become hikari blocks, and what sosc set aside or turned off (with `# sosc: ` in front) is taken over by hikari, so uninstalling hikari leaves the folder as it was before sosc.
-- Lines of your own outside the blocks that use the names of sosc (`script-binding sosc_palettes/open-menu`, `script-message-to sosc_upscale set-mode a`, `include="~~/sosc-subs.conf"`, `script-opts-append=sosc-update-enabled=no`...) are changed to hikari's, and the installer shows each one.
-- The sosc scripts, options, record and update-check state go. Old `<folder>-respaldo-sosc-<date>` backups are left alone (the installer says how many there are): delete them yourself when you no longer need them.
-
-*Uninstall* works on a folder with sosc too. sosc itself is never put back. The update check of sosc 0.3.0 does not announce hikari, so run the install line once by hand.
-
 ### macOS and Linux
 
 Open Terminal and run:
@@ -260,7 +247,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
-Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is (and, once, lines that used the names of sosc: see [Coming from sosc](#coming-from-sosc)).
+Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is.
 
 ### Example: audio and subtitle languages
 

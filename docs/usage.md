@@ -27,7 +27,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
-Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is (and, once, lines that used the names of sosc: see [Coming from sosc](install/from-sosc.md)).
+Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is.
 
 ## Example: audio and subtitle languages
 
