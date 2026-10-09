@@ -1,0 +1,23 @@
+/* hikari colours: cyan #5ad4e6 on #0b0d12 (the SCEPTIC palette). */
+:root {
+  --md-primary-fg-color: #0b0d12;
+  --md-primary-fg-color--light: #11202a;
+  --md-primary-fg-color--dark: #07090d;
+  --md-accent-fg-color: #5ad4e6;
+}
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0b0d12;
+  --md-default-fg-color--light: #c9d1d9;
+  --md-typeset-a-color: #5ad4e6;
+  --md-code-bg-color: #11161d;
+}
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #0f8fa3;
+}
+.md-header, .md-tabs { background-color: #07090d; }
+.md-typeset h1 { font-weight: 800; letter-spacing: -0.02em; }
+.md-typeset .hk-hero { text-align: center; margin: 1rem 0 2rem; }
+.md-typeset .hk-hero img { border-radius: 14px; }
+.md-typeset .hk-tagline { font-size: 1.15rem; opacity: 0.9; }
+.md-typeset .grid.cards img { border-radius: 10px; }
+.md-typeset .md-button--primary { background-color: #5ad4e6; border-color: #5ad4e6; color: #0b0d12; }

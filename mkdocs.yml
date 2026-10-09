@@ -1,0 +1,83 @@
+site_name: hikari
+site_description: hikari is a modern theme for the mpv video player, built on uosc, with 14 colour palettes, a skip opening and ending button, thumbnails, subtitle styles and automatic Anime4K upscaling. One-command install on Windows, macOS and Linux.
+site_url: https://scepticg.github.io/hikari-mpv/
+site_author: SCEPTICG
+repo_url: https://github.com/SCEPTICG/hikari-mpv
+repo_name: SCEPTICG/hikari-mpv
+edit_uri: ""
+copyright: hikari is MIT licensed · built on uosc, thumbfast and Anime4K
+
+theme:
+  name: material
+  language: en
+  logo: images/icon-64.png
+  favicon: images/icon-64.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/SCEPTICG/hikari-mpv
+
+nav:
+  - Home: index.md
+  - Install:
+      - Windows: install/windows.md
+      - macOS and Linux: install/macos-linux.md
+      - Coming from sosc: install/from-sosc.md
+  - Use:
+      - Keys and configuration: usage.md
+      - Palettes: features/palettes.md
+      - Skip openings and endings: features/skip.md
+      - Thumbnails: features/thumbnails.md
+      - Subtitle styles: features/subtitles.md
+      - Anime4K upscaling: features/anime4k.md
+      - Stream titles: features/titles.md
+      - Speed menu: features/speed.md
+      - Update check: features/update-check.md
+  - FAQ: faq.md
+  - About:
+      - Contributing, credits and license: about.md
+      - Development: development.md
