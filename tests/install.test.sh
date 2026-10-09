@@ -861,6 +861,38 @@ if [ "$sosc_ok" = 1 ]; then
     check 'uninstall from sosc: aniskip.lua back' same "$snap/aniskip.lua" "$cfg/scripts/aniskip.lua"
     check 'uninstall from sosc: nothing of sosc or hikari left' \
         test "$(sosc_left "$cfg")" = '' -a "$(count_glob "$cfg"/scripts/hikari-* "$cfg"/hikari-installed.txt "$cfg"/hikari-originales)" = 0
+
+    # A migration cut short: the blocks, the lines turned off, the choices and
+    # sosc-originales already carried over, but sosc's record and scripts still
+    # there (no record of hikari yet). The next run finishes it.
+    h=$(newhome mig-cut)
+    cfg="$h/.config/mpv"
+    snap="$tmp/snap-sosc-cut"
+    make_mac "$cfg"
+    snapshot "$cfg" "$snap"
+    run_sosc "$h" --yes --anime4k yes
+    check 'cut short: sosc 0.3.0 installed' test "$rc" = 0 -a -f "$cfg/sosc-installed.txt"
+    sosc_first=$(grep '^first_backup=' "$cfg/sosc-installed.txt" | cut -d= -f2-)
+    for f in mpv.conf input.conf; do
+        sed -e 's/^# >>> sosc (managed block, do not edit) >>>$/# >>> hikari (managed block, do not edit) >>>/' \
+            -e 's/^# <<< sosc <<<$/# <<< hikari <<</' -e 's/^# sosc: /# hikari: /' "$cfg/$f" >"$tmp/cut-$f"
+        cat "$tmp/cut-$f" >"$cfg/$f"
+    done
+    for f in "$cfg"/sosc-palette.conf "$cfg"/sosc-subs.conf "$cfg"/sosc-upscale.conf; do
+        [ -f "$f" ] || continue
+        sed 's/sosc/hikari/g' "$f" >"$cfg/hikari-${f##*/sosc-}"
+        rm -f "$f"
+    done
+    mv "$cfg/sosc-originales" "$cfg/hikari-originales"
+    run "$h" --yes
+    check 'cut short: the next run finishes it (exit 0)' test "$rc" = 0 -a -n "$(grep 'sosc is installed here' "$out")"
+    [ "$rc" = 0 ] || show_out
+    check 'cut short: nothing of sosc left, its record inherited' \
+        test "$(sosc_left "$cfg")|$(rec "$cfg" first_backup)|$(rec "$cfg" anime4k)" = "./hikari-installed.txt |$sosc_first|hikari"
+    check 'cut short: lines not turned off twice' test "$(grep -c '^# hikari: # hikari:' "$cfg/mpv.conf" "$cfg/input.conf" | cut -d: -f2 | tr '\n' ' ')" = '0 0 '
+    run "$h" --uninstall --yes
+    check 'cut short, uninstall: exit 0' test "$rc" = 0
+    check_mac_restored 'cut short, uninstall (as before sosc)'
 else
     printf 'skip migration from sosc 0.3.0: the v0.3.0 tag is not in this copy\n'
 fi
@@ -895,6 +927,96 @@ run "$h" --yes --anime4k no
 check 'broken sosc block: refused (exit 1), nothing changed' \
     test "$rc" = 1 -a -f "$cfg/sosc-installed.txt" -a ! -e "$cfg/hikari-installed.txt" -a ! -e "$cfg/scripts" -a -n "$(grep 'mpv.conf (sosc) has an incomplete' "$out")"
 check 'broken sosc block: mpv.conf untouched' same "$tmp/sosc-broken-mpv" "$cfg/mpv.conf"
+
+# Only the files sosc installed count as sosc: a sosc-other.lua of someone else
+# is not sosc, and stays.
+h=$(newhome mig-foreign)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts" "$cfg/script-opts"
+printf -- '-- not sosc\n' >"$cfg/scripts/sosc-otro.lua"
+printf 'x=1\n' >"$cfg/script-opts/sosc-otro.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes --anime4k no
+check 'sosc-otro.lua alone: not taken for sosc' test "$rc" = 0 -a -z "$(grep 'sosc is installed here' "$out")"
+check 'sosc-otro.lua alone: left where it was' test -f "$cfg/scripts/sosc-otro.lua" -a -f "$cfg/script-opts/sosc-otro.conf"
+h=$(newhome mig-foreign2)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts" "$cfg/script-opts"
+printf -- '-- not sosc\n' >"$cfg/scripts/sosc-otro.lua"
+printf 'x=1\n' >"$cfg/script-opts/sosc-otro.conf"
+printf -- '-- sosc skip\n' >"$cfg/scripts/sosc-skip.lua"
+printf 'x=1\n' >"$cfg/script-opts/sosc-skip.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes --anime4k no
+check 'sosc with a sosc-otro.lua of someone else: only sosc'"'"'s files go' \
+    test "$rc" = 0 -a -n "$(grep 'sosc is installed here' "$out")" -a -f "$cfg/scripts/sosc-otro.lua" -a -f "$cfg/script-opts/sosc-otro.conf" \
+    -a ! -e "$cfg/scripts/sosc-skip.lua" -a ! -e "$cfg/script-opts/sosc-skip.conf"
+
+# Lines of the user: only whole names change; control characters are not shown.
+h=$(newhome mig-words)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts"
+printf -- '-- sosc palettes\n' >"$cfg/scripts/sosc-palettes.lua"
+printf 'include="~~/sosc-subs.conf"\nscript-opts-append=sosc-update-enabled=no\nscript-opts-append=mysosc_skipper-x=1,a-sosc-skip=2\n' >"$cfg/mpv.conf"
+printf 'p script-binding sosc_palettes/open-menu\nx script-binding mysosc_skipper/x\nk script-binding sosc_skip/x \033[31mred\a\n' >"$cfg/input.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes --anime4k no
+check 'whole names: exit 0' test "$rc" = 0
+check 'whole names: sosc names at the start or after = " or a space changed' \
+    test "$(head -n 2 "$cfg/mpv.conf" | tr '\n' '|')$(head -n 1 "$cfg/input.conf")" = 'include="~~/hikari-subs.conf"|script-opts-append=hikari-update-enabled=no|p script-binding hikari_palettes/open-menu'
+check 'whole names: mysosc_skipper and a-sosc-skip left alone' \
+    test "$(sed -n 3p "$cfg/mpv.conf")|$(sed -n 2p "$cfg/input.conf")" = 'script-opts-append=mysosc_skipper-x=1,a-sosc-skip=2|x script-binding mysosc_skipper/x'
+check 'whole names: the line with control characters changed in the file, as it was' \
+    test "$(sed -n 3p "$cfg/input.conf")" = "$(printf 'k script-binding hikari_skip/x \033[31mred\a')"
+check 'control characters: not sent to the terminal' \
+    test -n "$(grep -F 'line of yours changed from sosc to hikari: k script-binding hikari_skip/x [31mred' "$out")" -a "$(grep -c "$(printf '\033\[31m')" "$out")" = 0 -a "$(grep -c "$(printf '\a')" "$out")" = 0
+
+# Symbolic links in the way of sosc-originales: nothing is moved through them.
+outside="$tmp/outside-orig"
+mig_orig() { # mig_orig <name>: a home with sosc-originales/script-opts/uosc.conf
+    h=$(newhome "$1")
+    cfg="$h/.config/mpv"
+    mkdir -p "$cfg/scripts" "$cfg/sosc-originales/script-opts"
+    printf -- '-- sosc skip\n' >"$cfg/scripts/sosc-skip.lua"
+    printf '# my uosc.conf\n' >"$cfg/sosc-originales/script-opts/uosc.conf"
+    rm -rf "$outside"
+    mkdir -p "$outside"
+}
+mig_orig mig-link1
+mkdir -p "$cfg/hikari-originales"
+ln -s "$outside" "$cfg/hikari-originales/script-opts"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'link hikari-originales/script-opts: nothing moved out of the folder, said so' \
+    test -z "$(ls -A "$outside")" -a -f "$cfg/sosc-originales/script-opts/uosc.conf" -a -n "$(grep 'is a symbolic link, nothing is written or moved' "$out")"
+mig_orig mig-link2
+ln -s "$outside" "$cfg/hikari-originales"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'link hikari-originales: nothing moved out of the folder' test -z "$(ls -A "$outside")" -a -f "$cfg/sosc-originales/script-opts/uosc.conf"
+mig_orig mig-link3
+printf '# outside\n' >"$outside/uosc.conf"
+rm -rf "$cfg/sosc-originales/script-opts"
+ln -s "$outside" "$cfg/sosc-originales/script-opts"
+mkdir -p "$cfg/hikari-originales"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'link sosc-originales/script-opts: what it points to is not moved' \
+    test "$(cat "$outside/uosc.conf")" = '# outside' -a ! -e "$cfg/hikari-originales/script-opts/uosc.conf"
+mig_orig mig-link4
+mkdir -p "$cfg/hikari-originales"
+printf '# outside thumbfast\n' >"$outside/thumbfast.conf"
+ln -s "$outside/thumbfast.conf" "$cfg/sosc-originales/script-opts/thumbfast.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes --anime4k no
+check 'a file of sosc-originales that is a link: not moved, the rest is' \
+    test "$rc" = 0 -a "$(cat "$outside/thumbfast.conf")" = '# outside thumbfast' -a ! -L "$cfg/hikari-originales/script-opts/thumbfast.conf" \
+    -a "$(cat "$cfg/hikari-originales/script-opts/uosc.conf")" = '# my uosc.conf'
+
+# A broken link where the record of hikari goes: sosc's record is not written through it.
+h=$(newhome mig-reclink)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts"
+printf -- '-- sosc skip\n' >"$cfg/scripts/sosc-skip.lua"
+printf 'sosc_version=0.3.0\n' >"$cfg/sosc-installed.txt"
+rm -f "$tmp/outside-record.txt"
+ln -s "$tmp/outside-record.txt" "$cfg/hikari-installed.txt"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'broken link for the record: nothing written through it, said so' \
+    test ! -e "$tmp/outside-record.txt" -a -n "$(grep "hikari-installed.txt is a symbolic link" "$out")"
 
 # --- keyboard menus (pseudo-terminal) ------------------------------------------
 

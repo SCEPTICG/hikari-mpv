@@ -152,6 +152,10 @@ hikari_defaults() {
     SOSC_CHOICES=('palette' 'subs' 'upscale')
     # Names of its scripts (sosc_<name> in input.conf, sosc-<name> in options).
     SOSC_SCRIPTS=('palettes' 'palette' 'skip' 'subs' 'speed' 'upscale' 'update' 'title')
+    # What sosc 0.3.0 installed: scripts/sosc-<name>.lua and script-opts/sosc-<name>.conf.
+    # Only these are recognised and removed (a sosc-other.lua of someone else stays).
+    SOSC_LUA_FILES=('palettes' 'skip' 'speed' 'subs' 'title' 'update' 'upscale')
+    SOSC_CONF_FILES=('skip' 'title' 'update')
     GLYPH_POINTER='›'
     GLYPH_ELLIPSIS='…'
 }
@@ -315,6 +319,7 @@ hikari_text_en() {
         sosc_choice_moved) s='%s -> %s (your choice is kept).' ;;
         sosc_done) s='sosc removed: hikari takes its place. Uninstalling hikari puts everything back as it was before sosc.' ;;
         sosc_old_backups) s='There are %s old sosc backups (%s-respaldo-sosc-*). They are not deleted: delete them yourself when you no longer need them.' ;;
+        sosc_link_left) s='Left as it is: %s is a symbolic link, nothing is written or moved through it.' ;;
     esac
     printf '%s' "$s"
 }
@@ -473,6 +478,7 @@ hikari_text_es() {
         sosc_choice_moved) s='%s -> %s (se conserva tu elección).' ;;
         sosc_done) s='sosc quitado: hikari ocupa su lugar. Al desinstalar hikari todo vuelve a como estaba antes de sosc.' ;;
         sosc_old_backups) s='Hay %s copias de seguridad antiguas de sosc (%s-respaldo-sosc-*). No se borran: bórralas tú cuando ya no te hagan falta.' ;;
+        sosc_link_left) s='Se deja como está: %s es un enlace simbólico, no se escribe ni se mueve nada a través de él.' ;;
     esac
     printf '%s' "$s"
 }
@@ -2033,7 +2039,8 @@ upscale_conf_text() { # <quality> <mode>: what hikari-upscale.lua writes for the
 sosc_present() {
     local d=$1 f n
     [ -e "$d/$SOSC_RECORD" ] && return 0
-    for f in "$d"/scripts/sosc-*.lua "$d"/script-opts/sosc-*.conf; do
+    sosc_installed_files "$d"
+    for f in ${SOSC_FILES[@]+"${SOSC_FILES[@]}"}; do
         if [ -f "$f" ] || [ -L "$f" ]; then return 0; fi
     done
     for n in "${SOSC_CHOICES[@]}"; do [ -f "$d/sosc-$n.conf" ] && return 0; done
@@ -2043,16 +2050,40 @@ sosc_present() {
     return 1
 }
 
+# The paths in folder $1 of the scripts and options sosc 0.3.0 installed, into
+# SOSC_FILES (whether they are there or not).
+sosc_installed_files() {
+    local n
+    SOSC_FILES=()
+    for n in "${SOSC_LUA_FILES[@]}"; do SOSC_FILES[${#SOSC_FILES[@]}]="$1/scripts/sosc-$n.lua"; done
+    for n in "${SOSC_CONF_FILES[@]}"; do SOSC_FILES[${#SOSC_FILES[@]}]="$1/script-opts/sosc-$n.conf"; done
+}
+
 # $1 with the names of sosc's scripts, options and files changed to hikari's
 # (sosc_palettes/open-menu, script-message-to sosc_upscale, sosc-subs.conf,
-# sosc-update-enabled=...), into SOSC_CONVERTED.
+# sosc-update-enabled=...), into SOSC_CONVERTED. Only whole names: at the start
+# of the line or after a character that is not a letter, digit, _ or - (so
+# mysosc_skipper stays as it is).
 sosc_convert() {
-    local s=$1 n
-    for n in "${SOSC_SCRIPTS[@]}"; do
-        s=${s//sosc_$n/hikari_$n}
-        s=${s//sosc-$n/hikari-$n}
+    local rest=$1 out='' before after n hit
+    while :; do
+        case $rest in *sosc*) ;; *) break ;; esac
+        before=${rest%%sosc*}
+        after=${rest#*sosc}
+        out=$out$before
+        hit=0
+        case ${out: -1} in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]) ;;
+            *)
+                for n in "${SOSC_SCRIPTS[@]}"; do
+                    case $after in "_$n"* | "-$n"*) hit=1; break ;; esac
+                done
+                ;;
+        esac
+        if [ "$hit" = 1 ]; then out=${out}hikari; else out=${out}sosc; fi
+        rest=$after
     done
-    SOSC_CONVERTED=$s
+    SOSC_CONVERTED=$out$rest
 }
 
 # read_record for sosc's record (quiet: it is checked like hikari's own).
@@ -2118,7 +2149,8 @@ sosc_migrate_file() {
                                 F_LINE[i]=$SOSC_CONVERTED
                                 changed=1
                                 trim "$SOSC_CONVERTED"
-                                warn "$(T sosc_line_changed "$name" "$TRIMMED")"
+                                # Control characters of the line are not sent to the terminal.
+                                warn "$(T sosc_line_changed "$name" "${TRIMMED//[[:cntrl:]]/}")"
                             fi
                             ;;
                     esac
@@ -2179,14 +2211,23 @@ migrate_sosc() {
     done
 
     # The user's uosc.conf and thumbfast.conf from before sosc.
+    # Nothing is moved through a symbolic link (it could lead out of the folder):
+    # with one in the way, sosc-originales is left as it is.
     if [ -d "$CFG/$SOSC_ORIGINALS_DIR" ] && [ ! -L "$CFG/$SOSC_ORIGINALS_DIR" ]; then
         if [ ! -e "$CFG/$ORIGINALS_DIR" ] && [ ! -L "$CFG/$ORIGINALS_DIR" ]; then
             mv "$CFG/$SOSC_ORIGINALS_DIR" "$CFG/$ORIGINALS_DIR" || return 1
+        elif [ -L "$CFG/$SOSC_ORIGINALS_DIR/script-opts" ]; then
+            warn "$(T sosc_link_left "$CFG/$SOSC_ORIGINALS_DIR/script-opts")"
+        elif [ -L "$CFG/$ORIGINALS_DIR" ]; then
+            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR")"
+        elif [ -L "$CFG/$ORIGINALS_DIR/script-opts" ]; then
+            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR/script-opts")"
         else
             for f in "$CFG/$SOSC_ORIGINALS_DIR"/script-opts/*; do
+                [ -L "$f" ] && continue
                 [ -f "$f" ] || continue
                 n=${f##*/}
-                if [ ! -e "$CFG/$ORIGINALS_DIR/script-opts/$n" ]; then
+                if [ ! -e "$CFG/$ORIGINALS_DIR/script-opts/$n" ] && [ ! -L "$CFG/$ORIGINALS_DIR/script-opts/$n" ]; then
                     mkdir -p "$CFG/$ORIGINALS_DIR/script-opts" || return 1
                     mv "$f" "$CFG/$ORIGINALS_DIR/script-opts/$n" || return 1
                 fi
@@ -2196,8 +2237,11 @@ migrate_sosc() {
     fi
 
     # The record. When hikari has one already (a migration cut short after
-    # writing it), that one has everything.
-    if [ "$has_rec" = 1 ] && [ ! -e "$CFG/$RECORD_NAME" ]; then
+    # writing it), that one has everything. Never written through a link
+    # (broken or not).
+    if [ "$has_rec" = 1 ] && [ -L "$CFG/$RECORD_NAME" ]; then
+        warn "$(T sosc_link_left "$CFG/$RECORD_NAME")"
+    elif [ "$has_rec" = 1 ] && [ ! -e "$CFG/$RECORD_NAME" ]; then
         {
             printf '%s\n' "$RECORD_HEADER"
             i=0
@@ -2225,7 +2269,8 @@ migrate_sosc() {
     fi
 
     # Everything else of sosc goes (it is all in the backup).
-    for f in "$CFG"/scripts/sosc-*.lua "$CFG"/script-opts/sosc-*.conf "$CFG/$SOSC_UPDATE_STATE" "$CFG/$SOSC_UPDATE_STATE.tmp" "$CFG/$SOSC_RECORD"; do
+    sosc_installed_files "$CFG"
+    for f in ${SOSC_FILES[@]+"${SOSC_FILES[@]}"} "$CFG/$SOSC_UPDATE_STATE" "$CFG/$SOSC_UPDATE_STATE.tmp" "$CFG/$SOSC_RECORD"; do
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     ok "$(T sosc_done)"
