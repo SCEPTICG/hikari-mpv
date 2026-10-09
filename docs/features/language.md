@@ -1,6 +1,6 @@
 ---
 title: "hikari in your language: 13 languages for mpv and uosc"
-description: "hikari's menus, buttons and messages in mpv come in the 13 languages of uosc. It follows your system, Alt+l changes it, uosc follows hikari, and so do the audio and subtitle tracks mpv picks."
+description: "hikari's menus, buttons and messages in mpv come in the 13 languages of uosc. It follows your system, Alt+l changes it, uosc follows hikari, and so do the audio and subtitle tracks mpv picks, Spain or Latin America, Brazil or Portugal included."
 ---
 
 # Languages
@@ -9,16 +9,16 @@ Everything hikari shows in mpv (its menus, the tooltips of its buttons, the *Ski
 
 | | | | |
 | --- | --- | --- | --- |
-| English | Español | Deutsch | Français |
-| Italiano | Polski | Português | Română |
-| Русский | Türkçe | Українська | 中文（香港） |
-| 简体中文 | | | |
+| English | Español (España) | Español (Latinoamérica) | Deutsch |
+| Français | Italiano | Polski | Português (Brasil) |
+| Português (Portugal) | Română | Русский | Türkçe |
+| Українська | 中文（香港） | 简体中文 | |
 
-Palette names (Catppuccin, Nord, SCEPTIC...) are names, so they stay as they are. The installer itself only speaks English and Spanish.
+Spanish and Portuguese come twice, once per [regional variant](#spanish-and-portuguese-two-variants): both read the same texts, and they differ in the audio and subtitle tracks hikari prefers. Palette names (Catppuccin, Nord, SCEPTIC...) are names, so they stay as they are. The installer itself only speaks English and Spanish.
 
 ## Your system's language, by default
 
-On a first install, the installer writes your system's language to `~~/hikari-language.conf`: the Windows display language, the first preferred language of macOS, or `LC_ALL`, `LC_MESSAGES` or `LANG` on Linux. Portuguese from Brazil or Portugal is *Português*; Simplified Chinese (China, Singapore) is *简体中文*; Traditional Chinese (Taiwan, Hong Kong, Macau) is *中文（香港）*; any other language is English. Updates keep your choice.
+On a first install, the installer writes your system's language to `~~/hikari-language.conf`: the Windows display language, the first preferred language of macOS, or `LC_ALL`, `LC_MESSAGES` or `LANG` on Linux. The region picks the variant: Spanish from Spain (or with no region) is *Español (España)*, Spanish from anywhere else (Mexico, Argentina, `es-419`...) is *Español (Latinoamérica)*; Portuguese from Brazil (or with no region) is *Português (Brasil)*, from Portugal or anywhere else *Português (Portugal)*. Simplified Chinese (China, Singapore) is *简体中文*; Traditional Chinese (Taiwan, Hong Kong, Macau) is *中文（香港）*; any other language is English. Updates keep your choice.
 
 Without that file (a copy made by hand), hikari follows `LC_ALL`, `LC_MESSAGES` or `LANG` and otherwise speaks English.
 
@@ -39,25 +39,27 @@ hikari's language also decides which audio and subtitle tracks mpv picks on its 
 - **Audio**: a dub in your language when the file has one, otherwise Japanese.
 - **Subtitles**: in your language. When the audio already is in your language, the dialogue subtitles stay off (a dub needs no subtitles on top), but forced subtitles still show: the track that only translates signs, on-screen text and song lyrics, which the dub does not cover. mpv knows it by the *forced* mark of the track.
 
-With Spanish, that is the same as these three lines in `mpv.conf`:
+With *Español (España)*, that is the same as these three lines in `mpv.conf`:
 
 ```
-alang=es,spa,es-ES,es-419,ja,jpn
-slang=es,spa,es-ES,es-419
+alang=es-ES,es,spa,es-419,es-MX,ja,jpn
+slang=es-ES,es,spa,es-419,es-MX
 subs-with-matching-audio=forced
 ```
 
-There is nothing to turn on: it follows the language menu. Each language has its own list of codes:
+plus [the choice between two tracks of the same language](#spanish-and-portuguese-two-variants), which mpv cannot do on its own. There is nothing to turn on: it follows the language menu. Each entry has its own list of codes:
 
 | Language | Codes |
 | --- | --- |
 | English | `en,eng,en-US,en-GB` |
-| Español | `es,spa,es-ES,es-419` |
+| Español (España) | `es-ES,es,spa,es-419,es-MX` |
+| Español (Latinoamérica) | `es-419,es,spa,es-MX,es-ES` |
 | Deutsch | `de,ger,deu,de-DE` |
 | Français | `fr,fre,fra,fr-FR,fr-CA` |
 | Italiano | `it,ita,it-IT` |
 | Polski | `pl,pol,pl-PL` |
-| Português | `pt,por,pt-BR,pt-PT` |
+| Português (Brasil) | `pt-BR,pt,por,pt-PT` |
+| Português (Portugal) | `pt-PT,pt,por,pt-BR` |
 | Română | `ro,rum,ron,ro-RO` |
 | Русский | `ru,rus,ru-RU` |
 | Türkçe | `tr,tur,tr-TR` |
@@ -65,12 +67,42 @@ There is nothing to turn on: it follows the language menu. Each language has its
 | 中文（香港） | `zh-Hant,zh-HK,zh-TW,zh,chi,zho,zh-Hans,zh-CN` |
 | 简体中文 | `zh-Hans,zh-CN,zh,chi,zho,zh-Hant,zh-TW` |
 
-Japanese (`ja,jpn`) follows in the audio list. The regional codes are there because of how mpv 0.40 ranks tracks: a dub tagged `es-419` or `pt-BR`, as many releases tag them, would otherwise lose to a `jpn` track. A region that is not in the list (say `es-AR`) still beats Japanese tagged `ja-JP`, but not a plain `ja` or `jpn`. Chinese lists its own script first and the other one last, so a Chinese dub tagged with any code of its list (or just `zh`) beats Japanese, whatever its script. A longer tag such as `zh-Hans-CN` or `zh-Hant-TW` is in neither list and, like an unlisted region, loses to a plain `ja` or `jpn`. Tracks with no language at all are left to mpv's usual rules.
+Japanese (`ja,jpn`) follows in the audio list. The regional codes are there because of how mpv 0.40 ranks tracks: a dub tagged `es-419` or `pt-BR`, as many releases tag them, would otherwise lose to a `jpn` track. A region that is not in the list (say `es-AR`) still beats Japanese tagged `ja-JP`, but not a plain `ja` or `jpn`. Each variant lists its own region first: mpv takes a track tagged just `es` or `spa` as a match for `es-ES` too, so for Spain `es-ES` and `es` rank the same and `es-419` comes after them, and the other way round for Latin America. Chinese lists its own script first and the other one last, so a Chinese dub tagged with any code of its list (or just `zh`) beats Japanese, whatever its script. A longer tag such as `zh-Hans-CN` or `zh-Hant-TW` is in neither list and, like an unlisted region, loses to a plain `ja` or `jpn`. Tracks with no language at all are left to mpv's usual rules.
+
+### Spanish and Portuguese: two variants
+
+mpv only compares language tags, and many releases tag both variants alike. Crunchyroll, for instance, ships two Spanish subtitle tracks, both tagged `es`: *Spanish(Latin_America)* first and *Spanish* (Spain) after it, so mpv on its own always takes the Latin American one. hikari tells them apart:
+
+1. mpv picks the tracks as usual, with the lists above.
+2. If the audio track mpv picked is in your language but of the other variant, and the file has another audio track in your language of your variant, hikari switches to it. Then the same for the subtitles. It only swaps like for like: forced subtitles (signs and songs) for forced ones, full subtitles for full ones, external files for external files.
+3. A track's variant comes from the region in its tag (`es-ES`; `es-419`, `es-MX`, `es-AR`...; `pt-BR`; `pt-PT`), or else from its title:
+
+    | Variant | Words in the title |
+    | --- | --- |
+    | Español (España) | España, Spain, Castilian, Castellano, [ESP], European |
+    | Español (Latinoamérica) | Latin, Latino, Latinoamérica, LATAM, América, 419 |
+    | Português (Brasil) | Brazil, Brasil, BR |
+    | Português (Portugal) | Portugal, European |
+
+    A Spanish track whose tag and title say nothing counts as Spain's (Crunchyroll only names the Latin American one). A Portuguese one could be either, and loses only to a track of your variant.
+
+So with *Español (España)* that Crunchyroll file plays the *Spanish* subtitles, and with *Español (Latinoamérica)* the Latin American ones. With a dub of your variant, the forced signs track of your variant is preferred too.
+
+Some things stay as they are:
+
+- **No track of your variant**: the other variant is used. Subtitles with another accent are better than none, and a dub of the other variant still beats Japanese.
+- **Whether to play a dub and whether to show subtitles** is still mpv's decision with the options above: hikari only changes which track of your language is used.
+- **Tracks you chose** (menu, keys, `--aid`/`--sid`, a resumed position) are never touched, and neither is anything with `lavfi-complex`.
+- **It lasts for that file only.** The next file starts again from mpv's own choice.
+- It works whoever set `alang` and `slang`: the variant is what you picked in the menu.
+
+A script of your own that sets `aid` or `sid` (such as a `sub-castellano.lua` that picks the Spanish subtitles by their title) wins over hikari: once it has picked a track, mpv no longer treats the choice as its own and hikari leaves it. If hikari's choice is what you wanted, you can remove that script.
 
 ### When it applies
 
 - **When mpv starts**, before the first file opens, so the first episode already gets it.
-- **After every switch with `Alt+l`**. If a file is playing, mpv picks its tracks again with the new languages, but only the ones it picked on its own: an audio or subtitle track you chose yourself (from the menu, with a key, with `--aid`/`--sid` or saved with your position) stays. The next files use the new languages anyway.
+- **When each file is loaded**, for the [choice between variants](#spanish-and-portuguese-two-variants).
+- **After every switch with `Alt+l`** (also between the two variants of a language). If a file is playing, mpv picks its tracks again with the new languages, and hikari checks the variant again, but only for the tracks picked automatically: an audio or subtitle track you chose yourself (from the menu, with a key, with `--aid`/`--sid` or saved with your position) stays. The next files use the new languages anyway.
 
 hikari only sets these options while mpv runs; it writes them to no file, so uninstalling hikari leaves nothing behind.
 
@@ -89,20 +121,39 @@ It checks each option when mpv starts and takes it as yours when:
 
 It also stays away from an option that someone changed after hikari set it (`set alang ...` in the console, another script, an auto profile while it is active).
 
+The values that AnimeJaNai comes with are the exception: see [AnimeJaNai](#animejanai) below.
+
 The only setting hikari cannot see is one that writes mpv's default value from somewhere other than that `mpv.conf` (an included file, `/etc/mpv/mpv.conf`, or a profile applied at start). Profiles that apply on their own later (with `profile-cond`) set their values over hikari's while they are active, as usual.
 
 **To let hikari decide**, delete your `alang`, `slang` and `subs-with-matching-audio` lines from `mpv.conf` (all of them, or just the ones you want hikari to take over) and restart mpv. To keep some preference of your own, keep only that line: for example, `alang=ja,jpn` always plays the Japanese audio, and hikari still picks the subtitles in your language. A `slang` line takes the subtitles out of hikari's hands, as said above: add your own `subs-with-matching-audio` line if mpv's default (`yes`) is not what you want.
+
+### AnimeJaNai
+
+AnimeJaNai ships `portable_config/mpv-animejanai.conf`, which its configuration includes, with these two lines:
+
+```
+alang = 'jpn'
+slang = 'eng'
+```
+
+They are AnimeJaNai's defaults rather than a choice of yours, so hikari does not count them as yours and applies its recipe over them. It checks it by reading that file the same way as `mpv.conf` (comments and `[profile]` sections do not count) and only when all of this holds:
+
+- `alang` still holds `jpn` (or `slang` holds `eng`) when mpv starts, and
+- `mpv-animejanai.conf` sets it in that one line, as it comes, and nowhere else in the file (no `alang-append` and the like), and
+- neither your `mpv.conf` nor the command line sets it.
+
+Change the line to anything else (say `alang = 'jpn,eng'`) and it is yours again: hikari leaves it alone. hikari never writes to `mpv-animejanai.conf`.
 
 ## By hand
 
 `~~/hikari-language.conf` (in the mpv config folder, `portable_config/` in a portable install) holds two lines, which you can also write yourself:
 
 ```
-script-opts-append=hikari-language=es
+script-opts-append=hikari-language=es-ES
 script-opts-append=uosc-languages=es,en
 ```
 
-The codes are those of the menu: `en`, `es`, `de`, `fr`, `it`, `pl`, `pt`, `ro`, `ru`, `tr`, `uk`, `zh-HK` and `zh-hans`. Uninstalling asks whether to delete this file together with your other choices.
+The codes are those of the menu: `en`, `es-ES`, `es-419`, `de`, `fr`, `it`, `pl`, `pt-BR`, `pt-PT`, `ro`, `ru`, `tr`, `uk`, `zh-HK` and `zh-hans`. uosc has no regional variants, so it gets `es` or `pt`. A plain `es` or `pt`, as hikari 0.5 saved them, still works: it means *Español (España)* or *Português (Brasil)*; pick your variant once with `Alt+l` if that is not yours. Uninstalling asks whether to delete this file together with your other choices.
 
 ## uosc's own language setting
 

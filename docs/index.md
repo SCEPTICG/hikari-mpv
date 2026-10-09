@@ -111,7 +111,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
 </div>
 
-hikari speaks your language: its menus, buttons and messages come in the 13 languages of uosc (English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian, Simplified Chinese and Chinese from Hong Kong). It follows your system, and `Alt+l` changes it. It also picks the audio and subtitle tracks: a dub in your language when the file has one, otherwise Japanese with subtitles in your language (your own `alang`/`slang` lines still win); see [Languages](features/language.md). The installer itself speaks English or Spanish.
+hikari speaks your language: its menus, buttons and messages come in the 13 languages of uosc (English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian, Simplified Chinese and Chinese from Hong Kong). It follows your system, and `Alt+l` changes it. It also picks the audio and subtitle tracks: a dub in your language when the file has one, otherwise Japanese with subtitles in your language, telling Spain from Latin America and Brazil from Portugal even when both tracks carry the same tag (your own `alang`/`slang` lines still win); see [Languages](features/language.md). The installer itself speaks English or Spanish.
 
 ## hikari and other mpv themes
 
