@@ -21,6 +21,10 @@ M.async = {}         -- pending mp.command_native_async calls, as {cmd, cb}; see
 M.set_fails = {}     -- property name -> true: mp.set_property fails for it
 M.files = {}        -- path -> mp.utils.file_info answer (nil: the file does not exist)
 M.config_files = {} -- name -> path that mp.find_config_file returns (nil: not found)
+M.sets = {}         -- every mp.set_property call, as {name, value}
+-- Choice options whose choices include yes and no: like mpv, set_property
+-- stores those two as flags, so get_property_native gives true/false.
+M.flag_choices = {['subs-with-matching-audio'] = true}
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -60,6 +64,7 @@ function M.install(script_name)
 	M.native_sets = {}
 	M.async, M.set_fails, M.files = {}, {}, {}
 	M.config_files = {}
+	M.sets = {}
 	-- The shared texts module is per script in mpv (one Lua state each): load it
 	-- again for every script the tests load, from the repository.
 	package.loaded['hikari-i18n'] = nil
@@ -84,11 +89,14 @@ function M.install(script_name)
 		register_event = function(name, fn) M.events[name] = fn end,
 		-- Like mpv: user-data/ holds nodes, and get_property formats a string node
 		-- as JSON, quotes included ("hikari-language"). Only get_property_native
-		-- gives the bare string back.
+		-- gives the bare string back. Flags read as yes/no, string lists as the
+		-- items joined with commas.
 		get_property = function(name, def)
 			local v = M.props[name]
 			if v == nil then return def end
 			if type(v) == 'string' and name:sub(1, 10) == 'user-data/' then return '"' .. v .. '"' end
+			if type(v) == 'boolean' then return v and 'yes' or 'no' end
+			if type(v) == 'table' then return table.concat(v, ',') end
 			return tostring(v)
 		end,
 		get_time = function() return M.clock end,
@@ -152,7 +160,9 @@ function M.install(script_name)
 		-- Like mpv: file-local-options/<name> sets <name> and remembers the old
 		-- value, which end_file() puts back.
 		set_property = function(name, value)
+			table.insert(M.sets, {name, value})
 			if M.set_fails[name] then return nil, 'property unavailable' end
+			if M.flag_choices[name] and (value == 'yes' or value == 'no') then value = value == 'yes' end
 			local option = name:match('^file%-local%-options/(.+)$')
 			if option then
 				if M.backups[option] == nil then M.backups[option] = M.props[option] or '' end
