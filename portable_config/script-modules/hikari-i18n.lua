@@ -893,7 +893,7 @@ function M.resolve(value)
 		-- Once per value: this runs again on every change of any script option.
 		if value ~= warned_value then
 			warned_value = value
-			msg.warn('Unknown hikari-language "' .. tostring(value):sub(1, 64) .. '", using ' .. M.DEFAULT)
+			msg.warn('Unknown hikari-language "' .. (tostring(value):sub(1, 64):gsub('%c', '?')) .. '", using ' .. M.DEFAULT)
 		end
 		return M.DEFAULT
 	end

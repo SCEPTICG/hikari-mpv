@@ -485,6 +485,20 @@ test('mpv.conf values: as mpv reads them', function()
 	eq(m.conf_value('=%3%jpn'), false, 'length quoting: not read')
 	eq(m.conf_value("= 'jpn"), false, 'missing quote')
 	eq(m.conf_value("= 'jpn' x"), false, 'something after the quotes')
+	eq(m.conf_value('=  ja , jpn  \t # x'), 'ja , jpn', 'blanks inside kept, around cut')
+	eq(m.conf_value('=   \t  '), '', 'only blanks')
+	eq(m.conf_value('= #x'), '', 'only a comment')
+end)
+
+test('mpv.conf values: a line of 40000 blanks is read at once', function()
+	local m = load()
+	local started = os.clock()
+	eq(m.conf_value('=a' .. string.rep(' ', 40000) .. 'b'), 'a' .. string.rep(' ', 40000) .. 'b', 'blanks inside')
+	eq(m.conf_value('=' .. string.rep(' ', 40000) .. 'x' .. string.rep(' ', 40000)), 'x', 'blanks around')
+	eq(m.conf_value('=x' .. string.rep(' \t', 40000)), 'x', 'blanks after')
+	local found = m.conf_lines('alang=ja' .. string.rep(' ', 40000) .. '\n')
+	eq(found[1] and found[1].value, 'ja', 'in mpv.conf')
+	assert(os.clock() - started < 1, 'took ' .. (os.clock() - started) .. ' s')
 end)
 
 test('AnimeJaNai: its own alang and slang are not yours: hikari\'s recipe', function()
@@ -615,7 +629,11 @@ local function play_tracks(m, tracks, picks, options)
 	for _, property in ipairs({'aid', 'sid'}) do
 		local option = (options or {})[property] or 'auto'
 		mock.props['options/' .. property] = option
-		mock.props[property] = option == 'auto' and mock.pick(property) or option
+		if option == 'auto' then
+			mock.props[property] = mock.pick(property)
+		else
+			mock.props[property] = option
+		end
 	end
 	mock.sets = {}
 	mock.events['file-loaded']()
@@ -765,15 +783,297 @@ test('variants: a language switch picks again and checks the variant again', fun
 	eq(mock.props['options/sid'], 'auto', 'auto')
 end)
 
-test('variants: a switch with all options yours still applies the new variant', function()
+test('variants: mpv\'s rank of a tag against a list, as mp_match_lang', function()
+	local m = load()
+	local MAX = 2147483647
+	eq(m.lang_rank({'es-419', 'en'}, 'es-419'), MAX, 'exact, first entry')
+	eq(m.lang_rank({'es-419', 'en'}, 'spa'), MAX, 'a bare track matches a longer entry')
+	eq(m.lang_rank({'es-419', 'en'}, 'es'), MAX, 'es too')
+	eq(m.lang_rank({'es', 'en'}, 'es-419'), MAX - 1000, 'a track with more subtags loses 1000')
+	eq(m.lang_rank({'es-ES', 'es'}, 'es-MX'), MAX - 1000, 'another region: 1000, whatever the entry')
+	eq(m.lang_rank({'en', 'spa'}, 'es'), MAX - 1, 'second entry; es and spa are one code')
+	eq(m.lang_rank({'ja', 'jpn'}, 'jpn'), MAX, 'Japanese')
+	eq(m.lang_rank({'ja', 'jpn'}, 'ja-JP'), MAX - 1000, 'Japanese with a region')
+	eq(m.lang_rank({'en'}, 'es'), 0, 'no match')
+	eq(m.lang_rank({}, 'es'), 0, 'empty list')
+	eq(m.lang_rank({'es'}, nil), 0, 'no tag')
+	eq(m.lang_rank({'ES-es'}, 'es-ES'), MAX, 'case does not matter')
+end)
+
+test('variants: your own slang: only tracks with the same tag are swapped', function()
+	-- Reported in review: mpv 0.40, slang=es-419,en in mpv.conf; mpv takes 1.
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 1, type = 'sub', lang = 'es-419', title = 'CR_Spanish(Latin_America)'},
+		{id = 2, type = 'sub', lang = 'spa', title = 'CR_Spanish'},
+	}
+	local m = load({lang = 'es-ES', values = {slang = {'es-419', 'en'}}})
+	eq(m.managed.slang, false, 'slang yours')
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(#mock.sets, 0, 'your list names es-419: kept')
+	eq(mock.props.sid, 1, 'Latin America, as your slang says')
+	-- Tagged alike (es and spa are one code): hikari's variant decides.
+	tracks[2].lang = 'es'
+	tracks[3].lang = 'spa'
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(mock.props.sid, 2, 'es and spa: Spain\'s')
+	-- slang=es: mpv ranks spa over es-419 and took Spain's; Latin America keeps it.
+	tracks[2].lang = 'es-419'
+	m = load({lang = 'es-419', values = {slang = {'es'}}})
+	play_tracks(m, tracks, {aid = 1, sid = 2})
+	eq(#mock.sets, 0, 'kept')
+end)
+
+test('variants: the same tag for mpv', function()
+	local m = load()
+	eq(m.same_tag('es', 'spa'), true, 'es, spa')
+	eq(m.same_tag('ES', 'es'), true, 'case')
+	eq(m.same_tag('spa-ES', 'es-es'), true, 'with a region')
+	eq(m.same_tag('es', 'es-419'), false, 'a region more')
+	eq(m.same_tag('es-MX', 'es-419'), false, 'another region')
+	eq(m.same_tag('pt', 'por'), true, 'pt, por')
+	eq(m.same_tag('es', nil), false, 'no tag')
+	eq(m.same_tag('', ''), false, 'empty')
+end)
+
+test('variants: your own alang: the same for the audio', function()
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'es-419', title = 'Spanish (Latin America)'},
+		{id = 2, type = 'audio', lang = 'spa', title = 'Spanish'},
+		{id = 3, type = 'audio', lang = 'ja'},
+	}
+	local m = load({lang = 'es-ES', values = {alang = {'es-419', 'ja'}}})
+	play_tracks(m, tracks, {aid = 1, sid = false})
+	eq(#mock.sets, 0, 'your es-419 dub stays')
+	tracks[1].lang = 'es'
+	play_tracks(m, tracks, {aid = 1, sid = false})
+	eq(mock.props.aid, 2, 'tagged alike: Spain\'s dub')
+end)
+
+test('variants: hikari\'s slang: any track of the language, whatever its tag', function()
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish'},
+		{id = 2, type = 'sub', lang = 'es-MX', title = 'Spanish'},
+	}
+	local m = load({lang = 'es-419'})
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(mock.props.sid, 2, 'es-MX, though mpv ranks `es` higher with hikari\'s list')
+end)
+
+test('variants: a slang that someone changed since is not hikari\'s', function()
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 1, type = 'sub', lang = 'es-419', title = 'CR_Spanish(Latin_America)'},
+		{id = 2, type = 'sub', lang = 'spa', title = 'CR_Spanish'},
+	}
+	local m = load({lang = 'es-ES'})
+	mock.props.slang = {'es-419'}   -- `set slang es-419` in the console
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(#mock.sets, 0, 'kept, as with your own slang')
+end)
+
+test('variants: a switch with all options yours applies the new variant where mpv cannot tell', function()
 	local m = load({lang = 'es-ES', values = {alang = {'ja'}, slang = {'es'}, [SWMA] = 'forced'}})
 	play_tracks(m, crunchyroll(), {aid = 1, sid = 3})
-	eq(mock.props.sid, 4, 'Spain, with your slang')
+	eq(mock.props.sid, 4, 'Spain: both `es`, your slang cannot tell them apart')
 	mock.set_script_opt('hikari-language', 'es-419')
 	eq(mock.props.sid, 3, 'Latin America')
 	mock.set_script_opt('hikari-language', 'de')
 	eq(mock.props.sid, 3, 'German: mpv\'s own pick back')
 	eq(join(mock.props.slang), 'es', 'your slang untouched')
+	-- Tagged es-419, your slang=es ranks Spain's first: mpv's pick, kept.
+	m = load({lang = 'es-419', values = {alang = {'ja'}, slang = {'es'}, [SWMA] = 'forced'}})
+	play_tracks(m, crunchyroll('es-419'), {aid = 1, sid = 4})
+	eq(#mock.sets, 0, 'mpv told them apart by your list')
+end)
+
+-- A file with Japanese audio and a dub of one variant only, and subtitles of
+-- both: mpv (as with hikari's lists) takes the dub and, for subtitles, only a
+-- forced track while the audio is in your language, otherwise the first one
+-- of the language.
+local function one_dub(dub_lang, dub_title)
+	return {
+		{id = 1, type = 'audio', lang = 'jpn', title = 'Japanese'},
+		{id = 2, type = 'audio', lang = dub_lang, title = dub_title},
+		{id = 1, type = 'sub', lang = 'spa', title = 'CR_Spanish'},
+		{id = 2, type = 'sub', lang = 'spa', title = 'CR_Spanish(Latin_America)'},
+	}
+end
+local function one_dub_picks(tracks)
+	return {
+		aid = 2,
+		sid = function()
+			for _, t in ipairs(tracks) do
+				if t.type == 'audio' and t.id == mock.props.aid and t.lang ~= 'jpn' then return false end
+			end
+			return 1
+		end,
+	}
+end
+
+test('variants: a dub of the other variant only: Japanese, with subtitles of your variant', function()
+	local tracks = one_dub('spa', 'Spanish(Latin_America)')
+	local m = load({lang = 'es-ES'})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(mock.props.aid, 1, 'Japanese')
+	eq(sets_of('file-local-options/aid'), '1', 'for this file only')
+	eq(mock.props.sid, 1, 'full subtitles of Spain, picked again for the Japanese audio')
+	eq(mock.props['options/sid'], 'auto', 'still mpv\'s own choice')
+	-- By tag, and with Latin American subtitles first.
+	tracks = one_dub('es-MX', 'Spanish')
+	tracks[3].title, tracks[4].title = 'CR_Spanish(Latin_America)', 'CR_Spanish'
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(mock.props.aid, 1, 'Japanese (es-MX dub)')
+	eq(mock.props.sid, 2, 'Spain\'s subtitles, after mpv\'s first one')
+end)
+
+test('variants: the same the other way round, and for Portuguese', function()
+	local tracks = one_dub('es-ES', 'Spanish')
+	local m = load({lang = 'es-419'})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(mock.props.aid, 1, 'Latin America, only Spain\'s dub: Japanese')
+	eq(mock.props.sid, 2, 'Latin American subtitles')
+	tracks = one_dub('spa', 'Castellano')
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(mock.props.aid, 1, 'by the title')
+	tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 2, type = 'audio', lang = 'pt-PT'},
+		{id = 1, type = 'sub', lang = 'pt-BR'},
+	}
+	m = load({lang = 'pt-BR'})
+	play_tracks(m, tracks, {aid = 2, sid = function() return mock.props.aid == 1 and 1 or false end})
+	eq(mock.props.aid, 1, 'Brazil, only Portugal\'s dub: Japanese')
+	eq(mock.props.sid, 1, 'Brazilian subtitles')
+end)
+
+test('variants: a dub that may be yours stays', function()
+	-- A bare Spanish dub says nothing: kept for Latin America too.
+	local tracks = one_dub('spa', '')
+	local m = load({lang = 'es-419'})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(#mock.sets, 0, 'bare `spa` dub kept')
+	-- Both variants: yours is taken, not Japanese.
+	tracks = one_dub('es', 'Spanish(Latin_America)')
+	table.insert(tracks, 3, {id = 3, type = 'audio', lang = 'es', title = 'Spanish'})
+	m = load({lang = 'es-ES'})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(mock.props.aid, 3, 'Spain\'s dub')
+	-- No Japanese audio: the dub of the other variant stays.
+	tracks = one_dub('es-419', 'Spanish')
+	tracks[1].lang = 'en'
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(#mock.sets, 0, 'no original audio to go back to')
+	-- Portuguese with no region: either variant.
+	tracks = {{id = 1, type = 'audio', lang = 'ja'}, {id = 2, type = 'audio', lang = 'por', title = 'Portuguese'}}
+	m = load({lang = 'pt-PT'})
+	play_tracks(m, tracks, {aid = 2, sid = false})
+	eq(#mock.sets, 0, 'Portuguese that could be Portugal\'s')
+end)
+
+test('variants: with your own alang, a dub of the other variant is your choice', function()
+	local tracks = one_dub('es-419', 'Spanish(Latin_America)')
+	local m = load({lang = 'es-ES', values = {alang = {'es', 'ja'}}})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(sets_of('file-local-options/aid') .. sets_of('aid'), '', 'audio untouched')
+	-- hikari's alang changed by someone else since: the same.
+	m = load({lang = 'es-ES'})
+	mock.props.alang = {'es-419', 'ja'}
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(sets_of('file-local-options/aid') .. sets_of('aid'), '', 'audio untouched')
+end)
+
+test('variants: Japanese over the other variant\'s dub after a language switch too', function()
+	local tracks = one_dub('es-419', 'Spanish(Latin_America)')
+	local m = load({lang = 'es-419'})
+	play_tracks(m, tracks, one_dub_picks(tracks))
+	eq(#mock.sets, 0, 'Latin America: its dub, no full subtitles')
+	eq(mock.props.sid, false, 'none')
+	mock.set_script_opt('hikari-language', 'es-ES')
+	eq(mock.props.aid, 1, 'Spain: Japanese')
+	eq(mock.props.sid, 1, 'Spain\'s full subtitles')
+	mock.set_script_opt('hikari-language', 'es-419')
+	eq(mock.props.aid, 2, 'Latin America: the dub again')
+	eq(mock.props.sid, false, 'no full subtitles again')
+end)
+
+test('variants: the original audio, among several Japanese tracks', function()
+	local m = load({lang = 'es-ES'})
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'es-419'},
+		{id = 2, type = 'audio', lang = 'ja-JP'},
+		{id = 3, type = 'audio', lang = 'jpn', title = 'Commentary'},
+		{id = 4, type = 'audio', lang = 'ja', default = true},
+		{id = 5, type = 'audio', lang = 'en'},
+	}
+	eq(m.original_audio(tracks, 1, 'es-ES'), 4, 'best rank, then the default mark')
+	tracks[4].default = nil
+	eq(m.original_audio(tracks, 1, 'es-ES'), 3, 'then the file\'s order')
+	eq(m.original_audio(tracks, 5, 'es-ES'), nil, 'not a dub of the language')
+	eq(m.original_audio(tracks, 1, 'es-419'), nil, 'a dub of your variant')
+	eq(m.original_audio(tracks, 1, 'de'), nil, 'no variants')
+end)
+
+-- Signs and songs without the forced mark ------------------------------------
+
+test('signs: titles that say signs and songs only', function()
+	local m = load()
+	for _, title in ipairs({'Spanish [Signs]', 'Signs & Songs', 'Carteles', 'Forced', 'Spanish (Forced)',
+		'Español (Forzados)', 'CARTELES Y CANCIONES', 'Song lyrics', 'Letreros', 'Legendas forçadas', 'SIGN'}) do
+		eq(m.signs_only({type = 'sub', title = title}), true, title)
+	end
+	for _, title in ipairs({'Spanish', 'Design notes', 'Signos', 'Full', 'Forcedor', ''}) do
+		eq(m.signs_only({type = 'sub', title = title}), false, title)
+	end
+	eq(m.signs_only({type = 'sub'}), false, 'no title')
+	eq(m.signs_only({type = 'audio', title = 'Songs'}), false, 'only subtitles')
+end)
+
+test('signs: full subtitles of the language over a signs track without the mark', function()
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish [Signs]'},
+		{id = 2, type = 'sub', lang = 'es', title = 'Spanish'},
+	}
+	local m = load({lang = 'es-ES'})
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(mock.props.sid, 2, 'the full ones')
+	for _, title in ipairs({'Signs & Songs', 'Carteles', 'Forced'}) do
+		tracks[2].title = title
+		play_tracks(m, tracks, {aid = 1, sid = 1})
+		eq(mock.props.sid, 2, title)
+	end
+	-- The only Spanish track: kept.
+	table.remove(tracks, 3)
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(#mock.sets, 0, 'the only one stays')
+end)
+
+test('signs: dialogue of the other variant rather than signs of yours', function()
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish(Latin_America)'},
+		{id = 2, type = 'sub', lang = 'es', title = 'Spanish [Signs]'},
+		{id = 3, type = 'sub', lang = 'es', title = 'Latin America [Signs]'},
+	}
+	local m = load({lang = 'es-ES'})
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(#mock.sets, 0, 'Latin American dialogue kept')
+	play_tracks(m, tracks, {aid = 1, sid = 3})
+	eq(mock.props.sid, 1, 'from Latin American signs to Latin American dialogue')
+	-- Signs of both variants and nothing else: yours.
+	table.remove(tracks, 2)
+	play_tracks(m, tracks, {aid = 1, sid = 3})
+	eq(mock.props.sid, 2, 'Spain\'s signs')
+	-- Forced ones are compared with forced ones only, the words do not matter.
+	tracks = {
+		{id = 1, type = 'audio', lang = 'es'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Latino [Forced]', forced = true},
+		{id = 2, type = 'sub', lang = 'es', title = 'Castellano', forced = true},
+	}
+	play_tracks(m, tracks, {aid = 1, sid = 1})
+	eq(mock.props.sid, 2, 'Spain\'s forced track')
 end)
 
 test('variants: a track you pick after hikari\'s switch stays on a language switch', function()

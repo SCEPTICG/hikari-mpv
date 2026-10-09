@@ -203,6 +203,11 @@ test('the option wins over the system; unknown values are English, with a warnin
 	local i18n = fresh({['hikari-language'] = 'klingon'}, {LANG = 'de_DE'})
 	eq(i18n.language(), 'en')
 	assert(mock.logs.warn[1] and mock.logs.warn[1]:find('klingon', 1, true), 'warned')
+	fresh({['hikari-language'] = 'xx\27[31m\nfake line' .. string.rep('z', 100)}, {}).language()
+	local warning = mock.logs.warn[1]
+	assert(warning and not warning:find('%c'), 'no control characters in the warning')
+	assert(warning:find('xx?[31m?fake line', 1, true), 'replaced by ?')
+	assert(not warning:find(string.rep('z', 60), 1, true), 'cut to 64 characters')
 end)
 
 test('t: fallbacks, placeholders and odd values', function()

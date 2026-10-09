@@ -13,7 +13,8 @@
 -- rules of mpv are explained). Spanish and Portuguese have two entries, one
 -- per regional variant: Spain or Latin America, Brazil or Portugal. Their
 -- lists put the variant's own region first, and when several tracks share
--- the language, hikari picks the one of your variant by its tag and title
+-- the language, hikari picks the one of your variant by its tag and title;
+-- a dub of the other variant alone does not count as a dub in your language
 -- (see "Regional variants" below). There is no option to turn it on or off:
 -- your own lines are.
 --
@@ -26,8 +27,10 @@
 --   together, all or nothing: `subs-with-matching-audio` only makes sense
 --   with hikari's `slang`, so when you set `slang` hikari leaves both alone
 --   (even if you did not set `subs-with-matching-audio`), and when you set
---   only `subs-with-matching-audio`, hikari still sets `slang`. An option
---   counts as yours when, at the moment this script starts:
+--   only `subs-with-matching-audio`, hikari still sets `slang`. With an
+--   alang/slang of yours, the choice between variants (below) only picks
+--   among tracks your list cannot tell apart. An option counts as yours
+--   when, at the moment this script starts:
 --     1. mpv says it came from the command line
 --        (option-info/<name>/set-from-commandline), or
 --     2. its value is not mpv's default (option-info/<name>/default-value).
@@ -84,26 +87,48 @@
 --   tag both variants alike (Crunchyroll: "Spanish(Latin_America)" and
 --   "Spanish", both `es`). So when a file is loaded, hikari looks at the
 --   audio track mpv picked on its own (`aid` is `auto`), then the subtitle
---   track (`sid`): if it is in the language of hikari's menu entry but not
---   of its variant, and another track of that language is (of the same
---   kind: forced or not, external or not), hikari switches to it. A track's
---   variant comes from the region of its tag (`es-ES`, `es-419`, `es-MX`,
---   `pt-BR`), else from words in its title ("Latin", "Latino", "LATAM",
---   "América", "419" / "España", "Spain", "Castilian", "Castellano",
---   "[ESP]", "European"; "Brazil", "Brasil", "BR" / "Portugal",
---   "European"), else a bare Spanish track counts as Spain's (Crunchyroll
---   only names the Latin American one); see REGIONAL in hikari-i18n.lua.
---   Only within the language mpv chose: whether to play the dub and whether
---   to show subtitles (only forced ones with a dub in your language) stays
---   mpv's decision with hikari's options, so with no track of your variant
---   the other variant is used (subtitles with another accent rather than
---   none). The switch goes through file-local-options, so it lasts for that
---   file only and the next file starts from `auto` again. It happens
---   whoever set alang and slang, since the variant is the one you picked in
---   hikari's menu; it never happens over a track you picked or fixed
---   (`--aid`, `--sid`, the menu, a resumed position), nor with
---   `lavfi-complex`. After a language switch the tracks are picked again as
---   above, and then the variant is checked again.
+--   track (`sid`): if it is in the language of hikari's menu entry and
+--   another track of that language and of the same kind (forced or not,
+--   external or not) ranks higher, hikari switches to it. Full subtitles
+--   rank over a track whose title says it only has signs and songs ("Signs",
+--   "Songs", "Carteles", "Forced"... without the forced mark: SIGNS), then a
+--   track of your variant over one that may be either, over one of the other
+--   variant. A track's variant comes from the region of its tag (`es-ES`,
+--   `es-419`, `es-MX`, `pt-BR`), else from words in its title ("Latin",
+--   "Latino", "LATAM", "América", "419" / "España", "Spain", "Castilian",
+--   "Castellano", "[ESP]", "European"; "Brazil", "Brasil", "BR" /
+--   "Portugal", "European"), else a bare Spanish track counts as Spain's
+--   (Crunchyroll only names the Latin American one); see REGIONAL in
+--   hikari-i18n.lua.
+--   Whose list picked the track matters:
+--   - hikari's alang/slang (and still holding hikari's value): any track of
+--     the language may be taken, since hikari's list only stands for the
+--     menu entry (`es-MX` over `es` "Spanish" for Latin America, though the
+--     list ranks `es` first).
+--   - Your own alang/slang (or one changed since): only a track with the
+--     same language tag as mpv's pick (`es` and `spa` are the same, `es` and
+--     `es-419` are not): those are the tracks no list tells apart. A tag
+--     your list names wins: with `slang=es-419,en`, an `es-419` track stays
+--     even next to a `spa` "CR_Spanish".
+--   The dub, with hikari's alang only: a dub of the other variant is not a
+--   dub in your language. When mpv picked a dub whose tag or title says it
+--   is of the other variant (a bare `spa` says nothing, so it is kept), and
+--   every dub of the language in the file says so too, hikari plays the
+--   Japanese audio instead (ORIGINAL_AUDIO; the best of mpv's rank, the
+--   default mark, the file's order), when there is one, and has mpv pick the
+--   subtitles again for it: with subs-with-matching-audio=forced mpv had
+--   picked them for the dub (forced ones only, or none), now it picks full
+--   ones, and then their variant is checked. With your own alang, the dub is
+--   your list's choice and stays. Subtitles are different: with no
+--   subtitles of your variant, the other variant's are used (another accent
+--   rather than none).
+--   Whether to show subtitles at all (only forced ones with a dub in your
+--   language) stays mpv's decision with the options in effect. The switch
+--   goes through file-local-options, so it lasts for that file only and the
+--   next file starts from `auto` again. It never happens over a track you
+--   picked or fixed (`--aid`, `--sid`, the menu, a resumed position), nor
+--   with `lavfi-complex`. After a language switch the tracks are picked
+--   again as above, and then the variant is checked again.
 --   A script of your own that sets `aid`/`sid` (such as a sub-castellano.lua)
 --   wins: once it has picked a track, `aid`/`sid` is no longer `auto`.
 
@@ -199,7 +224,8 @@ local function conf_value(rest)
 		return value
 	end
 	if quote == '%' then return false end
-	return (rest:match('^([^#]*)'):gsub('%s+$', ''))
+	-- Trailing blanks cut with one match: gsub('%s+$') retries at every blank.
+	return rest:match('^([^#]*)'):match('^(.*%S)') or ''
 end
 
 -- The lines of `text` (an mpv.conf) for the options of OPTIONS outside the
@@ -395,8 +421,9 @@ end
 
 -- The regional variant of a track of `language` (an entry of VARIANTS), or
 -- nil when it cannot tell: the region of its tag first, then the words of
--- its title (words of both variants tell nothing), then `untagged`.
-local function track_variant(track, language)
+-- its title (words of both variants tell nothing), then `untagged` (unless
+-- `strict`: only what its tag or title says).
+local function track_variant(track, language, strict)
 	local region = i18n.region_of(track.lang)
 	if region then return i18n.region_variant(language, region) end
 	local regional = i18n.REGIONAL[language]
@@ -408,16 +435,100 @@ local function track_variant(track, language)
 			found = code
 		end
 	end
-	return found or regional.untagged
+	if found or strict then return found end
+	return regional.untagged
+end
+
+-- Words in the title of a subtitle track that only translates signs and
+-- songs, for the tracks that lack the forced mark (whole words, folded).
+local SIGNS = {'signs?', 'songs?', 'carteles', 'cartel', 'letreros?', 'letreiros?', 'forced', 'forzad[oa]s?',
+	'for\195\167ad[oa]s?'}
+
+-- Whether a track is subtitles whose title says they only cover signs and songs.
+local function signs_only(track)
+	if track.type ~= 'sub' or type(track.title) ~= 'string' then return false end
+	local title = fold(track.title:sub(1, MAX_TITLE))
+	for _, word in ipairs(SIGNS) do
+		if title:find('%f[%w]' .. word .. '%f[%W]') then return true end
+	end
+	return false
+end
+
+-- How mpv 0.40 and 0.41 rank a track tag against a list of `alang`/`slang`
+-- (misc/language.c, mp_match_lang), for the Japanese tracks of
+-- ORIGINAL_AUDIO; same_tag uses its parts too: the subtags split at `-`; an entry whose
+-- first subtag is the track's (through mpv's table of ISO 639 codes) scores
+-- INT_MAX minus its position, minus 1000 per later subtag of the track that
+-- differs from the entry's or that the entry lacks; the best entry counts,
+-- 0 for none. Of mpv's table only the codes hikari compares are needed:
+-- tracks of a language with variants and Japanese.
+local INT_MAX = 2147483647
+local SAME_CODE = {es = 'spa', pt = 'por', ja = 'jpn'}
+
+local function subtags(text)
+	local parts, rest = {}, text
+	while rest ~= '' do
+		local at = rest:find('-', 1, true)
+		if at then
+			parts[#parts + 1], rest = rest:sub(1, at - 1):lower(), rest:sub(at + 1)
+		else
+			parts[#parts + 1], rest = rest:lower(), ''
+		end
+	end
+	return parts
+end
+
+-- Whether two language tags are the same for mpv: the same subtags, in any
+-- case, with the first one through mpv's table (`es` and `spa` are the same,
+-- `es` and `es-419` are not).
+local function same_tag(a, b)
+	if type(a) ~= 'string' or type(b) ~= 'string' or #a > 64 or #b > 64 then return false end
+	local pa, pb = subtags(a), subtags(b)
+	if #pa ~= #pb or #pa == 0 then return false end
+	if (SAME_CODE[pa[1]] or pa[1]) ~= (SAME_CODE[pb[1]] or pb[1]) then return false end
+	for i = 2, #pa do
+		if pa[i] ~= pb[i] then return false end
+	end
+	return true
+end
+
+local function lang_rank(list, tag)
+	if type(tag) ~= 'string' or #tag > 64 or type(list) ~= 'table' then return 0 end
+	local parts = subtags(tag)
+	if #parts == 0 then return 0 end
+	local first = SAME_CODE[parts[1]] or parts[1]
+	local best = 0
+	for index, entry in ipairs(list) do
+		local score, part = 0, 0
+		if type(entry) == 'string' then
+			for _, s in ipairs(subtags(entry)) do
+				if part == 0 then
+					if (SAME_CODE[s] or s) ~= first then break end
+					score, part = INT_MAX - (index - 1), 1
+				else
+					if part >= #parts then break end
+					if parts[part + 1] ~= s then score = score - 1000 end
+					part = part + 1
+				end
+			end
+		end
+		score = score - (#parts - part) * 1000
+		if score > best then best = score end
+	end
+	return best
 end
 
 -- The id of the track to use instead of the `current` one (an id) of
 -- `track_type` for the entry `want` of VARIANTS, nil to keep it (see the
 -- header): only when the current one is in that language and another track
--- of the same language and kind is of `want`'s variant (or, when the current
--- one is of the other variant, one that may be either). The first such track
--- in the file's order.
-local function preferred_track(tracks, track_type, current, want)
+-- of the same language and kind ranks higher. Full subtitles rank over a
+-- track titled as signs and songs only; then a track of `want`'s variant over
+-- one that may be either, over one of the other variant. The first such
+-- track in the file's order. With `same_only` (the user's own `alang` or
+-- `slang`), only tracks with the same language tag as the current one are
+-- taken: those no list can tell apart, so whatever the user's list says
+-- about tags (`es-419` before `spa`) stays.
+local function preferred_track(tracks, track_type, current, want, same_only)
 	local language = i18n.language_of(want)
 	if not i18n.REGIONAL[language] then return nil end
 	local picked = nil
@@ -427,15 +538,17 @@ local function preferred_track(tracks, track_type, current, want)
 	if not picked or not in_language(picked, language) then return nil end
 	local function score(track)
 		local variant = track_variant(track, language)
-		if variant == want then return 2 end
-		return variant == nil and 1 or 0
+		local points = variant == want and 2 or (variant == nil and 1 or 0)
+		if not signs_only(track) then points = points + 3 end
+		return points
 	end
 	local best, best_score = picked, score(picked)
 	for _, track in ipairs(tracks) do
 		if track ~= picked and track.type == track_type and in_language(track, language)
 			and (track.forced == true) == (picked.forced == true)
 			and (track.external == true) == (picked.external == true)
-			and not track.albumart and not track.image then
+			and not track.albumart and not track.image
+			and (not same_only or same_tag(track.lang, picked.lang)) then
 			local track_score = score(track)
 			if track_score > best_score then best, best_score = track, track_score end
 		end
@@ -444,38 +557,93 @@ local function preferred_track(tracks, track_type, current, want)
 	return best.id
 end
 
+-- The id of the original audio (Japanese, ORIGINAL_AUDIO) to play instead of
+-- the `current` audio track when that one is a dub of the other variant of
+-- `want`'s language (by its tag or title, see track_variant) and so is every
+-- other dub of that language in the file: a dub of the other variant is not
+-- a dub in your language (see the header). nil to keep it, also when the
+-- file has no Japanese track. Among Japanese tracks, mpv's rank with
+-- ORIGINAL_AUDIO, then the default mark, then the file's order.
+local function original_audio(tracks, current, want)
+	local language = i18n.language_of(want)
+	if not i18n.REGIONAL[language] then return nil end
+	local picked, best, best_rank = nil, nil, 0
+	for _, track in ipairs(tracks) do
+		if track.type == 'audio' and not track.albumart and not track.image then
+			if track.id == current then picked = track end
+			if in_language(track, language) then
+				local variant = track_variant(track, language, true)
+				if variant == nil or variant == want then return nil end
+			else
+				local rank = lang_rank(i18n.ORIGINAL_AUDIO, track.lang)
+				if rank > 0 and type(track.id) == 'number' and (rank > best_rank
+					or (rank == best_rank and track.default == true and best.default ~= true)) then
+					best, best_rank = track, rank
+				end
+			end
+		end
+	end
+	if not picked or not in_language(picked, language) or not best then return nil end
+	return best.id
+end
+
 local function complex_filters()
 	local complex = mp.get_property_native('lavfi-complex')
 	return type(complex) == 'string' and complex ~= ''
 end
 
+-- The option mpv picks each track property by.
+local TRACK_OPTIONS = {aid = 'alang', sid = 'slang'}
+
+-- Whether hikari takes care of `name` and it still holds hikari's value.
+local function hikari_holds(name)
+	return managed[name] == true and applied[name] ~= nil and same_value(mp.get_property_native(name), applied[name])
+end
+
 -- When mpv picked the `property` track (aid, sid) on its own, switches it to
 -- the track of hikari's regional variant, for this file only (see the
--- header). Returns true when it switched.
+-- header): any track of the language when hikari's alang/slang picked it,
+-- only one with the same language tag when the option is yours. For the audio,
+-- with hikari's alang, a dub of the other variant gives way to Japanese.
+-- Returns true when it switched, 'original' when it switched to Japanese.
 local function prefer_variant(property)
 	if mp.get_property_native('options/' .. property) ~= 'auto' then return false end
 	local current = mp.get_property_native(property)
 	local tracks = mp.get_property_native('track-list')
 	if type(current) ~= 'number' or type(tracks) ~= 'table' then return false end
-	local id = preferred_track(tracks, TRACK_TYPES[property], current, i18n.variant())
+	local want = i18n.variant()
+	local option = TRACK_OPTIONS[property]
+	local ours = hikari_holds(option)
+	local result, why = true, 'for ' .. want
+	local id = preferred_track(tracks, TRACK_TYPES[property], current, want, not ours)
+	if not id and property == 'aid' and ours then
+		id = original_audio(tracks, current, want)
+		result, why = 'original', 'the original audio: no dub of ' .. want
+	end
 	if not id then return false end
-	msg.verbose(property .. ': track ' .. id .. ' instead of ' .. current .. ', for ' .. i18n.variant())
+	msg.verbose(property .. ': track ' .. id .. ' instead of ' .. current .. ', ' .. why)
 	if not set_option('file-local-options/' .. property, tostring(id)) then return false end
 	switched[property] = id
-	return true
+	return result
 end
 
+local reselect
+
+-- The audio first; when it went from a dub to Japanese, mpv picks the
+-- subtitles again for it (it picked them for the dub: forced ones only, with
+-- subs-with-matching-audio=forced), and then the subtitles' variant.
 local function on_file_loaded()
 	playing = true
 	switched = {}
 	if complex_filters() then return end
-	for _, property in ipairs(TRACKS) do prefer_variant(property) end
+	if prefer_variant('aid') == 'original' then reselect('sid') end
+	prefer_variant('sid')
 end
 
 -- Lets mpv pick the `property` track (aid, sid) again, when mpv picked it on
 -- its own (or hikari switched it for the variant). Returns true when it asked
 -- mpv to.
-local function reselect(property)
+function reselect(property)
 	local option = mp.get_property_native('options/' .. property)
 	if option ~= 'auto' and (switched[property] == nil or option ~= switched[property]) then return false end
 	local current = mp.get_property(property)
@@ -493,11 +661,12 @@ end
 local function reselect_tracks(changed, variant)
 	if not playing or complex_filters() then return end
 	local regional = i18n.REGIONAL[i18n.language_of(variant)] ~= nil
+	local original = false
 	for _, property in ipairs(TRACKS) do
-		local depends = property == 'aid' and changed.alang or (property == 'sid' and next(changed) ~= nil)
+		local depends = property == 'aid' and changed.alang or (property == 'sid' and (next(changed) ~= nil or original))
 		if depends or regional or switched[property] ~= nil then
 			reselect(property)
-			prefer_variant(property)
+			if prefer_variant(property) == 'original' then original = true end
 		end
 	end
 end
@@ -534,7 +703,8 @@ if HIKARI_MEDIA_LANGUAGE_TEST then
 		animejanai_defaults = animejanai_defaults, animejanai_conf_defaults = animejanai_conf_defaults,
 		apply = apply, reselect = reselect, reselect_tracks = reselect_tracks,
 		fold = fold, in_language = in_language, track_variant = track_variant,
-		preferred_track = preferred_track, prefer_variant = prefer_variant,
+		preferred_track = preferred_track, prefer_variant = prefer_variant, original_audio = original_audio,
+		signs_only = signs_only, lang_rank = lang_rank, same_tag = same_tag,
 		managed = managed, applied = applied,
 		get_switched = function() return switched end,
 		is_playing = function() return playing end,
