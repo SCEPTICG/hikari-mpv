@@ -838,7 +838,7 @@ end
 function M.region_of(text)
 	if type(text) ~= 'string' or #text > 64 then return nil end
 	local tag = text:gsub('_', '-'):match('^%s*([%w%-]*)')
-	for subtag in tag:gmatch('%-([^%-]+)') do
+	for subtag in tag:gmatch('%-([^%-]*)') do
 		if subtag:match('^%a%a$') or subtag:match('^%d%d%d$') then return subtag:upper() end
 		if not subtag:match('^%a%a%a%a$') then return nil end
 	end

@@ -91,7 +91,7 @@ test('variants: locale names and tags to an entry of the menu, by region', funct
 		{'es', 'es-ES'}, {'es_ES.UTF-8', 'es-ES'}, {'es-es', 'es-ES'}, {'es_MX.UTF-8', 'es-419'}, {'es-419', 'es-419'},
 		{'es_AR', 'es-419'}, {'es-US', 'es-419'}, {'es-Latn-CO', 'es-419'}, {'ES_mx', 'es-419'}, {'es.UTF-8', 'es-ES'},
 		{'es@euro', 'es-ES'}, {'pt', 'pt-BR'}, {'pt_BR', 'pt-BR'}, {'pt_PT.UTF-8', 'pt-PT'}, {'pt-AO', 'pt-PT'},
-		{'de_AT', 'de'}, {'en_GB', 'en'}, {'zh_TW', 'zh-HK'}, {'zh-Hans-HK', 'zh-hans'}, {'ja_JP', nil}, {'C', nil},
+		{'es--MX', 'es-ES'}, {'de_AT', 'de'}, {'en_GB', 'en'}, {'zh_TW', 'zh-HK'}, {'zh-Hans-HK', 'zh-hans'}, {'ja_JP', nil}, {'C', nil},
 	}
 	for _, case in ipairs(cases) do eq(i18n.variant_of(case[1]), case[2], case[1]) end
 	eq(i18n.region_of('es-Latn-MX'), 'MX'); eq(i18n.region_of('es-419'), '419'); eq(i18n.region_of('es'), nil)
