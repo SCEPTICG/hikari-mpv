@@ -22,6 +22,22 @@ local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
 
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
 local script_name = mp.get_script_name()
 
 local PERSIST_PATH = '~~/hikari-subs.conf'
@@ -50,6 +66,8 @@ local STYLE_KEYS = {
 	{key = 'border_style', props = {'sub-border-style'}, kind = 'border_style'},
 }
 
+-- Names in the menu come from hikari-i18n: subs_style_<id>, subs_size_<id>,
+-- subs_height_<id>.
 -- Values are strings, as `set` receives them, so the decimal separator never
 -- depends on the C locale. A key left out keeps what mpv had before hikari touched
 -- it (see `baseline`) and is not written to the .conf.
@@ -58,26 +76,26 @@ local STYLE_KEYS = {
 -- sub-back-color opacity: on mpv <= 0.38 that alone turns on the background box.
 local STYLES = {
 	-- Sets nothing: mpv's defaults or whatever mpv.conf says.
-	{id = 'original', name = 'Original'},
+	{id = 'original'},
 	-- Netflix-like: white text on a translucent black box, no shadow.
 	-- mpv 0.39+: opaque-box (libass BorderStyle 3), drawn with the outline colour
 	-- and padded by the outline size; sub-back-color only colours the shadow,
 	-- which is off. mpv <= 0.38: no sub-border-style; the translucent
 	-- sub-back-color itself turns on the background box (BorderStyle 4).
 	{
-		id = 'dark_box', name = 'Caja oscura',
+		id = 'dark_box',
 		text_color = '#FFFFFFFF', outline_color = '#C0000000', outline_size = '2.5',
 		shadow_offset = '0', box_color = '#C0000000', bold = 'no', border_style = 'opaque-box',
 	},
 	-- Crunchyroll-like: white bold text, thick black outline, soft shadow.
 	{
-		id = 'thick_outline', name = 'Borde grueso',
+		id = 'thick_outline',
 		text_color = '#FFFFFFFF', outline_color = '#FF000000', outline_size = '4',
 		shadow_offset = '1.5', shadow_color = '#80000000', bold = 'yes', border_style = 'outline-and-shadow',
 	},
 	-- Classic DVD yellow with black outline and shadow.
 	{
-		id = 'yellow', name = 'Amarillo clásico',
+		id = 'yellow',
 		text_color = '#FFFFE600', outline_color = '#FF000000', outline_size = '3',
 		shadow_offset = '1.5', shadow_color = '#A0000000', bold = 'no', border_style = 'outline-and-shadow',
 	},
@@ -86,18 +104,18 @@ local STYLES = {
 -- `sub-scale`: font size factor (ASS too, with sub-ass-override=scale).
 -- "Normal" has no value: it sets nothing and keeps mpv.conf's (or mpv's) value.
 local SIZES = {
-	{id = 'small', name = 'Pequeño', value = '0.85'},
-	{id = 'normal', name = 'Normal'},
-	{id = 'large', name = 'Grande', value = '1.2'},
-	{id = 'xlarge', name = 'Muy grande', value = '1.4'},
+	{id = 'small', value = '0.85'},
+	{id = 'normal'},
+	{id = 'large', value = '1.2'},
+	{id = 'xlarge', value = '1.4'},
 }
 
 -- `sub-pos`: 100 is mpv's default (bottom), lower numbers move subtitles up.
 -- "Normal" has no value, like the size one.
 local HEIGHTS = {
-	{id = 'normal', name = 'Normal'},
-	{id = 'raised', name = 'Un poco más arriba', value = '95'},
-	{id = 'high', name = 'Más arriba', value = '90'},
+	{id = 'normal'},
+	{id = 'raised', value = '95'},
+	{id = 'high', value = '90'},
 }
 
 local DEFAULTS = {style = 'original', size = 'normal', height = 'normal'}
@@ -299,37 +317,37 @@ local function save()
 	if content and path then ok, err = write_file_atomic(path, content) end
 	if not ok then
 		msg.warn('Could not save subtitle settings to ' .. tostring(path) .. ': ' .. tostring(err))
-		mp.osd_message('hikari: no se pudo guardar el estilo de subtítulos', 3)
+		mp.osd_message(i18n.t('subs_save_failed'), 3)
 	end
 	return ok
 end
 
 local function menu_data()
 	local items = {}
-	local function group(title, list, current, message)
+	local function group(what, list, current, message)
 		if #items > 0 then items[#items].separator = true end
-		items[#items + 1] = {title = title, selectable = false, muted = true, italic = true}
+		items[#items + 1] = {title = i18n.t('subs_group_' .. what), selectable = false, muted = true, italic = true}
 		for _, entry in ipairs(list) do
 			local is_active = entry == current
 			items[#items + 1] = {
-				title = entry.name,
-				hint = is_active and 'activa' or nil,
+				title = i18n.t('subs_' .. what .. '_' .. entry.id),
+				hint = is_active and i18n.t('active') or nil,
 				active = is_active,
 				value = {'script-message-to', script_name, message, entry.id},
 			}
 		end
 	end
-	group('Estilo', STYLES, active.style, 'select-style')
-	group('Tamaño', SIZES, active.size, 'select-size')
-	group('Altura', HEIGHTS, active.height, 'select-height')
+	group('style', STYLES, active.style, 'select-style')
+	group('size', SIZES, active.size, 'select-size')
+	group('height', HEIGHTS, active.height, 'select-height')
 	items[#items].separator = true
 	items[#items + 1] = {
-		title = 'Los estilos solo cambian SRT; los ASS conservan el suyo',
+		title = i18n.t('subs_note'),
 		selectable = false, muted = true, italic = true, align = 'center',
 	}
 	-- keep_open: picking an item doesn't close the menu, so several things can be
 	-- adjusted in a row; each pick sends update-menu to move the marks.
-	return {type = MENU_TYPE, title = 'Subtítulos', keep_open = true, items = items}
+	return {type = MENU_TYPE, title = i18n.t('subs_title'), keep_open = true, items = items}
 end
 
 local function send_menu(message)
@@ -366,6 +384,10 @@ mp.register_script_message('select-style', select_style)
 mp.register_script_message('select-size', select_size)
 mp.register_script_message('select-height', select_height)
 mp.add_key_binding(nil, 'open-menu', open_menu)
+-- Another language: an open subtitle menu is redrawn in it.
+i18n.on_change(function()
+	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+end)
 
 -- Start-up: the included .conf already set everything, but applying again from
 -- the tables means edits to a style take effect without picking it again.

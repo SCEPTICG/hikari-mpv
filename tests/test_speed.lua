@@ -25,6 +25,8 @@ end
 
 local function load()
 	mock.install(SCRIPT_NAME)
+	-- The assertions below are in Spanish.
+	mock.script_opts = {['hikari-language'] = 'es'}
 	HIKARI_SPEED_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
@@ -87,6 +89,23 @@ test('values not in the list are ignored', function()
 	mock.messages['select-speed'](nil)
 	eq(#mock.commands, 0, 'no command sent')
 	eq(#mock.logs.warn, 8, 'one warning each')
+end)
+
+test('labels follow the language, decimal separator included; an open menu is redrawn', function()
+	local s = load()
+	eq(s.label(s.SPEEDS[2]), '0,75×'); eq(s.label(s.SPEEDS[3]), '1× (normal)')
+	mock.props['user-data/uosc/menu/type'] = 'hikari-speed'
+	mock.set_script_opt('hikari-language', 'en')
+	eq(s.label(s.SPEEDS[2]), '0.75×')
+	local last = mock.commands[#mock.commands]
+	eq(last[3], 'update-menu', 'redrawn')
+	assert(last[4]:find('"title":"Speed"', 1, true) and last[4]:find('0.75×', 1, true), 'in English')
+	mock.set_script_opt('hikari-language', 'fr')
+	eq(s.label(s.SPEEDS[3]), '1× (normale)')
+	mock.props['user-data/uosc/menu/type'] = 'hikari-palettes'
+	local count = #mock.commands
+	mock.set_script_opt('hikari-language', 'de')
+	eq(#mock.commands, count, 'another menu open: nothing sent')
 end)
 
 print(string.format('\n%d passed, %d failed', passed, failed))

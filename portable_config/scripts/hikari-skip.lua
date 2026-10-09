@@ -40,11 +40,30 @@
 --   entry and no known duration) the skip does nothing.
 -- - Chapter titles come from the file: they are only cut to MAX_TITLE bytes and
 --   compared with patterns, never shown.
+-- - The label follows hikari's language (hikari-i18n) and is redrawn as soon
+--   as it changes. The box is sized from the label's width: CJK and other
+--   full-width characters count double.
 --
 -- Options (script-opts/hikari-skip.conf): see that file.
 
 local msg = require('mp.msg')
 local options = require('mp.options')
+
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
 
 local OPTIONS_ID = 'hikari-skip'
 -- Input section names are global to mpv, so ours carries the script name.
@@ -89,26 +108,27 @@ opts.scale = clamp(opts.scale, 0.1, 10, 1)
 opts.scale_fullscreen = clamp(opts.scale_fullscreen, 0.1, 10, 1.3)
 opts.opacity = clamp(opts.opacity, 0, 1, 0.85)
 
--- Order matters: the first kind whose patterns match wins.
+-- Order matters: the first kind whose patterns match wins. `label` is the key
+-- of the button text in hikari-i18n.
 local KINDS = {
 	{
-		name = 'openings', label = 'Saltar opening ›', requires_next = true,
+		name = 'openings', label = 'skip_opening', requires_next = true,
 		patterns = {'^op ', '^op$', ' op$', '^opening$', ' opening$'},
 		words = {'オープニング'},
 	},
 	{
-		name = 'intros', label = 'Saltar intro ›', requires_next = true,
+		name = 'intros', label = 'skip_intro', requires_next = true,
 		patterns = {'^intro$', ' intro$', '^avant$', '^prologue$'},
 		words = {},
 	},
 	{
-		name = 'endings', label = 'Saltar ending ›',
+		name = 'endings', label = 'skip_ending',
 		patterns = {'^ed ', '^ed$', ' ed$', '^ending ', '^ending$', ' ending$',
 			'^credits$', '^credits ', ' credits$'},
 		words = {'エンディング'},
 	},
 	{
-		name = 'outros', label = 'Saltar avance ›',
+		name = 'outros', label = 'skip_outro',
 		patterns = {'^outro$', ' outro$', '^closing$', '^closing ', '^preview$', '^pv$'},
 		words = {},
 	},
@@ -233,9 +253,22 @@ local function ass_escape(text)
 	return text
 end
 
-local function utf8_length(text)
-	local _, count = text:gsub('[^\128-\191]', '')
-	return count
+-- Width of a text in "narrow characters": East Asian wide and full-width
+-- characters (CJK, Hangul, kana, full-width forms) count 2, the rest 1.
+local function text_width(text)
+	local width = 0
+	for char in text:gmatch('[\1-\127\194-\244][\128-\191]*') do
+		local code = char:byte(1)
+		if #char == 3 then
+			code = (code % 16) * 4096 + (char:byte(2) % 64) * 64 + char:byte(3) % 64
+		end
+		local wide = #char == 3 and ((code >= 0x1100 and code <= 0x115F) or (code >= 0x2E80 and code <= 0xA4CF)
+			or (code >= 0xAC00 and code <= 0xD7A3) or (code >= 0xF900 and code <= 0xFAFF)
+			or (code >= 0xFE30 and code <= 0xFE4F) or (code >= 0xFF00 and code <= 0xFF60)
+			or (code >= 0xFFE0 and code <= 0xFFE6))
+		width = width + (wide and 2 or 1)
+	end
+	return width
 end
 
 -- ASS drawing of a rectangle with rounded corners (Bezier quarter circles).
@@ -287,11 +320,11 @@ end
 -- Button rectangle in OSD pixels, or nil when hidden.
 local function layout()
 	if not is_visible() then return nil end
-	local label = state.ranges[state.current].kind.label
+	local label = i18n.t(state.ranges[state.current].kind.label)
 	local s = current_scale()
 	local fs = round(opts.font_size * s)
 	local pad_x, pad_y = round(fs * 0.8), round(fs * 0.5)
-	local w = round(utf8_length(label) * fs * CHAR_WIDTH) + pad_x * 2
+	local w = round(text_width(label) * fs * CHAR_WIDTH) + pad_x * 2
 	local h = fs + pad_y * 2
 	local x1 = state.osd_w - round(opts.margin_right * s)
 	local y1 = state.osd_h - round(opts.margin_bottom * s)
@@ -565,13 +598,15 @@ mp.register_event('playback-restart', function()
 end)
 
 mp.add_key_binding(nil, 'skip', skip)
+-- Another language: the button, if it is on screen, is drawn again with it.
+i18n.on_change(function() refresh() end)
 
 if HIKARI_SKIP_TEST then
 	return {
 		KINDS = KINDS, opts = opts, state = state, overlay = overlay, MOUSE_SECTION = MOUSE_SECTION,
 		classify = classify, build_ranges = build_ranges, range_at = range_at,
 		parse_colors = parse_colors, to_bgr = to_bgr, to_alpha = to_alpha, ass_escape = ass_escape,
-		layout = layout, is_visible = is_visible, skip = skip, format_time = format_time,
+		layout = layout, text_width = text_width, is_visible = is_visible, skip = skip, format_time = format_time,
 		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN, guard_active = guard_active,
 	}
 end

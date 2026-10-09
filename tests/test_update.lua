@@ -71,6 +71,8 @@ end
 local function load(version, state_text, script_opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = script_opts or {}
+	-- The assertions below are in Spanish: unless a test says otherwise, hikari speaks Spanish.
+	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	local env = {record = tmp_path(), state = tmp_path(), time = T0}
 	if version then write(env.record, '# Written by the hikari installer\r\nhikari_version=' .. version .. '\r\n') end
 	if state_text then write(env.state, state_text) end
@@ -493,6 +495,24 @@ test('menu: three items, sends to uosc, release notes of that version', function
 	eq(table.concat(data.items[1].value, ' '), 'script-message-to hikari_update open-notes')
 	eq(table.concat(data.items[2].value, ' '), 'script-message-to hikari_update copy-command')
 	eq(table.concat(data.items[3].value, ' '), 'script-message-to hikari_update dismiss')
+	cleanup(env)
+end)
+
+test('menu and notice in English; an open update menu follows a language switch', function()
+	local t, env = load('0.2.1', nil, {['hikari-language'] = 'en'})
+	file_loaded()
+	mock.finish_async(true, {status = 0, stdout = answer('v0.3.1'), error_string = ''})
+	mock.advance(10)
+	eq(mock.osd[#mock.osd], 'hikari 0.3.1 is out · Alt+u')
+	local data = t.menu_data()
+	eq(data.title, 'hikari 0.3.1 is out')
+	eq(data.items[1].title, 'What’s new in 0.3.1')
+	eq(data.items[3].title, 'Don’t remind me of this version')
+	mock.props['user-data/uosc/menu/type'] = 'hikari-update'
+	mock.set_script_opt('hikari-language', 'es')
+	local last = mock.commands[#mock.commands]
+	eq(last[3], 'update-menu')
+	assert(last[4]:find('Ver novedades de la 0.3.1', 1, true), 'in Spanish')
 	cleanup(env)
 end)
 

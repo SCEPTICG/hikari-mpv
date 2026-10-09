@@ -27,6 +27,8 @@ end
 local function load(opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = opts or {}
+	-- The assertions below are in Spanish: unless a test says otherwise, hikari speaks Spanish.
+	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	HIKARI_PALETTES_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
@@ -72,7 +74,11 @@ test('every palette has the 10 keys as 6-digit hex and a valid id', function()
 	eq(#p.COLOR_KEYS, 10, 'key count')
 	for _, palette in ipairs(p.PALETTES) do
 		assert(p.is_valid_id(palette.id), 'bad id ' .. tostring(palette.id))
-		assert(type(palette.name) == 'string' and #palette.name > 0, 'missing name in ' .. palette.id)
+		-- A name, or the key of a translated one (hikari-i18n) with an English text.
+		local named = type(palette.name) == 'string' and #palette.name > 0
+		local strings = dofile('portable_config/script-modules/hikari-i18n.lua').STRINGS
+		local keyed = palette.name_key ~= nil and strings[palette.name_key] ~= nil and strings[palette.name_key].en ~= nil
+		assert(named ~= keyed, 'one name (or name key) in ' .. palette.id)
 		for _, key in ipairs(p.COLOR_KEYS) do
 			assert(tostring(palette[key]):match('^%x%x%x%x%x%x$'), palette.id .. '.' .. key .. ' = ' .. tostring(palette[key]))
 		end
@@ -319,6 +325,25 @@ test('shipped hikari-palette.conf matches what the script would write', function
 	local f = assert(io.open('portable_config/hikari-palette.conf', 'rb')); local content = f:read('*a'); f:close()
 	eq(content, p.persist_content(p.get_palette('uosc')), 'default file')
 	assert(content:find('\nscript-opts-append=uosc-opacity=\n', 1, true), 'default file resets opacity')
+end)
+
+test('a language switch redraws an open palette menu; names with a word follow', function()
+	local p = load()
+	local light = p.menu_data().items
+	local found = false
+	for _, item in ipairs(light) do if item.title == 'Gruvbox claro' then found = true end end
+	assert(found, 'Spanish name')
+	mock.props['user-data/uosc/menu/type'] = 'hikari-palettes'
+	local count = #mock.commands
+	mock.set_script_opt('hikari-language', 'en')
+	eq(#mock.commands, count + 1, 'one message')
+	local last = mock.commands[#mock.commands]
+	eq(last[3], 'update-menu')
+	assert(last[4]:find('"title":"Palettes"', 1, true) and last[4]:find('Gruvbox Light', 1, true)
+		and last[4]:find('Catppuccin Mocha', 1, true), 'English, proper names kept')
+	mock.props['user-data/uosc/menu/type'] = nil
+	mock.set_script_opt('hikari-language', 'de')
+	eq(#mock.commands, count + 1, 'menu closed: nothing')
 end)
 
 print(string.format('\n%d passed, %d failed', passed, failed))

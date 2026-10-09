@@ -20,6 +20,7 @@ M.native_sets = {}   -- every mp.set_property_native call, as {name, value}
 M.async = {}         -- pending mp.command_native_async calls, as {cmd, cb}; see M.finish_async
 M.set_fails = {}     -- property name -> true: mp.set_property fails for it
 M.files = {}        -- path -> mp.utils.file_info answer (nil: the file does not exist)
+M.config_files = {} -- name -> path that mp.find_config_file returns (nil: not found)
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -58,6 +59,11 @@ function M.install(script_name)
 	M.clock, M.timers = 0, {}
 	M.native_sets = {}
 	M.async, M.set_fails, M.files = {}, {}, {}
+	M.config_files = {}
+	-- The shared texts module is per script in mpv (one Lua state each): load it
+	-- again for every script the tests load, from the repository.
+	package.loaded['hikari-i18n'] = nil
+	M.expand['~~/script-modules'] = M.expand['~~/script-modules'] or 'portable_config/script-modules'
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
@@ -82,6 +88,7 @@ function M.install(script_name)
 			return tostring(v)
 		end,
 		get_time = function() return M.clock end,
+		find_config_file = function(name) return M.config_files[name] end,
 		add_timeout = function(seconds, fn)
 			local timer = {due = M.clock + seconds, fn = fn, active = true}
 			function timer:kill() self.active = false end
@@ -95,6 +102,8 @@ function M.install(script_name)
 		end,
 		get_property_native = function(name, def)
 			local v = M.props[name]
+			-- What the scripts' options come from: M.script_opts unless a test set it.
+			if v == nil and name == 'options/script-opts' then v = M.script_opts end
 			if v == nil then return def end
 			return v
 		end,
@@ -175,6 +184,21 @@ function M.set(name, value)
 	local copy = {}
 	for i, fn in ipairs(list) do copy[i] = fn end
 	for _, fn in ipairs(copy) do fn(name, value) end
+end
+
+-- Changes one script option at run time (as `change-list script-opts append`
+-- does) and notifies the observers of options/script-opts.
+function M.set_script_opt(key, value)
+	local copy = {}
+	for k, v in pairs(M.script_opts) do copy[k] = v end
+	copy[key] = value
+	M.script_opts = copy
+	M.props['options/script-opts'] = nil
+	local list = M.observers['options/script-opts']
+	if not list then return end
+	local fns = {}
+	for i, fn in ipairs(list) do fns[i] = fn end
+	for _, fn in ipairs(fns) do fn('options/script-opts', copy) end
 end
 
 -- Moves the clock forward and fires the timers that fall due, in order.

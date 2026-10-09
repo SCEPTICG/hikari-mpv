@@ -27,6 +27,8 @@ end
 local function load(opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = opts or {}
+	-- The assertions below are in Spanish: unless a test says otherwise, hikari speaks Spanish.
+	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	HIKARI_SKIP_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
@@ -107,8 +109,9 @@ test('intros and outros can be enabled, openings and endings disabled', function
 	end
 	eq(s.classify('OP'), nil, 'openings disabled')
 	eq(s.classify('Ending'), nil, 'endings disabled')
-	eq(s.classify('Intro').label, 'Saltar intro ›')
-	eq(s.classify('Preview').label, 'Saltar avance ›')
+	local i18n = dofile('portable_config/script-modules/hikari-i18n.lua')
+	eq(i18n.t(s.classify('Intro').label), 'Saltar intro ›')
+	eq(i18n.t(s.classify('Preview').label), 'Saltar avance ›')
 end)
 
 test('extra patterns are added; malformed ones are ignored safely', function()
@@ -571,6 +574,30 @@ end)
 test('times are formatted with a dot whatever the locale', function()
 	local s = load()
 	eq(s.format_time(90), '90.000'); eq(s.format_time(1.2345), '1.235'); eq(s.format_time(-3), '0.000')
+end)
+
+test('a language switch redraws the button with the new label, wider in Chinese', function()
+	local s = play(100)
+	local o = overlay(s)
+	assert(o.data:find('Saltar opening ›', 1, true), 'Spanish first')
+	local width = s.layout().x1 - s.layout().x0
+	local updates = o.updates
+	mock.set_script_opt('hikari-language', 'en')
+	assert(o.data:find('Skip opening ›', 1, true), 'English now')
+	eq(o.updates, updates + 1, 'drawn again')
+	mock.set_script_opt('hikari-language', 'zh-hans')
+	assert(o.data:find('跳过片头 ›', 1, true), 'Chinese')
+	assert(s.layout().x1 - s.layout().x0 >= width * 0.6, 'wide characters count double')
+	eq(s.text_width('跳过片头 ›'), 10)
+	eq(s.text_width('Skip opening ›'), 14)
+end)
+
+test('a language switch with no button on screen draws nothing', function()
+	local s = play(500)
+	local o = overlay(s)
+	mock.set_script_opt('hikari-language', 'en')
+	eq(o.updates, 0)
+	eq(o.visible, false)
 end)
 
 print(string.format('\n%d passed, %d failed', passed, failed))

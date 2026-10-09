@@ -2,12 +2,13 @@
 -- it never downloads or installs anything.
 --
 -- When there is a newer release than the installed one, the first file opened
--- shows "hikari X.Y.Z disponible · Alt+u" for a few seconds, and a button
+-- shows "hikari X.Y.Z is out · Alt+u" for a few seconds, and a button
 -- appears in uosc's controls bar (uosc.conf shows it while
 -- user-data/hikari_update/available is true, mpv 0.36+). The button, or Alt+u,
 -- opens a menu with: the release notes in the browser, copying the update
--- command (PowerShell on Windows, a terminal elsewhere) and "No avisar de esta
--- versión", which stops the notice for that version only.
+-- command (PowerShell on Windows, a terminal elsewhere) and "Don't remind me of
+-- this version", which stops the notice for that version only. Texts follow
+-- hikari's language (hikari-i18n).
 --
 -- mpv turns this file name into the script name `hikari_update`, so:
 --   input.conf:  Alt+u script-binding hikari_update/open-menu
@@ -67,6 +68,22 @@
 local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
+
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
 
 local script_name = mp.get_script_name()
 
@@ -277,10 +294,6 @@ local function update_command(p)
 	return (p or platform()) == 'windows' and UPDATE_COMMANDS.windows or UPDATE_COMMANDS.unix
 end
 
--- Where the command is pasted, for the OSD.
-local function shell_name(p)
-	return (p or platform()) == 'windows' and 'PowerShell' or 'un terminal'
-end
 
 -- The release page of a version, nil when it is not one.
 local function release_url(version)
@@ -370,7 +383,7 @@ local function show_notice()
 	local v = notice_version()
 	if v and notified ~= v then
 		notified = v
-		mp.osd_message('hikari ' .. v .. ' disponible · Alt+u', NOTICE_SECONDS)
+		mp.osd_message(i18n.t('update_notice', {version = v}), NOTICE_SECONDS)
 	end
 end
 
@@ -506,21 +519,21 @@ local function menu_data()
 	local dismissed = v ~= nil and v == state.dismissed
 	return {
 		type = MENU_TYPE,
-		title = 'hikari ' .. tostring(v) .. ' disponible',
+		title = i18n.t('update_title', {version = tostring(v)}),
 		items = {
 			{
-				title = 'Ver novedades de la ' .. tostring(v),
-				hint = 'navegador',
+				title = i18n.t('update_notes', {version = tostring(v)}),
+				hint = i18n.t('update_notes_hint'),
 				value = {'script-message-to', script_name, 'open-notes'},
 			},
 			{
-				title = 'Copiar comando de actualización',
-				hint = p == 'windows' and 'PowerShell' or 'terminal',
+				title = i18n.t('update_copy'),
+				hint = p == 'windows' and 'PowerShell' or i18n.t('update_copy_hint_terminal'),
 				value = {'script-message-to', script_name, 'copy-command'},
 			},
 			{
-				title = 'No avisar de esta versión',
-				hint = dismissed and 'ya no se avisa' or nil,
+				title = i18n.t('update_dismiss'),
+				hint = dismissed and i18n.t('update_dismissed_hint') or nil,
 				selectable = not dismissed,
 				muted = dismissed or nil,
 				value = {'script-message-to', script_name, 'dismiss'},
@@ -529,27 +542,31 @@ local function menu_data()
 	}
 end
 
-local function open_menu()
-	if not opts.enabled then
-		mp.osd_message('hikari: el aviso de versiones está desactivado', 3)
-		return
-	end
-	if not installed then installed = installed_version() end
-	if not installed then
-		mp.osd_message('hikari: versión instalada desconocida, no se comprueban versiones', 3)
-		return
-	end
-	if not checked then state = read_state() end
-	if not pending_version() then
-		mp.osd_message('hikari ' .. installed .. ': no hay ninguna versión nueva', 3)
-		return
-	end
+local function send_menu(message)
 	local json, err = utils.format_json(menu_data())
 	if not json then
 		msg.error('Could not build the update menu: ' .. tostring(err))
 		return
 	end
-	mp.commandv('script-message-to', 'uosc', 'open-menu', json)
+	mp.commandv('script-message-to', 'uosc', message, json)
+end
+
+local function open_menu()
+	if not opts.enabled then
+		mp.osd_message(i18n.t('update_disabled'), 3)
+		return
+	end
+	if not installed then installed = installed_version() end
+	if not installed then
+		mp.osd_message(i18n.t('update_unknown'), 3)
+		return
+	end
+	if not checked then state = read_state() end
+	if not pending_version() then
+		mp.osd_message(i18n.t('update_none', {version = installed}), 3)
+		return
+	end
+	send_menu('open-menu')
 end
 
 local function open_notes()
@@ -559,17 +576,17 @@ local function open_notes()
 	local args = open_url_args(url)
 	if not args then
 		msg.warn('Could not open ' .. url .. ': no usable SystemRoot')
-		mp.osd_message('No se pudo abrir el navegador. Las novedades están en:\n' .. url, 10)
+		mp.osd_message(i18n.t('update_browser_failed', {url = url}), 10)
 		return
 	end
 	mp.command_native_async({
 		name = 'subprocess', args = args, playback_only = false, detach = true,
 	}, function(success, result)
 		if success and type(result) == 'table' and result.error_string ~= 'init' then
-			mp.osd_message('Abriendo las novedades de la ' .. v .. ' en el navegador', 3)
+			mp.osd_message(i18n.t('update_opening', {version = v}), 3)
 		else
 			msg.warn('Could not open ' .. url)
-			mp.osd_message('No se pudo abrir el navegador. Las novedades están en:\n' .. url, 10)
+			mp.osd_message(i18n.t('update_browser_failed', {url = url}), 10)
 		end
 	end)
 end
@@ -598,11 +615,13 @@ end
 local function copy_command()
 	local p = platform()
 	local command = update_command(p)
+	-- Where the command is pasted: PowerShell on Windows, a terminal elsewhere.
+	local shell = p == 'windows' and 'powershell' or 'terminal'
 	local function done(ok)
 		if ok then
-			mp.osd_message('Comando copiado: pégalo en ' .. shell_name(p), 4)
+			mp.osd_message(i18n.t('update_copied_' .. shell), 4)
 		else
-			mp.osd_message('No se pudo copiar. Escribe en ' .. shell_name(p) .. ':\n' .. command, 15)
+			mp.osd_message(i18n.t('update_copy_failed_' .. shell, {command = command}), 15)
 		end
 	end
 	if mp.set_property('clipboard/text', command) then return done(true) end
@@ -618,7 +637,7 @@ local function dismiss()
 	save_state(state)
 	set_button(false)
 	mp.commandv('script-message-to', 'uosc', 'close-menu', MENU_TYPE)
-	mp.osd_message('hikari ' .. v .. ': no se volverá a avisar', 3)
+	mp.osd_message(i18n.t('update_dismissed', {version = v}), 3)
 end
 
 set_button(false)
@@ -627,6 +646,10 @@ mp.register_script_message('open-notes', open_notes)
 mp.register_script_message('copy-command', copy_command)
 mp.register_script_message('dismiss', dismiss)
 mp.register_event('file-loaded', on_file_loaded)
+-- Another language: an open update menu is redrawn in it.
+i18n.on_change(function()
+	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE and pending_version() then send_menu('update-menu') end
+end)
 
 if HIKARI_UPDATE_TEST then
 	return {

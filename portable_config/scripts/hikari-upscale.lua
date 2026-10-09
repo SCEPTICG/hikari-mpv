@@ -49,6 +49,22 @@ local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
 
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
 local script_name = mp.get_script_name()
 
 local PERSIST_PATH = '~~/hikari-upscale.conf'
@@ -57,17 +73,19 @@ local MENU_TYPE = 'hikari-upscale'
 -- uosc shows the controls-bar button only while this is true (see uosc.conf).
 local AVAILABLE_PROP = 'user-data/hikari_upscale/available'
 
--- Short descriptions after Anime4K's GLSL_Instructions_Advanced.md ("Modes").
--- `short` is how "Automático" names the mode it picked.
+-- `short` is how Anime4K names the mode (and how "Automático" names the mode
+-- it picked); `like`, for the doubled modes, the mode they sharpen. Names and
+-- hints come from hikari-i18n (upscale_mode_*, upscale_hint_*), short
+-- descriptions after Anime4K's GLSL_Instructions_Advanced.md ("Modes").
 local MODES = {
-	{id = 'off', name = 'Apagado', hint = 'sin Anime4K'},
-	{id = 'auto', name = 'Automático', hint = 'C, B o A+A según la resolución'},
-	{id = 'a', name = 'Modo A', short = 'A', hint = '1080p borroso o comprimido'},
-	{id = 'b', name = 'Modo B', short = 'B', hint = '720p, bordes dentados'},
-	{id = 'c', name = 'Modo C', short = 'C', hint = 'SD (480p) limpio, imágenes'},
-	{id = 'aa', name = 'Modo A+A', short = 'A+A', hint = 'como A, más nítido, más lento'},
-	{id = 'bb', name = 'Modo B+B', short = 'B+B', hint = 'como B, más nítido, más lento'},
-	{id = 'ca', name = 'Modo C+A', short = 'C+A', hint = 'como C, más nítido, más lento'},
+	{id = 'off'},
+	{id = 'auto'},
+	{id = 'a', short = 'A'},
+	{id = 'b', short = 'B'},
+	{id = 'c', short = 'C'},
+	{id = 'aa', short = 'A+A', like = 'A'},
+	{id = 'bb', short = 'B+B', like = 'B'},
+	{id = 'ca', short = 'C+A', like = 'C'},
 }
 
 -- What "Automático" picks: the first rule whose `max` the height does not
@@ -78,9 +96,10 @@ local AUTO_RULES = {
 	{max = 1100, mode = 'aa'},
 }
 
+-- Texts: upscale_quality_<id>, its _hint and its _osd in hikari-i18n.
 local QUALITIES = {
-	{id = 'hq', name = 'Alta', hint = 'gráficas potentes', osd = 'Alta calidad'},
-	{id = 'fast', name = 'Rápida', hint = 'gráficas modestas', osd = 'Rápido'},
+	{id = 'hq'},
+	{id = 'fast'},
 }
 
 local DEFAULTS = {mode = 'off', quality = 'fast'}
@@ -122,6 +141,19 @@ local CHAINS = {
 			'Anime4K_Upscale_CNN_x2_S.glsl'},
 	},
 }
+
+-- Menu and OSD texts of a mode or a quality, in the current language.
+local function mode_name(mode)
+	if mode.short then return i18n.t('upscale_mode_named', {name = mode.short}) end
+	return i18n.t('upscale_mode_' .. mode.id)
+end
+local function mode_hint(mode)
+	if mode.like then return i18n.t('upscale_hint_double', {mode = mode.like}) end
+	return i18n.t('upscale_hint_' .. mode.id)
+end
+local function quality_name(quality) return i18n.t('upscale_quality_' .. quality.id) end
+local function quality_hint(quality) return i18n.t('upscale_quality_' .. quality.id .. '_hint') end
+local function quality_osd(quality) return i18n.t('upscale_quality_' .. quality.id .. '_osd') end
 
 local function index_by_id(list)
 	local t = {}
@@ -314,7 +346,7 @@ local function save()
 	if content and path then ok, err = write_file_atomic(path, content) end
 	if not ok then
 		msg.warn('Could not save upscale settings to ' .. tostring(path) .. ': ' .. tostring(err))
-		mp.osd_message('hikari: no se pudo guardar el escalado', 3)
+		mp.osd_message(i18n.t('upscale_save_failed'), 3)
 	end
 	return ok
 end
@@ -323,15 +355,15 @@ end
 -- Automático (B, 720p)".
 local function auto_detail()
 	local height = video_height()
-	if not height then return 'sin vídeo' end
+	if not height then return i18n.t('upscale_no_video') end
 	local target = auto_mode_for(height)
-	return (target and target.short or 'sin shaders') .. ', ' .. math.floor(height) .. 'p'
+	return (target and target.short or i18n.t('upscale_no_shaders')) .. ', ' .. math.floor(height) .. 'p'
 end
 
 local function osd_text(mode, quality)
-	if mode.id == 'off' then return 'Anime4K: apagado' end
-	if mode.id == 'auto' then return 'Anime4K: ' .. mode.name .. ' (' .. auto_detail() .. ')' end
-	return 'Anime4K: ' .. mode.name .. ' (' .. quality.osd .. ')'
+	if mode.id == 'off' then return i18n.t('upscale_osd_off') end
+	if mode.id == 'auto' then return 'Anime4K: ' .. mode_name(mode) .. ' (' .. auto_detail() .. ')' end
+	return 'Anime4K: ' .. mode_name(mode) .. ' (' .. quality_osd(quality) .. ')'
 end
 
 local function refresh_installed()
@@ -344,19 +376,21 @@ local function menu_data()
 	local items = {}
 	if not installed then
 		items[#items + 1] = {
-			title = 'Anime4K no está instalado: ejecuta el instalador',
+			title = i18n.t('upscale_not_installed_menu'),
 			selectable = false, muted = true, italic = true, align = 'center', separator = true,
 		}
 	end
-	local function group(title, list, current, message)
+	local function group(title, list, current, message, name_of, hint_of)
 		if #items > 0 then items[#items].separator = true end
 		items[#items + 1] = {title = title, selectable = false, muted = true, italic = true}
 		for _, entry in ipairs(list) do
 			local usable = installed or (message == 'set-mode' and entry.id == 'off')
-			local hint = entry.hint
-			if entry.id == 'auto' and entry == current and installed then hint = 'ahora: ' .. auto_detail() end
+			local hint = hint_of(entry)
+			if entry.id == 'auto' and entry == current and installed then
+				hint = i18n.t('upscale_auto_now', {detail = auto_detail()})
+			end
 			items[#items + 1] = {
-				title = entry.name,
+				title = name_of(entry),
 				hint = hint,
 				active = entry == current,
 				selectable = usable,
@@ -365,11 +399,11 @@ local function menu_data()
 			}
 		end
 	end
-	group('Modo', MODES, active.mode, 'set-mode')
-	group('Calidad', QUALITIES, active.quality, 'set-quality')
+	group(i18n.t('upscale_group_mode'), MODES, active.mode, 'set-mode', mode_name, mode_hint)
+	group(i18n.t('upscale_group_quality'), QUALITIES, active.quality, 'set-quality', quality_name, quality_hint)
 	-- keep_open: picking an item doesn't close the menu; each pick sends
 	-- update-menu to move the marks.
-	return {type = MENU_TYPE, title = 'Escalado (Anime4K)', keep_open = true, items = items}
+	return {type = MENU_TYPE, title = i18n.t('upscale_title'), keep_open = true, items = items}
 end
 
 local function send_menu(message)
@@ -394,7 +428,7 @@ local function set_mode(id)
 		return
 	end
 	if mode.id ~= 'off' and not refresh_installed() then
-		mp.osd_message('Anime4K no está instalado: ejecuta el instalador de hikari', 3)
+		mp.osd_message(i18n.t('upscale_not_installed_osd'), 3)
 		return
 	end
 	if apply(mode, active.quality) then
@@ -412,13 +446,13 @@ local function set_quality(id)
 		return
 	end
 	if not refresh_installed() then
-		mp.osd_message('Anime4K no está instalado: ejecuta el instalador de hikari', 3)
+		mp.osd_message(i18n.t('upscale_not_installed_osd'), 3)
 		return
 	end
 	if apply(active.mode, quality) then
 		save()
 		if active.mode.id == 'auto' then
-			mp.osd_message('Anime4K: ' .. active.mode.name .. ' (' .. quality.osd .. ')', 2)
+			mp.osd_message('Anime4K: ' .. mode_name(active.mode) .. ' (' .. quality_osd(quality) .. ')', 2)
 		elseif active.mode.id ~= 'off' then
 			mp.osd_message(osd_text(active.mode, quality), 2)
 		end
@@ -436,6 +470,10 @@ end
 mp.register_script_message('set-mode', set_mode)
 mp.register_script_message('set-quality', set_quality)
 mp.add_key_binding(nil, 'open-menu', open_menu)
+-- Another language: an open upscale menu is redrawn in it.
+i18n.on_change(function()
+	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+end)
 mp.register_event('file-loaded', on_video_change)
 mp.observe_property('height', 'native', on_video_change)
 mp.observe_property('video-params/h', 'native', on_video_change)
@@ -467,7 +505,7 @@ end
 if HIKARI_UPSCALE_TEST then
 	return {
 		MODES = MODES, QUALITIES = QUALITIES, CHAINS = CHAINS, DEFAULTS = DEFAULTS, AUTO_RULES = AUTO_RULES,
-		auto_mode_for = auto_mode_for, video_height = video_height, on_video_change = on_video_change,
+		auto_mode_for = auto_mode_for, mode_name = mode_name, mode_hint = mode_hint, video_height = video_height, on_video_change = on_video_change,
 		mode_by_id = mode_by_id, quality_by_id = quality_by_id,
 		required_shaders = required_shaders, chain_paths = chain_paths,
 		shaders_installed = shaders_installed, persist_content = persist_content,

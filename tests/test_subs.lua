@@ -58,6 +58,8 @@ local function load(script_opts, mpv, current)
 	mpv = mpv or MPV_039
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = script_opts or {}
+	-- The assertions below are in Spanish: unless a test says otherwise, hikari speaks Spanish.
+	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	for prop, default in pairs(mpv.options) do
 		mock.props['option-info/' .. prop .. '/name'] = prop
 		mock.props['option-info/' .. prop .. '/default-value'] = default
@@ -116,12 +118,15 @@ test('tables: ids, names and values are valid', function()
 		{s.SIZES, {'small', 'normal', 'large', 'xlarge'}},
 		{s.HEIGHTS, {'normal', 'raised', 'high'}},
 	}
-	for _, pair in ipairs(expected) do
+	local strings = dofile('portable_config/script-modules/hikari-i18n.lua').STRINGS
+	for n, pair in ipairs(expected) do
 		eq(#pair[1], #pair[2], 'count')
 		for i, id in ipairs(pair[2]) do
 			eq(pair[1][i].id, id, 'id #' .. i)
 			assert(s.is_valid_id(id), id)
-			assert(type(pair[1][i].name) == 'string' and #pair[1][i].name > 0, 'name of ' .. id)
+			-- Its name in the menu: subs_<group>_<id> in hikari-i18n.
+			local key = 'subs_' .. ({'style', 'size', 'height'})[n] .. '_' .. id
+			assert(strings[key] and strings[key].en, 'name of ' .. id .. ' (' .. key .. ')')
 		end
 	end
 	-- "Normal" sets nothing; the rest are numbers.
@@ -482,6 +487,19 @@ test('the script avoids os.execute, io.popen and load*', function()
 	local src = read(SCRIPT)
 	for _, bad in ipairs({'os.execute', 'io.popen', 'loadstring', 'loadfile', 'dofile', 'load('}) do
 		assert(not src:find(bad, 1, true), bad)
+	end
+end)
+
+test('a language switch redraws an open subtitle menu in the new language', function()
+	local s = load()
+	eq(s.menu_data().title, 'Subtítulos')
+	mock.props['user-data/uosc/menu/type'] = 'hikari-subs'
+	mock.set_script_opt('hikari-language', 'en')
+	local last = mock.commands[#mock.commands]
+	eq(last[3], 'update-menu')
+	for _, text in ipairs({'"title":"Subtitle style"', 'Dark box', 'Thick outline', 'Classic yellow', 'Extra large',
+		'A little higher', 'Styles only change SRT'}) do
+		assert(last[4]:find(text, 1, true), text)
 	end
 end)
 

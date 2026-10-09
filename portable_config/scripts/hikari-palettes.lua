@@ -12,6 +12,22 @@ local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
 
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
+-- scripts get no mpv folder in package.path, so the folder is added for this
+-- one require and taken out again (see the header of hikari-i18n.lua).
+local i18n = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-i18n')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
 local script_name = mp.get_script_name()
 
 -- Colour keys understood by uosc's `color` option, in the order we write them.
@@ -33,6 +49,7 @@ local OPACITY_KEY_SET = {}
 for _, key in ipairs(OPACITY_KEYS) do OPACITY_KEY_SET[key] = true end
 
 local DEFAULT_ID = 'uosc'
+local MENU_TYPE = 'hikari-palettes'
 local PERSIST_PATH = '~~/hikari-palette.conf'
 
 -- group: 'dark', 'light' or 'custom'. Colours are RRGGBB without '#'.
@@ -133,7 +150,7 @@ local PALETTES = {
 	},
 	-- https://github.com/morhetz/gruvbox (light): bg0, fg1, faded orange/green/red/blue/purple, bg1.
 	{
-		id = 'gruvbox_light', name = 'Gruvbox claro', group = 'light',
+		id = 'gruvbox_light', name_key = 'palette_gruvbox_light', group = 'light',
 		foreground = 'af3a03', foreground_text = 'fbf1c7',
 		background = 'fbf1c7', background_text = '3c3836',
 		curtain = 'ebdbb2', success = '79740e', error = '9d0006',
@@ -141,7 +158,7 @@ local PALETTES = {
 	},
 	-- https://ethanschoonover.com/solarized (light): base3, base01, blue, base2, green, red, cyan, orange.
 	{
-		id = 'solarized_light', name = 'Solarized claro', group = 'light',
+		id = 'solarized_light', name_key = 'palette_solarized_light', group = 'light',
 		foreground = '268bd2', foreground_text = 'fdf6e3',
 		background = 'fdf6e3', background_text = '586e75',
 		curtain = 'eee8d5', success = '859900', error = 'dc322f',
@@ -169,7 +186,14 @@ local PALETTES = {
 	},
 }
 
-local GROUP_TITLES = {dark = 'Oscuras', light = 'Claras', custom = 'Propia'}
+local GROUP_TITLES = {dark = 'palettes_group_dark', light = 'palettes_group_light', custom = 'palettes_group_custom'}
+
+-- A palette's name in the menu: its own name, or the translated one for the
+-- few with a word in it ("Gruvbox Light").
+local function palette_name(palette)
+	if palette.name_key then return i18n.t(palette.name_key) end
+	return palette.name
+end
 
 local by_id = {}
 for _, palette in ipairs(PALETTES) do by_id[palette.id] = palette end
@@ -297,7 +321,7 @@ local function save(palette)
 	if content and path then ok, err = write_file_atomic(path, content) end
 	if not ok then
 		msg.warn('Could not save palette to ' .. tostring(path) .. ': ' .. tostring(err))
-		mp.osd_message('hikari: no se pudo guardar la paleta', 3)
+		mp.osd_message(i18n.t('palettes_save_failed'), 3)
 	end
 	return ok
 end
@@ -319,31 +343,37 @@ local function menu_data()
 		if palette.group ~= last_group then
 			if #items > 0 then items[#items].separator = true end
 			items[#items + 1] = {
-				title = GROUP_TITLES[palette.group], selectable = false, muted = true, italic = true,
+				title = i18n.t(GROUP_TITLES[palette.group]), selectable = false, muted = true, italic = true,
 			}
 			last_group = palette.group
 		end
 		items[#items + 1] = {
-			title = palette.name,
-			hint = palette.id == active_id and 'activa' or nil,
+			title = palette_name(palette),
+			hint = palette.id == active_id and i18n.t('active') or nil,
 			active = palette.id == active_id,
 			value = {'script-message-to', script_name, 'select-palette', palette.id},
 		}
 	end
-	return {type = 'hikari-palettes', title = 'Paletas', items = items}
+	return {type = MENU_TYPE, title = i18n.t('palettes_title'), items = items}
 end
 
-local function open_menu()
+local function send_menu(message)
 	local json, err = utils.format_json(menu_data())
 	if not json then
 		msg.error('Could not build the palette menu: ' .. tostring(err))
 		return
 	end
-	mp.commandv('script-message-to', 'uosc', 'open-menu', json)
+	mp.commandv('script-message-to', 'uosc', message, json)
 end
+
+local function open_menu() send_menu('open-menu') end
 
 mp.register_script_message('select-palette', select_palette)
 mp.add_key_binding(nil, 'open-menu', open_menu)
+-- Another language: an open palette menu is redrawn in it.
+i18n.on_change(function()
+	if mp.get_property('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+end)
 
 -- Re-apply from the table at start-up so edits to a palette (e.g. SCEPTIC) take
 -- effect without picking it again; the included .conf only covers the first frame.
