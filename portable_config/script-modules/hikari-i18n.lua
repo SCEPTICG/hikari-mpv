@@ -695,6 +695,46 @@ local STRINGS = {
 }
 M.STRINGS = STRINGS
 
+-- Track languages: what hikari-media-language.lua puts in mpv's `alang` and
+-- `slang` for each language of hikari, in order of preference, and the
+-- original audio of anime (Japanese) that follows in `alang`.
+--
+-- How mpv compares them with the language of a track (misc/language.c,
+-- mp_match_lang, mpv 0.40 and 0.41):
+-- - The first subtag goes through a table of ISO 639 codes first, so `es`
+--   already matches tracks tagged `es` and `spa`, `de` matches `ger` and
+--   `deu`, `zh` matches `chi` and `zho`. The 3-letter codes are still listed
+--   for mpv 0.35 and older (Debian 12, Ubuntu 22.04), which only compare the
+--   strings as they are; they cost nothing in newer versions.
+-- - A track whose subtags differ from an entry (or that has more subtags than
+--   it) loses 1000 points per subtag, while each later entry only loses 1. So
+--   with `alang=es,ja` a dub tagged `es-419` (as Crunchyroll releases tag
+--   them) loses to a `jpn` track. The regional tags that real releases use
+--   are therefore listed before Japanese. A region that is not listed (say
+--   `es-AR`) still beats `ja-JP`, but not a bare `ja`/`jpn`.
+-- - Extra subtags in an entry are ignored when the track has none: `zh-Hant`
+--   matches a plain `zh`/`chi` track as well as `zh` itself would.
+-- Chinese: hikari's zh-HK is Traditional (Hong Kong, Taiwan), zh-hans
+-- Simplified. Each one lists its own script and regions first, then plain
+-- Chinese, then the other script last: a Chinese dub of either kind still
+-- beats Japanese, and subtitles in the other script beat none.
+M.MEDIA_LANGUAGES = {
+	en = {'en', 'eng', 'en-US', 'en-GB'},
+	es = {'es', 'spa', 'es-ES', 'es-419'},
+	de = {'de', 'ger', 'deu', 'de-DE'},
+	fr = {'fr', 'fre', 'fra', 'fr-FR', 'fr-CA'},
+	it = {'it', 'ita', 'it-IT'},
+	pl = {'pl', 'pol', 'pl-PL'},
+	pt = {'pt', 'por', 'pt-BR', 'pt-PT'},
+	ro = {'ro', 'rum', 'ron', 'ro-RO'},
+	ru = {'ru', 'rus', 'ru-RU'},
+	tr = {'tr', 'tur', 'tr-TR'},
+	uk = {'uk', 'ukr', 'uk-UA'},
+	['zh-HK'] = {'zh-Hant', 'zh-HK', 'zh-TW', 'zh', 'chi', 'zho', 'zh-Hans', 'zh-CN'},
+	['zh-hans'] = {'zh-Hans', 'zh-CN', 'zh', 'chi', 'zho', 'zh-Hant', 'zh-TW'},
+}
+M.ORIGINAL_AUDIO = {'ja', 'jpn'}
+
 -- The code of one of LANGUAGES for a language tag or locale name, nil when it
 -- is none of them. Takes `es`, `es_ES.UTF-8`, `pt-BR`, `zh_CN`, `zh-Hant-TW`,
 -- `de_DE@euro`... (case-insensitive, `_` or `-`). Chinese: Traditional (Hant,
