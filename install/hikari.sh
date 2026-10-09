@@ -533,7 +533,7 @@ mpv_language_code() {
     tag=${tag#"${tag%%[![:space:]]*}"}
     tag=${tag%%[!a-z0-9-]*}
     case $tag in '' | c | posix) return 1 ;; esac
-    lang=${tag%%-*}
+    lang=${tag%%[!a-z]*}
     if [ "$lang" = zh ]; then
         case "-$tag-" in
             *-hans-*) printf zh-hans ;;
