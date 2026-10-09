@@ -98,7 +98,12 @@ $__hNoise = @('_', 'PSItem', 'LASTEXITCODE', '?', '^', '$', 'Matches', 'input')
 $__hNewVars = @(Get-Variable | ForEach-Object { $_.Name } |
         Where-Object { $__hVarsBefore -notcontains $_ -and $_ -notlike '__h*' -and $__hNoise -notcontains $_ })
 $__hNewFuncs = @(Get-ChildItem Function: | ForEach-Object { $_.Name } | Where-Object { $__hFuncsBefore -notcontains $_ })
-$__hNewMods = @(Get-Module | ForEach-Object { $_.Name } | Where-Object { $__hModsBefore -notcontains $_ })
+# PowerShell's own modules under $PSHOME (CimCmdlets, autoloaded by the graphics
+# card query on Windows) load by themselves the first time a command needs them:
+# not the installer's doing either. Anything else, such as its own module, is.
+$__hNewMods = @(Get-Module | Where-Object {
+        $__hModsBefore -notcontains $_.Name -and -not ($_.ModuleBase -and $_.ModuleBase.StartsWith($PSHOME, [System.StringComparison]::OrdinalIgnoreCase))
+    } | ForEach-Object { $_.Name })
 
 [ordered]@{
     Alive        = $true
