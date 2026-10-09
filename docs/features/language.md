@@ -36,7 +36,7 @@ To bind another key, use `script-binding hikari_language/open-menu` in `input.co
 
 hikari's language also decides which audio and subtitle tracks mpv picks on its own, with a recipe made for anime:
 
-- **Audio**: a dub in your language when the file has one, otherwise Japanese.
+- **Audio**: a dub in your language when the file has one (for Spanish and Portuguese, [of your variant](#spanish-and-portuguese-two-variants)), otherwise Japanese.
 - **Subtitles**: in your language. When the audio already is in your language, the dialogue subtitles stay off (a dub needs no subtitles on top), but forced subtitles still show: the track that only translates signs, on-screen text and song lyrics, which the dub does not cover. mpv knows it by the *forced* mark of the track.
 
 With *Español (España)*, that is the same as these three lines in `mpv.conf`:
@@ -86,15 +86,19 @@ mpv only compares language tags, and many releases tag both variants alike. Crun
 
     A Spanish track whose tag and title say nothing counts as Spain's (Crunchyroll only names the Latin American one). A Portuguese one could be either, and loses only to a track of your variant.
 
+4. Some releases put the signs and songs in a track without the *forced* mark, titled *Spanish [Signs]*, *Signs & Songs*, *Carteles*, *Forced* or the like. When mpv picks one of those as your subtitles and the file has full subtitles in your language, hikari takes the full ones, even of the other variant: dialogue with another accent is better than signs only. If that track is the only one in your language, it stays.
+
 So with *Español (España)* that Crunchyroll file plays the *Spanish* subtitles, and with *Español (Latinoamérica)* the Latin American ones. With a dub of your variant, the forced signs track of your variant is preferred too.
+
+**A dub of the other variant does not count as yours.** Say you picked *Español (España)* and the file has the Japanese audio, a Latin American dub and Spanish subtitles from Spain. mpv on its own would play the Latin American dub (it is Spanish, and Spanish comes before Japanese) and show no subtitles. hikari plays the Japanese audio instead, with the full subtitles of Spain. The same the other way round (*Español (Latinoamérica)* and only a dub from Spain) and for Brazil and Portugal. This needs the dub's tag or title to say which variant it is (`es-419`, `es-MX`, *Spanish(Latin_America)*, *Castellano*...): a dub tagged just `spa` with no telling title could be yours, so it plays. It also needs a Japanese audio track; without one, the dub stays. With an `alang` of your own, the dub is your list's choice and hikari leaves it.
 
 Some things stay as they are:
 
-- **No track of your variant**: the other variant is used. Subtitles with another accent are better than none, and a dub of the other variant still beats Japanese.
-- **Whether to play a dub and whether to show subtitles** is still mpv's decision with the options above: hikari only changes which track of your language is used.
+- **Subtitles of the other variant only**: they are used. Subtitles with another accent are better than none.
+- **Whether to show subtitles** is still mpv's decision with the options above (with a dub in your language, only forced ones): hikari only changes which track of your language is used, and plays Japanese instead of a dub of the other variant.
 - **Tracks you chose** (menu, keys, `--aid`/`--sid`, a resumed position) are never touched, and neither is anything with `lavfi-complex`.
 - **It lasts for that file only.** The next file starts again from mpv's own choice.
-- It works whoever set `alang` and `slang`: the variant is what you picked in the menu.
+- **Your own `alang` or `slang`** still win. With hikari's lists, hikari may take any track of your language. With a list of yours (or one changed since hikari set it), hikari only chooses between tracks with the same language tag, the ones no list can tell apart: two tracks tagged `es` (or `es` and `spa`, which are the same for mpv), but not `es-419` and `spa`. So with `slang=es-419,en` in your `mpv.conf`, a track tagged `es-419` stays even next to a `spa` one titled *CR_Spanish*.
 
 A script of your own that sets `aid` or `sid` (such as a `sub-castellano.lua` that picks the Spanish subtitles by their title) wins over hikari: once it has picked a track, mpv no longer treats the choice as its own and hikari leaves it. If hikari's choice is what you wanted, you can remove that script.
 
