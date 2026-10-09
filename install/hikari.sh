@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# sosc installer for macOS and Linux (mpv).
+# hikari installer for macOS and Linux (mpv).
 #
-# Installs, updates or removes sosc (https://github.com/SCEPTICG/sosc), together
+# Installs, updates or removes hikari (https://github.com/SCEPTICG/hikari-mpv), together
 # with uosc and thumbfast (and Anime4K if wanted), in an mpv config folder. It
-# does the same as install/sosc.ps1 on Windows, with the same messages.
+# does the same as install/hikari.ps1 on Windows, with the same messages.
 #
-# From a published release (this file then downloads that release's sosc.zip
+# From a published release (this file then downloads that release's hikari.zip
 # and checks its SHA256 before using it):
-#     curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash
-#     curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash -s -- --uninstall
-# From a copy of the repository (the sosc files then come from that copy):
-#     bash install/sosc.sh
+#     curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
+#     curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --uninstall
+# From a copy of the repository (the hikari files then come from that copy):
+#     bash install/hikari.sh
 #
 # Options:
 #     --install, --uninstall   skip the first menu
@@ -40,18 +40,18 @@
 # Constants
 # ---------------------------------------------------------------------------
 
-sosc_defaults() {
+hikari_defaults() {
     # Release markers. tools/make-release.sh replaces these three lines, matched
     # whole and exactly once each, with the tag, the URL of that release's
-    # sosc.zip and its SHA256. Keep them exactly as they are. In the repository
-    # they stay empty: the sosc files then come from the repository copy this
+    # hikari.zip and its SHA256. Keep them exactly as they are. In the repository
+    # they stay empty: the hikari files then come from the repository copy this
     # file sits in, and run on its own (curl | bash) it says there is no release.
-    SOSC_VERSION='dev'
-    SOSC_RELEASE_URL=''
-    SOSC_RELEASE_SHA256=''
+    HIKARI_VERSION='dev'
+    HIKARI_RELEASE_URL=''
+    HIKARI_RELEASE_SHA256=''
 
     # uosc, thumbfast and Anime4K: fixed versions, verified by SHA256 (the same
-    # ones as install/sosc.ps1).
+    # ones as install/hikari.ps1).
     UOSC_VERSION='5.13.0'
     UOSC_URL='https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     UOSC_SHA256='4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882'
@@ -63,7 +63,7 @@ sosc_defaults() {
     ANIME4K_URL='https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip'
     ANIME4K_SHA256='139cd282086457c5adc79caf7b75b8b825091d71c9b54958c18745fea62d7ed7'
     ANIME4K_PATTERN='^Anime4K_[A-Za-z0-9_]+\.glsl$'
-    # The shaders sosc-upscale.lua uses (its required_shaders()); the zip must have them all.
+    # The shaders hikari-upscale.lua uses (its required_shaders()); the zip must have them all.
     ANIME4K_REQUIRED=(
         'Anime4K_AutoDownscalePre_x2.glsl' 'Anime4K_AutoDownscalePre_x4.glsl' 'Anime4K_Clamp_Highlights.glsl'
         'Anime4K_Restore_CNN_M.glsl' 'Anime4K_Restore_CNN_S.glsl' 'Anime4K_Restore_CNN_Soft_M.glsl'
@@ -71,59 +71,61 @@ sosc_defaults() {
         'Anime4K_Upscale_CNN_x2_M.glsl' 'Anime4K_Upscale_CNN_x2_S.glsl' 'Anime4K_Upscale_CNN_x2_VL.glsl'
         'Anime4K_Upscale_Denoise_CNN_x2_M.glsl' 'Anime4K_Upscale_Denoise_CNN_x2_VL.glsl'
     )
-    # key|command. Only added to input.conf when sosc installed (and manages) Anime4K.
+    # key|command. Only added to input.conf when hikari installed (and manages) Anime4K.
     ANIME4K_BINDINGS=(
-        'Ctrl+1|script-message-to sosc_upscale set-mode a'
-        'Ctrl+2|script-message-to sosc_upscale set-mode b'
-        'Ctrl+3|script-message-to sosc_upscale set-mode c'
-        'Ctrl+4|script-message-to sosc_upscale set-mode aa'
-        'Ctrl+5|script-message-to sosc_upscale set-mode bb'
-        'Ctrl+6|script-message-to sosc_upscale set-mode ca'
-        'Ctrl+7|script-message-to sosc_upscale set-mode auto'
-        'Ctrl+0|script-message-to sosc_upscale set-mode off'
+        'Ctrl+1|script-message-to hikari_upscale set-mode a'
+        'Ctrl+2|script-message-to hikari_upscale set-mode b'
+        'Ctrl+3|script-message-to hikari_upscale set-mode c'
+        'Ctrl+4|script-message-to hikari_upscale set-mode aa'
+        'Ctrl+5|script-message-to hikari_upscale set-mode bb'
+        'Ctrl+6|script-message-to hikari_upscale set-mode ca'
+        'Ctrl+7|script-message-to hikari_upscale set-mode auto'
+        'Ctrl+0|script-message-to hikari_upscale set-mode off'
     )
     INPUT_BINDINGS=(
-        'Alt+p|script-binding sosc_palettes/open-menu'
-        'Alt+s|script-binding sosc_skip/skip'
-        'Alt+t|script-binding sosc_subs/open-menu'
-        'Alt+u|script-binding sosc_update/open-menu'
+        'Alt+p|script-binding hikari_palettes/open-menu'
+        'Alt+s|script-binding hikari_skip/skip'
+        'Alt+t|script-binding hikari_subs/open-menu'
+        'Alt+u|script-binding hikari_update/open-menu'
     )
     MPV_CONF_LINES=(
         'osc=no'
         'osd-bar=no'
-        'include="~~/sosc-palette.conf"'
-        'include="~~/sosc-subs.conf"'
-        'include="~~/sosc-upscale.conf"'
+        'include="~~/hikari-palette.conf"'
+        'include="~~/hikari-subs.conf"'
+        'include="~~/hikari-upscale.conf"'
     )
     SHADERS_DIR='shaders'
     SHADERS_DISABLED_DIR='shaders-desactivados'
-    UPSCALE_CONF='sosc-upscale.conf'
-    # What sosc puts in front of a line of the user's it turns off (never deleted).
-    COMMENT_PREFIX='# sosc: '
-    # mpv.conf lines (outside the sosc block, also inside profiles) of an Anime4K
+    UPSCALE_CONF='hikari-upscale.conf'
+    # What hikari puts in front of a line of the user's it turns off (never deleted).
+    COMMENT_PREFIX='# hikari: '
+    # mpv.conf lines (outside the hikari block, also inside profiles) of an Anime4K
     # installed by hand that turn it on, as Anime4K's templates do.
     ANIME4K_CONF_RE='^[[:space:]]*glsl-shaders(-append|-set|-add)?[[:space:]]*=.*Anime4K_'
-    BACKUP_ORIGINAL_MARK='sosc-backup-original.txt'
+    BACKUP_ORIGINAL_MARK='hikari-backup-original.txt'
     BACKUP_KEEP=3
-    BLOCK_BEGIN='# >>> sosc (managed block, do not edit) >>>'
-    BLOCK_END='# <<< sosc <<<'
-    # Files of sosc that hold the user's choices: only copied when missing.
-    USER_CHOICE_FILES=('sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf')
-    # script-opts not named sosc-*: removed on uninstall only if sosc put them there.
+    BLOCK_BEGIN='# >>> hikari (managed block, do not edit) >>>'
+    BLOCK_END='# <<< hikari <<<'
+    # Files of hikari that hold the user's choices: only copied when missing.
+    USER_CHOICE_FILES=('hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf')
+    # script-opts not named hikari-*: removed on uninstall only if hikari put them there.
     SHARED_CONFS=('uosc.conf' 'thumbfast.conf')
-    RECORD_NAME='sosc-installed.txt'
-    # What sosc-update.lua saves (last check, latest version, dismissed one):
+    RECORD_NAME='hikari-installed.txt'
+    # What hikari-update.lua saves (last check, latest version, dismissed one):
     # state, not a choice. Kept on update, removed on uninstall like the record.
-    UPDATE_STATE='sosc-update.txt'
+    UPDATE_STATE='hikari-update.txt'
     DISABLED_DIR='scripts-desactivados'
-    ORIGINALS_DIR='sosc-originales'
-    # What the backup copies: only what the installer can change.
+    ORIGINALS_DIR='hikari-originales'
+    # What the backup copies: only what the installer can change (and the files
+    # of sosc, which a migration changes).
     BACKUP_ITEMS=(
         'mpv.conf' 'input.conf' 'scripts' 'script-opts' 'fonts'
-        'sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf' 'sosc-installed.txt'
-        'scripts-desactivados' 'sosc-originales' 'shaders-desactivados'
+        'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-installed.txt'
+        'scripts-desactivados' 'hikari-originales' 'shaders-desactivados'
+        'sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf' 'sosc-installed.txt' 'sosc-originales' 'sosc-update.txt'
     )
-    MPV_CONFIG_FILES=('mpv.conf' 'input.conf' 'sosc-installed.txt' 'sosc-palette.conf' 'sosc-subs.conf' 'sosc-upscale.conf')
+    MPV_CONFIG_FILES=('mpv.conf' 'input.conf' 'hikari-installed.txt' 'hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf')
     MPV_CONFIG_DIRS=('scripts' 'script-opts')
     # Scripts that replace mpv's on-screen controller and clash with uosc
     # (file names in scripts/, case-insensitive), and the fonts of some of them.
@@ -134,36 +136,52 @@ sosc_defaults() {
     )
     CONFLICT_FONT_PATTERNS=('modernx*' 'modernz*' 'mordenx*')
     UOSC_LEGACY=('uosc.lua' 'uosc_shared')
-    # sosc-upscale.conf as sosc-upscale.lua writes it for "Apagado" and
+    # hikari-upscale.conf as hikari-upscale.lua writes it for "Apagado" and
     # "Automático" (mode, quality, mode, quality).
-    UPSCALE_CONF_FORMAT='# Generated by sosc-upscale.lua. Mode: %s, quality: %s\nscript-opts-append=sosc_upscale-mode=%s\nscript-opts-append=sosc_upscale-quality=%s\n'
-    RECORD_HEADER='# Written by the sosc installer (install/sosc.sh). Used to update and uninstall; do not edit.'
+    UPSCALE_CONF_FORMAT='# Generated by hikari-upscale.lua. Mode: %s, quality: %s\nscript-opts-append=hikari_upscale-mode=%s\nscript-opts-append=hikari_upscale-quality=%s\n'
+    RECORD_HEADER='# Written by the hikari installer (install/hikari.sh). Used to update and uninstall; do not edit.'
+    # hikari was called sosc until v0.3.0. These names are only used to recognise
+    # an installation of sosc and carry it over to hikari (see migrate_sosc).
+    SOSC_RECORD='sosc-installed.txt'
+    SOSC_BLOCK_BEGIN='# >>> sosc (managed block, do not edit) >>>'
+    SOSC_BLOCK_END='# <<< sosc <<<'
+    SOSC_COMMENT_PREFIX='# sosc: '
+    SOSC_ORIGINALS_DIR='sosc-originales'
+    SOSC_UPDATE_STATE='sosc-update.txt'
+    # The part after sosc-/sosc_ of its choice files (sosc-<name>.conf).
+    SOSC_CHOICES=('palette' 'subs' 'upscale')
+    # Names of its scripts (sosc_<name> in input.conf, sosc-<name> in options).
+    SOSC_SCRIPTS=('palettes' 'palette' 'skip' 'subs' 'speed' 'upscale' 'update' 'title')
+    # What sosc 0.3.0 installed: scripts/sosc-<name>.lua and script-opts/sosc-<name>.conf.
+    # Only these are recognised and removed (a sosc-other.lua of someone else stays).
+    SOSC_LUA_FILES=('palettes' 'skip' 'speed' 'subs' 'title' 'update' 'upscale')
+    SOSC_CONF_FILES=('skip' 'title' 'update')
     GLYPH_POINTER='›'
     GLYPH_ELLIPSIS='…'
 }
 
 # ---------------------------------------------------------------------------
-# Messages (English and Spanish, the same as install/sosc.ps1). %s is replaced
+# Messages (English and Spanish, the same as install/hikari.ps1). %s is replaced
 # by the arguments, in order.
 # ---------------------------------------------------------------------------
 
-sosc_text_en() {
+hikari_text_en() {
     local s=''
     case $1 in
-        title) s='sosc installer' ;;
+        title) s='hikari installer' ;;
         menu) s='1) Install or update\n2) Uninstall\n0) Exit' ;;
         menu_prompt) s='Choose an option' ;;
         invalid) s='Invalid option.' ;;
         detecting) s='Looking for mpv...' ;;
         found_header) s='Config folders found:' ;;
-        found_header_uninst) s='Folders with sosc:' ;;
+        found_header_uninst) s='Folders with hikari:' ;;
         cand_exe) s='     Player: %s' ;;
         cand_config) s='     Config: %s' ;;
         kind_folder) s='config folder' ;;
         kind_flatpak) s='mpv (Flatpak)' ;;
         kind_snap) s='mpv (Snap)' ;;
-        tag_installed) s='[sosc %s installed]' ;;
-        tag_manual) s='[sosc files present, no installer record]' ;;
+        tag_installed) s='[hikari %s installed]' ;;
+        tag_manual) s='[hikari files present, no installer record]' ;;
         tag_readonly) s='[no write permission]' ;;
         tag_new) s='[will be created]' ;;
         opt_other) s='O) Other folder' ;;
@@ -179,12 +197,12 @@ sosc_text_en() {
         none_mac_help) s='Install mpv first and run this installer again: with Homebrew (https://brew.sh), "brew install mpv"; or download mpv.app (https://mpv.io/installation/) into Applications.' ;;
         none_linux_help) s='Install mpv with your distribution'"'"'s package manager and run this installer again, for example:\n  Debian, Ubuntu, Mint: sudo apt install mpv\n  Fedora: sudo dnf install mpv\n  Arch, Manjaro: sudo pacman -S mpv\n  openSUSE: sudo zypper install mpv\n  Flatpak: flatpak install flathub io.mpv.Mpv' ;;
         none_link) s='Ways to get mpv: https://mpv.io/installation/' ;;
-        iina_note) s='IINA is installed: it has its own settings and is not touched. sosc is for mpv.' ;;
+        iina_note) s='IINA is installed: it has its own settings and is not touched. hikari is for mpv.' ;;
         mpv_found) s='mpv: %s' ;;
         yes_no_default_yes) s=' [Y/n] ' ;;
         yes_no_default_no) s=' [y/N] ' ;;
         backup_done) s='Backup: %s' ;;
-        backup_size) s='Backing up the files sosc touches (%s MB)...' ;;
+        backup_size) s='Backing up the files hikari touches (%s MB)...' ;;
         backup_failed) s='Could not back up %s: %s. Nothing was changed in that folder.' ;;
         conflicts_found) s='These scripts replace the mpv controls and clash with uosc:' ;;
         conflicts_confirm) s='Move them to %s? Nothing is deleted.' ;;
@@ -199,41 +217,41 @@ sosc_text_en() {
         download_failed) s='Could not download %s.' ;;
         hash_bad) s='The download of %s does not match its expected SHA256 (expected %s, got %s). Nothing was installed from it.' ;;
         url_bad) s='Refusing to download %s: only HTTPS from GitHub is allowed.' ;;
-        release_unpublished) s='sosc has no published release yet, so this installer cannot run on its own. Download the repository and run install/sosc.sh from that copy.' ;;
-        source_missing) s='sosc files not found in %s.' ;;
-        installing_to) s='Installing sosc into %s' ;;
+        release_unpublished) s='hikari has no published release yet, so this installer cannot run on its own. Download the repository and run install/hikari.sh from that copy.' ;;
+        source_missing) s='hikari files not found in %s.' ;;
+        installing_to) s='Installing hikari into %s' ;;
         uosc_done) s='uosc %s installed.' ;;
         thumbfast_done) s='thumbfast installed.' ;;
-        sosc_files_done) s='sosc files copied (%s).' ;;
+        hikari_files_done) s='hikari files copied (%s).' ;;
         kept_user_file) s='%s already exists: kept (it holds your choice).' ;;
-        removed_stale) s='Removed old sosc file %s.' ;;
+        removed_stale) s='Removed old hikari file %s.' ;;
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
-        block_updated) s='%s: sosc block written.' ;;
-        default_section) s='%s ends inside a [profile]: the sosc block starts with [default] so its options apply to every file.' ;;
-        key_taken) s='%s is already bound in input.conf (%s). sosc leaves it alone; bind another key to "%s" if you want.' ;;
+        block_updated) s='%s: hikari block written.' ;;
+        default_section) s='%s ends inside a [profile]: the hikari block starts with [default] so its options apply to every file.' ;;
+        key_taken) s='%s is already bound in input.conf (%s). hikari leaves it alone; bind another key to "%s" if you want.' ;;
         key_same) s='%s already runs "%s" in your input.conf: left as it is.' ;;
-        install_ok) s='sosc installed in %s.' ;;
+        install_ok) s='hikari installed in %s.' ;;
         target_failed) s='%s: %s' ;;
         restore_hint) s='Your previous config is in %s.' ;;
         summary) s='Done: %s of %s folders.' ;;
         restart) s='Restart the player to see the changes.' ;;
-        uninstalling_from) s='Removing sosc from %s' ;;
+        uninstalling_from) s='Removing hikari from %s' ;;
         ask_remove_uosc) s='Remove uosc too?' ;;
         ask_remove_thumbfast) s='Remove thumbfast too?' ;;
-        ask_restore) s='Move back the interfaces sosc set aside (%s)?' ;;
-        ask_restore_broken) s='Move back the broken scripts sosc set aside (%s)?' ;;
-        ask_delete_choices) s='Delete your saved palette, subtitle and upscaling choices (sosc-palette.conf, sosc-subs.conf, sosc-upscale.conf)?' ;;
+        ask_restore) s='Move back the interfaces hikari set aside (%s)?' ;;
+        ask_restore_broken) s='Move back the broken scripts hikari set aside (%s)?' ;;
+        ask_delete_choices) s='Delete your saved palette, subtitle and upscaling choices (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?' ;;
         restore_skipped) s='%s not moved back: %s already exists.' ;;
-        conf_restored) s='%s: your version from before sosc was put back.' ;;
-        conf_left) s='%s was there before sosc and is left as it is now. Your earlier version is in %s.' ;;
+        conf_restored) s='%s: your version from before hikari was put back.' ;;
+        conf_left) s='%s was there before hikari and is left as it is now. Your earlier version is in %s.' ;;
         conf_unknown) s='%s left in place (no installer record says who put it there).' ;;
-        includes_outside) s='mpv.conf still includes %s outside the sosc block: remove that line, or mpv will log an error at start-up.' ;;
-        uninstall_ok) s='sosc removed from %s.' ;;
-        nothing_to_uninstall) s='sosc does not seem to be installed in any detected folder.' ;;
+        includes_outside) s='mpv.conf still includes %s outside the hikari block: remove that line, or mpv will log an error at start-up.' ;;
+        uninstall_ok) s='hikari removed from %s.' ;;
+        nothing_to_uninstall) s='hikari does not seem to be installed in any detected folder.' ;;
         usage_many) s='Several folders found; without questions, choose with --target:' ;;
         usage_none) s='Nothing to work on.' ;;
         error_generic) s='Error: %s' ;;
-        malformed_block) s='%s has an incomplete or repeated sosc block (a start or end marker is missing). Fix it by hand and run the installer again.' ;;
+        malformed_block) s='%s has an incomplete or repeated hikari block (a start or end marker is missing). Fix it by hand and run the installer again.' ;;
         outside_target) s='Refusing to delete %s: it is outside %s.' ;;
         cancelled) s='Cancelled.' ;;
         link_skipped) s='Not copied to the backup: %s is a symbolic link.' ;;
@@ -246,7 +264,7 @@ sosc_text_en() {
         root_warn) s='The installer is running as root (sudo). It does not need it, and what it creates would belong to root.' ;;
         root_confirm) s='Continue as root?' ;;
         root_refused) s='As root and without questions nothing is done: run it as your own user, without sudo.' ;;
-        record_bad) s='Ignored an invalid entry in sosc-installed.txt: %s' ;;
+        record_bad) s='Ignored an invalid entry in hikari-installed.txt: %s' ;;
         menu_help) s='↑/↓ to move · Enter to choose · Esc to exit' ;;
         multi_help) s='↑/↓ to move · Space to tick or untick · Esc to exit' ;;
         multi_help2) s='Enter to confirm (with nothing ticked, the highlighted one is chosen)' ;;
@@ -262,20 +280,20 @@ sosc_text_en() {
         anime4k_declined) s='Anime4K not installed. Run the installer again to install it.' ;;
         anime4k_kept) s='Anime4K left as it is (--anime4k no).' ;;
         anime4k_manual) s='There is already an Anime4K installed by hand in %s (files: %s).' ;;
-        anime4k_manage) s='Let sosc take care of it? Your files go to %s (nothing is deleted, they come back on uninstall) and sosc installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+7 keys.' ;;
-        anime4k_manual_kept) s='Your Anime4K is left as it is, with its own keys. The sosc Escalado menu changes the same shaders and does not know what those keys turned on.' ;;
-        anime4k_keys_found) s='input.conf binds these Anime4K keys outside the sosc block:' ;;
-        anime4k_comment) s='Turn those lines off by putting "# sosc: " in front of them, so the sosc keys can use them? They are turned back on when you uninstall.' ;;
-        anime4k_commented) s='input.conf: lines turned off with "# sosc: ": %s.' ;;
-        anime4k_bad_zip) s='The Anime4K download does not have the shaders sosc needs (%s).' ;;
-        anime4k_conf_found) s='mpv.conf turns Anime4K on at start-up outside the sosc block:' ;;
-        anime4k_conf_comment) s='Turn those lines off by putting "# sosc: " in front of them? Otherwise Anime4K would always be on, even with Apagado. They are turned back on when you uninstall.' ;;
-        anime4k_conf_commented) s='mpv.conf: lines turned off with "# sosc: ": %s.' ;;
-        anime4k_failed) s='Could not get Anime4K: %s The rest of sosc is installed; run the installer again to install Anime4K.' ;;
-        anime4k_uptodate) s='Anime4K %s is already installed, with every shader sosc needs.' ;;
+        anime4k_manage) s='Let hikari take care of it? Your files go to %s (nothing is deleted, they come back on uninstall) and hikari installs its own copy, with the Escalado menu and the Ctrl+0 to Ctrl+7 keys.' ;;
+        anime4k_manual_kept) s='Your Anime4K is left as it is, with its own keys. The hikari Escalado menu changes the same shaders and does not know what those keys turned on.' ;;
+        anime4k_keys_found) s='input.conf binds these Anime4K keys outside the hikari block:' ;;
+        anime4k_comment) s='Turn those lines off by putting "# hikari: " in front of them, so the hikari keys can use them? They are turned back on when you uninstall.' ;;
+        anime4k_commented) s='input.conf: lines turned off with "# hikari: ": %s.' ;;
+        anime4k_bad_zip) s='The Anime4K download does not have the shaders hikari needs (%s).' ;;
+        anime4k_conf_found) s='mpv.conf turns Anime4K on at start-up outside the hikari block:' ;;
+        anime4k_conf_comment) s='Turn those lines off by putting "# hikari: " in front of them? Otherwise Anime4K would always be on, even with Apagado. They are turned back on when you uninstall.' ;;
+        anime4k_conf_commented) s='mpv.conf: lines turned off with "# hikari: ": %s.' ;;
+        anime4k_failed) s='Could not get Anime4K: %s The rest of hikari is installed; run the installer again to install Anime4K.' ;;
+        anime4k_uptodate) s='Anime4K %s is already installed, with every shader hikari needs.' ;;
         ask_uncomment_conf) s='Turn your Anime4K lines in mpv.conf back on?' ;;
         uncommented_conf) s='mpv.conf: lines turned back on: %s.' ;;
-        backup_original_note) s='This backup holds the mpv configuration from before sosc was first installed here. The sosc installer never deletes it.' ;;
+        backup_original_note) s='This backup holds the mpv configuration from before hikari was first installed here. The hikari installer never deletes it.' ;;
         gpu_line) s='Graphics card: %s → quality %s' ;;
         gpu_unknown) s='unknown' ;;
         quality_hq) s='High' ;;
@@ -285,37 +303,44 @@ sosc_text_en() {
         ask_restore_anime4k) s='Move your earlier Anime4K back from %s?' ;;
         ask_uncomment) s='Turn your Anime4K keys in input.conf back on?' ;;
         uncommented) s='input.conf: lines turned back on: %s.' ;;
-        osc_orphan) s='mpv.conf has "%s" outside the sosc block: without uosc the player would have no on-screen controls.' ;;
-        ask_restore_osc) s='Move back the interfaces sosc set aside (%s), so there are controls?' ;;
-        ask_comment_osc) s='Turn that line off by putting "# sosc: " in front of it, so mpv shows its own controls?' ;;
-        osc_commented) s='mpv.conf: "%s" turned off with "# sosc: ".' ;;
+        osc_orphan) s='mpv.conf has "%s" outside the hikari block: without uosc the player would have no on-screen controls.' ;;
+        ask_restore_osc) s='Move back the interfaces hikari set aside (%s), so there are controls?' ;;
+        ask_comment_osc) s='Turn that line off by putting "# hikari: " in front of it, so mpv shows its own controls?' ;;
+        osc_commented) s='mpv.conf: "%s" turned off with "# hikari: ".' ;;
         osc_left) s='Left as it is: remove that line or install an on-screen controller to get controls back.' ;;
-        unsupported_os) s='This installer is for macOS and Linux (this system is %s). On Windows use sosc.ps1: see the README.' ;;
+        unsupported_os) s='This installer is for macOS and Linux (this system is %s). On Windows use hikari.ps1: see the README.' ;;
         missing_tool) s='%s is needed and was not found.' ;;
         bad_option) s='Unknown option: %s (see --help).' ;;
         no_input) s='No terminal to ask on: every question takes its default answer.' ;;
-        usage) s='Usage: sosc.sh [--install | --uninstall] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Usage: hikari.sh [--install | --uninstall] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        tag_sosc) s='[sosc installed: it becomes hikari]' ;;
+        sosc_found) s='sosc is installed here (the name of hikari until v0.3.0): it becomes hikari, with your choices.' ;;
+        sosc_line_changed) s='%s: line of yours changed from sosc to hikari: %s' ;;
+        sosc_choice_moved) s='%s -> %s (your choice is kept).' ;;
+        sosc_done) s='sosc removed: hikari takes its place. Uninstalling hikari puts everything back as it was before sosc.' ;;
+        sosc_old_backups) s='There are %s old sosc backups (%s-respaldo-sosc-*). They are not deleted: delete them yourself when you no longer need them.' ;;
+        sosc_link_left) s='Left as it is: %s is a symbolic link, nothing is written or moved through it.' ;;
     esac
     printf '%s' "$s"
 }
 
-sosc_text_es() {
+hikari_text_es() {
     local s=''
     case $1 in
-        title) s='Instalador de sosc' ;;
+        title) s='Instalador de hikari' ;;
         menu) s='1) Instalar o actualizar\n2) Desinstalar\n0) Salir' ;;
         menu_prompt) s='Elige una opción' ;;
         invalid) s='Opción no válida.' ;;
         detecting) s='Buscando mpv...' ;;
         found_header) s='Carpetas de configuración encontradas:' ;;
-        found_header_uninst) s='Carpetas con sosc:' ;;
+        found_header_uninst) s='Carpetas con hikari:' ;;
         cand_exe) s='     Reproductor: %s' ;;
         cand_config) s='     Configuración: %s' ;;
         kind_folder) s='carpeta de configuración' ;;
         kind_flatpak) s='mpv (Flatpak)' ;;
         kind_snap) s='mpv (Snap)' ;;
-        tag_installed) s='[sosc %s instalado]' ;;
-        tag_manual) s='[hay ficheros de sosc, sin registro del instalador]' ;;
+        tag_installed) s='[hikari %s instalado]' ;;
+        tag_manual) s='[hay ficheros de hikari, sin registro del instalador]' ;;
         tag_readonly) s='[sin permiso de escritura]' ;;
         tag_new) s='[se creará]' ;;
         opt_other) s='O) Otra carpeta' ;;
@@ -331,12 +356,12 @@ sosc_text_es() {
         none_mac_help) s='Instala primero mpv y vuelve a ejecutar este instalador: con Homebrew (https://brew.sh), "brew install mpv"; o descarga mpv.app (https://mpv.io/installation/) en Aplicaciones.' ;;
         none_linux_help) s='Instala mpv con el gestor de paquetes de tu distribución y vuelve a ejecutar este instalador, por ejemplo:\n  Debian, Ubuntu, Mint: sudo apt install mpv\n  Fedora: sudo dnf install mpv\n  Arch, Manjaro: sudo pacman -S mpv\n  openSUSE: sudo zypper install mpv\n  Flatpak: flatpak install flathub io.mpv.Mpv' ;;
         none_link) s='Formas de conseguir mpv: https://mpv.io/installation/' ;;
-        iina_note) s='IINA está instalado: tiene su propia configuración y no se toca. sosc es para mpv.' ;;
+        iina_note) s='IINA está instalado: tiene su propia configuración y no se toca. hikari es para mpv.' ;;
         mpv_found) s='mpv: %s' ;;
         yes_no_default_yes) s=' [S/n] ' ;;
         yes_no_default_no) s=' [s/N] ' ;;
         backup_done) s='Copia de seguridad: %s' ;;
-        backup_size) s='Copia de seguridad de los ficheros que toca sosc (%s MB)...' ;;
+        backup_size) s='Copia de seguridad de los ficheros que toca hikari (%s MB)...' ;;
         backup_failed) s='No se ha podido hacer la copia de seguridad de %s: %s. No se ha cambiado nada en esa carpeta.' ;;
         conflicts_found) s='Estos scripts sustituyen los controles de mpv y chocan con uosc:' ;;
         conflicts_confirm) s='¿Moverlos a %s? No se borra nada.' ;;
@@ -351,41 +376,41 @@ sosc_text_es() {
         download_failed) s='No se ha podido descargar %s.' ;;
         hash_bad) s='La descarga de %s no coincide con su SHA256 esperado (esperado %s, obtenido %s). No se ha instalado nada de ella.' ;;
         url_bad) s='No se descarga %s: solo se admite HTTPS desde GitHub.' ;;
-        release_unpublished) s='sosc aún no tiene ninguna versión publicada, así que este instalador no puede funcionar suelto. Descarga el repositorio y ejecuta install/sosc.sh desde esa copia.' ;;
-        source_missing) s='No se encuentran los ficheros de sosc en %s.' ;;
-        installing_to) s='Instalando sosc en %s' ;;
+        release_unpublished) s='hikari aún no tiene ninguna versión publicada, así que este instalador no puede funcionar suelto. Descarga el repositorio y ejecuta install/hikari.sh desde esa copia.' ;;
+        source_missing) s='No se encuentran los ficheros de hikari en %s.' ;;
+        installing_to) s='Instalando hikari en %s' ;;
         uosc_done) s='uosc %s instalado.' ;;
         thumbfast_done) s='thumbfast instalado.' ;;
-        sosc_files_done) s='Ficheros de sosc copiados (%s).' ;;
+        hikari_files_done) s='Ficheros de hikari copiados (%s).' ;;
         kept_user_file) s='%s ya existe: se conserva (guarda tu elección).' ;;
-        removed_stale) s='Borrado el fichero antiguo de sosc %s.' ;;
+        removed_stale) s='Borrado el fichero antiguo de hikari %s.' ;;
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
-        block_updated) s='%s: bloque de sosc escrito.' ;;
-        default_section) s='%s termina dentro de un [perfil]: el bloque de sosc empieza con [default] para que sus opciones valgan siempre.' ;;
-        key_taken) s='%s ya está asignada en input.conf (%s). sosc no la toca; si quieres, asigna otra tecla a "%s".' ;;
+        block_updated) s='%s: bloque de hikari escrito.' ;;
+        default_section) s='%s termina dentro de un [perfil]: el bloque de hikari empieza con [default] para que sus opciones valgan siempre.' ;;
+        key_taken) s='%s ya está asignada en input.conf (%s). hikari no la toca; si quieres, asigna otra tecla a "%s".' ;;
         key_same) s='%s ya ejecuta "%s" en tu input.conf: se deja como está.' ;;
-        install_ok) s='sosc instalado en %s.' ;;
+        install_ok) s='hikari instalado en %s.' ;;
         target_failed) s='%s: %s' ;;
         restore_hint) s='Tu configuración anterior está en %s.' ;;
         summary) s='Hecho: %s de %s carpetas.' ;;
         restart) s='Reinicia el reproductor para ver los cambios.' ;;
-        uninstalling_from) s='Quitando sosc de %s' ;;
+        uninstalling_from) s='Quitando hikari de %s' ;;
         ask_remove_uosc) s='¿Quitar también uosc?' ;;
         ask_remove_thumbfast) s='¿Quitar también thumbfast?' ;;
-        ask_restore) s='¿Devolver a su sitio las interfaces que sosc apartó (%s)?' ;;
-        ask_restore_broken) s='¿Devolver a su sitio los scripts rotos que sosc apartó (%s)?' ;;
-        ask_delete_choices) s='¿Borrar tus elecciones guardadas de paleta, subtítulos y escalado (sosc-palette.conf, sosc-subs.conf, sosc-upscale.conf)?' ;;
+        ask_restore) s='¿Devolver a su sitio las interfaces que hikari apartó (%s)?' ;;
+        ask_restore_broken) s='¿Devolver a su sitio los scripts rotos que hikari apartó (%s)?' ;;
+        ask_delete_choices) s='¿Borrar tus elecciones guardadas de paleta, subtítulos y escalado (hikari-palette.conf, hikari-subs.conf, hikari-upscale.conf)?' ;;
         restore_skipped) s='%s no se devuelve: ya existe %s.' ;;
-        conf_restored) s='%s: se ha devuelto tu versión de antes de sosc.' ;;
-        conf_left) s='%s ya existía antes de sosc y se deja como está ahora. Tu versión anterior está en %s.' ;;
+        conf_restored) s='%s: se ha devuelto tu versión de antes de hikari.' ;;
+        conf_left) s='%s ya existía antes de hikari y se deja como está ahora. Tu versión anterior está en %s.' ;;
         conf_unknown) s='%s se deja en su sitio (no hay registro del instalador que diga quién lo puso).' ;;
-        includes_outside) s='mpv.conf sigue incluyendo %s fuera del bloque de sosc: quita esa línea o mpv dará un error al arrancar.' ;;
-        uninstall_ok) s='sosc quitado de %s.' ;;
-        nothing_to_uninstall) s='No parece que sosc esté instalado en ninguna de las carpetas encontradas.' ;;
+        includes_outside) s='mpv.conf sigue incluyendo %s fuera del bloque de hikari: quita esa línea o mpv dará un error al arrancar.' ;;
+        uninstall_ok) s='hikari quitado de %s.' ;;
+        nothing_to_uninstall) s='No parece que hikari esté instalado en ninguna de las carpetas encontradas.' ;;
         usage_many) s='Hay varias carpetas; sin preguntas, elige con --target:' ;;
         usage_none) s='No hay nada sobre lo que trabajar.' ;;
         error_generic) s='Error: %s' ;;
-        malformed_block) s='%s tiene un bloque de sosc incompleto o repetido (falta una marca de inicio o de fin). Arréglalo a mano y vuelve a ejecutar el instalador.' ;;
+        malformed_block) s='%s tiene un bloque de hikari incompleto o repetido (falta una marca de inicio o de fin). Arréglalo a mano y vuelve a ejecutar el instalador.' ;;
         outside_target) s='No se borra %s: está fuera de %s.' ;;
         cancelled) s='Cancelado.' ;;
         link_skipped) s='No se copia a la copia de seguridad: %s es un enlace simbólico.' ;;
@@ -398,7 +423,7 @@ sosc_text_es() {
         root_warn) s='El instalador se está ejecutando como root (sudo). No le hace falta, y lo que cree pertenecería a root.' ;;
         root_confirm) s='¿Seguir como root?' ;;
         root_refused) s='Como root y sin preguntas no se hace nada: ejecútalo con tu usuario, sin sudo.' ;;
-        record_bad) s='Se ignora una entrada no válida de sosc-installed.txt: %s' ;;
+        record_bad) s='Se ignora una entrada no válida de hikari-installed.txt: %s' ;;
         menu_help) s='↑/↓ para moverte · Intro para elegir · Esc para salir' ;;
         multi_help) s='↑/↓ para moverte · Espacio para marcar o desmarcar · Esc para salir' ;;
         multi_help2) s='Intro para confirmar (si no marcas ninguna, se elige la resaltada)' ;;
@@ -414,20 +439,20 @@ sosc_text_es() {
         anime4k_declined) s='Anime4K no se instala. Vuelve a ejecutar el instalador para instalarlo.' ;;
         anime4k_kept) s='Anime4K se deja como está (--anime4k no).' ;;
         anime4k_manual) s='Ya hay un Anime4K instalado a mano en %s (ficheros: %s).' ;;
-        anime4k_manage) s='¿Quieres que lo gestione sosc? Tus ficheros van a %s (no se borra nada y vuelven al desinstalar) y sosc instala su propia copia, con el menú Escalado y los atajos Ctrl+0 a Ctrl+7.' ;;
-        anime4k_manual_kept) s='Tu Anime4K se queda como está, con sus atajos. El menú Escalado de sosc cambia los mismos shaders y no sabe lo que hayan activado esos atajos.' ;;
-        anime4k_keys_found) s='input.conf tiene estos atajos de Anime4K fuera del bloque de sosc:' ;;
-        anime4k_comment) s='¿Desactivar esas líneas poniéndoles delante "# sosc: ", para que los atajos de sosc puedan usar esas teclas? Se vuelven a activar al desinstalar.' ;;
-        anime4k_commented) s='input.conf: líneas desactivadas con "# sosc: ": %s.' ;;
-        anime4k_bad_zip) s='La descarga de Anime4K no tiene los shaders que necesita sosc (%s).' ;;
-        anime4k_conf_found) s='mpv.conf enciende Anime4K al arrancar fuera del bloque de sosc:' ;;
-        anime4k_conf_comment) s='¿Desactivar esas líneas poniéndoles delante "# sosc: "? Si no, Anime4K estaría siempre encendido, incluso con Apagado. Se vuelven a activar al desinstalar.' ;;
-        anime4k_conf_commented) s='mpv.conf: líneas desactivadas con "# sosc: ": %s.' ;;
-        anime4k_failed) s='No se ha podido obtener Anime4K: %s El resto de sosc se instala; vuelve a ejecutar el instalador para instalar Anime4K.' ;;
-        anime4k_uptodate) s='Anime4K %s ya está instalado, con todos los shaders que necesita sosc.' ;;
+        anime4k_manage) s='¿Quieres que lo gestione hikari? Tus ficheros van a %s (no se borra nada y vuelven al desinstalar) y hikari instala su propia copia, con el menú Escalado y los atajos Ctrl+0 a Ctrl+7.' ;;
+        anime4k_manual_kept) s='Tu Anime4K se queda como está, con sus atajos. El menú Escalado de hikari cambia los mismos shaders y no sabe lo que hayan activado esos atajos.' ;;
+        anime4k_keys_found) s='input.conf tiene estos atajos de Anime4K fuera del bloque de hikari:' ;;
+        anime4k_comment) s='¿Desactivar esas líneas poniéndoles delante "# hikari: ", para que los atajos de hikari puedan usar esas teclas? Se vuelven a activar al desinstalar.' ;;
+        anime4k_commented) s='input.conf: líneas desactivadas con "# hikari: ": %s.' ;;
+        anime4k_bad_zip) s='La descarga de Anime4K no tiene los shaders que necesita hikari (%s).' ;;
+        anime4k_conf_found) s='mpv.conf enciende Anime4K al arrancar fuera del bloque de hikari:' ;;
+        anime4k_conf_comment) s='¿Desactivar esas líneas poniéndoles delante "# hikari: "? Si no, Anime4K estaría siempre encendido, incluso con Apagado. Se vuelven a activar al desinstalar.' ;;
+        anime4k_conf_commented) s='mpv.conf: líneas desactivadas con "# hikari: ": %s.' ;;
+        anime4k_failed) s='No se ha podido obtener Anime4K: %s El resto de hikari se instala; vuelve a ejecutar el instalador para instalar Anime4K.' ;;
+        anime4k_uptodate) s='Anime4K %s ya está instalado, con todos los shaders que necesita hikari.' ;;
         ask_uncomment_conf) s='¿Volver a activar tus líneas de Anime4K de mpv.conf?' ;;
         uncommented_conf) s='mpv.conf: líneas activadas de nuevo: %s.' ;;
-        backup_original_note) s='Esta copia guarda la configuración de mpv de antes de la primera instalación de sosc en esta carpeta. El instalador de sosc nunca la borra.' ;;
+        backup_original_note) s='Esta copia guarda la configuración de mpv de antes de la primera instalación de hikari en esta carpeta. El instalador de hikari nunca la borra.' ;;
         gpu_line) s='Gráfica: %s → calidad %s' ;;
         gpu_unknown) s='desconocida' ;;
         quality_hq) s='Alta' ;;
@@ -437,16 +462,23 @@ sosc_text_es() {
         ask_restore_anime4k) s='¿Devolver a su sitio tu Anime4K anterior, que está en %s?' ;;
         ask_uncomment) s='¿Volver a activar tus atajos de Anime4K de input.conf?' ;;
         uncommented) s='input.conf: líneas activadas de nuevo: %s.' ;;
-        osc_orphan) s='mpv.conf tiene "%s" fuera del bloque de sosc: sin uosc, el reproductor se quedaría sin controles en pantalla.' ;;
-        ask_restore_osc) s='¿Devolver a su sitio las interfaces que sosc apartó (%s), para tener controles?' ;;
-        ask_comment_osc) s='¿Desactivar esa línea poniéndole delante "# sosc: ", para que mpv muestre sus propios controles?' ;;
-        osc_commented) s='mpv.conf: "%s" desactivada con "# sosc: ".' ;;
+        osc_orphan) s='mpv.conf tiene "%s" fuera del bloque de hikari: sin uosc, el reproductor se quedaría sin controles en pantalla.' ;;
+        ask_restore_osc) s='¿Devolver a su sitio las interfaces que hikari apartó (%s), para tener controles?' ;;
+        ask_comment_osc) s='¿Desactivar esa línea poniéndole delante "# hikari: ", para que mpv muestre sus propios controles?' ;;
+        osc_commented) s='mpv.conf: "%s" desactivada con "# hikari: ".' ;;
         osc_left) s='Se deja como está: quita esa línea o instala otra interfaz para recuperar los controles.' ;;
-        unsupported_os) s='Este instalador es para macOS y Linux (este sistema es %s). En Windows usa sosc.ps1: mira el README.' ;;
+        unsupported_os) s='Este instalador es para macOS y Linux (este sistema es %s). En Windows usa hikari.ps1: mira el README.' ;;
         missing_tool) s='Hace falta %s y no se encuentra.' ;;
         bad_option) s='Opción desconocida: %s (mira --help).' ;;
         no_input) s='No hay terminal en el que preguntar: cada pregunta toma su respuesta por defecto.' ;;
-        usage) s='Uso: sosc.sh [--install | --uninstall] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Uso: hikari.sh [--install | --uninstall] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        tag_sosc) s='[sosc instalado: pasa a ser hikari]' ;;
+        sosc_found) s='Aquí está instalado sosc (el nombre de hikari hasta la v0.3.0): pasa a ser hikari, con tus elecciones.' ;;
+        sosc_line_changed) s='%s: línea tuya cambiada de sosc a hikari: %s' ;;
+        sosc_choice_moved) s='%s -> %s (se conserva tu elección).' ;;
+        sosc_done) s='sosc quitado: hikari ocupa su lugar. Al desinstalar hikari todo vuelve a como estaba antes de sosc.' ;;
+        sosc_old_backups) s='Hay %s copias de seguridad antiguas de sosc (%s-respaldo-sosc-*). No se borran: bórralas tú cuando ya no te hagan falta.' ;;
+        sosc_link_left) s='Se deja como está: %s es un enlace simbólico, no se escribe ni se mueve nada a través de él.' ;;
     esac
     printf '%s' "$s"
 }
@@ -455,26 +487,26 @@ sosc_text_es() {
 T() {
     local key=$1 fmt
     shift
-    if [ "$SOSC_LANG_CODE" = es ]; then fmt=$(sosc_text_es "$key"); else fmt=$(sosc_text_en "$key"); fi
+    if [ "$HIKARI_LANG_CODE" = es ]; then fmt=$(hikari_text_es "$key"); else fmt=$(hikari_text_en "$key"); fi
     [ -n "$fmt" ] || fmt=$key
     # shellcheck disable=SC2059 # the messages above are the format strings.
     printf -- "$fmt" "$@"
 }
 
 # The system's preferred languages on macOS ("es-ES", ...), one per line.
-sosc_apple_languages() { defaults read -g AppleLanguages 2>/dev/null; }
+hikari_apple_languages() { defaults read -g AppleLanguages 2>/dev/null; }
 
 # es when LC_ALL, LC_MESSAGES or LANG (the first one set, as the C library
 # does) starts with "es"; en otherwise. On macOS the system language comes
 # before LANG: terminals often set LANG=en_US.UTF-8 on a Mac set to Spanish.
-# SOSC_LANG=es|en wins (tests).
-sosc_language() {
-    case ${SOSC_LANG:-} in es | en) printf '%s' "$SOSC_LANG"; return 0 ;; esac
+# HIKARI_LANG=es|en wins (tests).
+hikari_language() {
+    case ${HIKARI_LANG:-} in es | en) printf '%s' "$HIKARI_LANG"; return 0 ;; esac
     local v=${LC_ALL:-} first
     [ -n "$v" ] || v=${LC_MESSAGES:-}
-    if [ -z "$v" ] && [ "$(sosc_uname)" = Darwin ]; then
+    if [ -z "$v" ] && [ "$(hikari_uname)" = Darwin ]; then
         # First entry of the list: the line after "(", without blanks or quotes.
-        first=$(sosc_apple_languages | tr -d ' \t"' | grep -v '^($' | head -n 1)
+        first=$(hikari_apple_languages | tr -d ' \t"' | grep -v '^($' | head -n 1)
         case $first in es*) printf es; return 0 ;; ?*) printf en; return 0 ;; esac
     fi
     [ -n "$v" ] || v=${LANG:-}
@@ -485,16 +517,16 @@ sosc_language() {
 # Output and input
 # ---------------------------------------------------------------------------
 
-sosc_color() { # sosc_color <code> <text>: colour only on a terminal
+hikari_color() { # hikari_color <code> <text>: colour only on a terminal
     if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\033[0m\n' "$1" "$2"; else printf '%s\n' "$2"; fi
 }
 info() { printf '%s\n' "$1"; }
-ok() { sosc_color 32 "$1"; }
-warn() { sosc_color 33 "$1"; }
+ok() { hikari_color 32 "$1"; }
+warn() { hikari_color 33 "$1"; }
 error() { if [ "$COLOR" = 1 ]; then printf '\033[31m%s\033[0m\n' "$1" >&2; else printf '%s\n' "$1" >&2; fi; }
 
 # Replaceable in tests: the terminal questions are read from.
-sosc_tty_path() { printf '%s' /dev/tty; }
+hikari_tty_path() { printf '%s' /dev/tty; }
 
 # Where answers come from: stdin when it is a terminal, otherwise the terminal
 # itself (curl ... | bash: stdin is the script), opened as fd 3. Without one,
@@ -507,7 +539,7 @@ io_setup() {
         HAVE_INPUT=1
     else
         local tty
-        tty=$(sosc_tty_path)
+        tty=$(hikari_tty_path)
         if [ -n "$tty" ] && (: <"$tty") 2>/dev/null; then
             if { exec 3<"$tty"; } 2>/dev/null; then HAVE_INPUT=1; fi
         fi
@@ -932,7 +964,7 @@ is_inside() {
 remove_item() {
     local p=$1 root=$2
     if ! is_inside "$p" "$root"; then
-        SOSC_ERR=$(T outside_target "$p" "$root")
+        HIKARI_ERR=$(T outside_target "$p" "$root")
         return 1
     fi
     if [ -L "$p" ] || [ -f "$p" ]; then
@@ -978,7 +1010,7 @@ sha256_of() {
 # link is written through (dotfile managers link mpv.conf), not replaced.
 write_file() {
     local path=$1 tmp
-    tmp=$(mktemp "$1.sosc-tmp.XXXXXX") || return 1
+    tmp=$(mktemp "$1.hikari-tmp.XXXXXX") || return 1
     if [ -f "$path" ]; then
         cp -p "$path" "$tmp" 2>/dev/null || :
     else
@@ -1047,7 +1079,7 @@ file_eol() {
 # ---------------------------------------------------------------------------
 
 # Sets BLOCK_BEGIN_AT and BLOCK_END_AT (-1 when there is no block). Fails, with
-# SOSC_ERR set, when the markers do not pair up.
+# HIKARI_ERR set, when the markers do not pair up.
 find_block() {
     local i=0 name=$1
     BLOCK_BEGIN_AT=-1
@@ -1055,15 +1087,15 @@ find_block() {
     while [ "$i" -lt "$F_COUNT" ]; do
         trim "${F_LINE[i]}"
         if [ "$TRIMMED" = "$BLOCK_BEGIN" ]; then
-            if [ "$BLOCK_BEGIN_AT" -ge 0 ]; then SOSC_ERR=$(T malformed_block "$name"); return 1; fi
+            if [ "$BLOCK_BEGIN_AT" -ge 0 ]; then HIKARI_ERR=$(T malformed_block "$name"); return 1; fi
             BLOCK_BEGIN_AT=$i
         elif [ "$TRIMMED" = "$BLOCK_END" ]; then
-            if [ "$BLOCK_BEGIN_AT" -lt 0 ] || [ "$BLOCK_END_AT" -ge 0 ]; then SOSC_ERR=$(T malformed_block "$name"); return 1; fi
+            if [ "$BLOCK_BEGIN_AT" -lt 0 ] || [ "$BLOCK_END_AT" -ge 0 ]; then HIKARI_ERR=$(T malformed_block "$name"); return 1; fi
             BLOCK_END_AT=$i
         fi
         i=$((i + 1))
     done
-    if [ "$BLOCK_BEGIN_AT" -ge 0 ] && [ "$BLOCK_END_AT" -lt 0 ]; then SOSC_ERR=$(T malformed_block "$name"); return 1; fi
+    if [ "$BLOCK_BEGIN_AT" -ge 0 ] && [ "$BLOCK_END_AT" -lt 0 ]; then HIKARI_ERR=$(T malformed_block "$name"); return 1; fi
     return 0
 }
 
@@ -1073,7 +1105,7 @@ outside_block() {
 }
 
 # remove_block <name> <no final eol: 1|0>. When the file had no line break at
-# its end before sosc added the block and the block is still last, that line
+# its end before hikari added the block and the block is still last, that line
 # break goes too.
 remove_block() {
     find_block "$1" || return 1
@@ -1143,7 +1175,7 @@ profile_header() {
     PROFILE_NAME=${BASH_REMATCH[1]}
 }
 
-# Writes the sosc block at the end of mpv.conf (created when missing),
+# Writes the hikari block at the end of mpv.conf (created when missing),
 # starting with [default] when the file ends inside a [profile].
 update_mpv_conf() {
     local path=$1 eol last='' found=0 i=0
@@ -1166,7 +1198,7 @@ update_mpv_conf() {
     info "$(T block_updated mpv.conf)"
 }
 
-# Normalised key name, as install/sosc.ps1 does: modifiers lower-cased and
+# Normalised key name, as install/hikari.ps1 does: modifiers lower-cased and
 # sorted, a named key (more than one character) lower-cased, a single
 # character kept (in mpv, Alt+p and Alt+P are different keys). So CTRL+1 and
 # Ctrl+1 are the same key.
@@ -1221,7 +1253,7 @@ split_binding() {
     LINE_CMD=$TRIMMED
 }
 
-# Writes the sosc block into input.conf (created when missing). A key the user
+# Writes the hikari block into input.conf (created when missing). A key the user
 # already bound outside the block is left alone (and reported); the same key
 # with the same command is not repeated. Extra bindings ("key|command") after
 # the path.
@@ -1270,8 +1302,8 @@ update_input_conf() {
     info "$(T block_updated input.conf)"
 }
 
-# remove_managed <path> <root> <created by sosc 1|0> <no final eol 1|0>:
-# removes the block; a file that only held it and was created by sosc goes.
+# remove_managed <path> <root> <created by hikari 1|0> <no final eol 1|0>:
+# removes the block; a file that only held it and was created by hikari goes.
 remove_managed() {
     local path=$1 name
     [ -f "$path" ] || return 0
@@ -1320,7 +1352,7 @@ set_conf_option() {
 }
 
 # ---------------------------------------------------------------------------
-# Installer record (sosc-installed.txt)
+# Installer record (hikari-installed.txt)
 # ---------------------------------------------------------------------------
 
 # The record can be edited by anyone, so its paths are checked before use:
@@ -1438,7 +1470,7 @@ add_record_entries() {
 # ---------------------------------------------------------------------------
 
 # Replaceable in tests: downloads $1 to $2.
-sosc_fetch() {
+hikari_fetch() {
     curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 -o "$2" "$1"
 }
 
@@ -1448,20 +1480,20 @@ verified_download() {
     local url=$1 sha=$2 out=$3 actual
     case $url in
         https://github.com/* | https://raw.githubusercontent.com/*) ;;
-        *) SOSC_ERR=$(T url_bad "$url"); return 1 ;;
+        *) HIKARI_ERR=$(T url_bad "$url"); return 1 ;;
     esac
-    if [ -z "$sha" ]; then SOSC_ERR=$(T hash_bad "$url" '?' '?'); return 1; fi
+    if [ -z "$sha" ]; then HIKARI_ERR=$(T hash_bad "$url" '?' '?'); return 1; fi
     info "$(T downloading "$url")"
     rm -f "$out"
-    if ! sosc_fetch "$url" "$out" || [ ! -f "$out" ]; then
+    if ! hikari_fetch "$url" "$out" || [ ! -f "$out" ]; then
         rm -f "$out"
-        SOSC_ERR=$(T download_failed "$url")
+        HIKARI_ERR=$(T download_failed "$url")
         return 1
     fi
     actual=$(sha256_of "$out")
     if [ "$actual" != "$(lower "$sha")" ]; then
         rm -f "$out"
-        SOSC_ERR=$(T hash_bad "$url" "$(lower "$sha")" "$actual")
+        HIKARI_ERR=$(T hash_bad "$url" "$(lower "$sha")" "$actual")
         return 1
     fi
 }
@@ -1484,40 +1516,40 @@ repo_commit() {
     esac
 }
 
-# Where the sosc files come from: SRC_CONFIG, SRC_VERSION, SRC_COMMIT. A
-# release build always uses its own sosc.zip, downloaded and checked; the
+# Where the hikari files come from: SRC_CONFIG, SRC_VERSION, SRC_COMMIT. A
+# release build always uses its own hikari.zip, downloaded and checked; the
 # repository version uses the portable_config of its copy.
 get_source() {
-    SRC_VERSION=$SOSC_VERSION
+    SRC_VERSION=$HIKARI_VERSION
     SRC_COMMIT=''
-    if [ -n "$SOSC_RELEASE_URL" ]; then
-        verified_download "$SOSC_RELEASE_URL" "$SOSC_RELEASE_SHA256" "$TEMP_DIR/sosc.zip" || return 1
-        unzip_to "$TEMP_DIR/sosc.zip" "$TEMP_DIR/sosc" || { SOSC_ERR=$(T source_missing "$TEMP_DIR/sosc"); return 1; }
+    if [ -n "$HIKARI_RELEASE_URL" ]; then
+        verified_download "$HIKARI_RELEASE_URL" "$HIKARI_RELEASE_SHA256" "$TEMP_DIR/hikari.zip" || return 1
+        unzip_to "$TEMP_DIR/hikari.zip" "$TEMP_DIR/hikari" || { HIKARI_ERR=$(T source_missing "$TEMP_DIR/hikari"); return 1; }
         local d
-        for d in "$TEMP_DIR/sosc" "$TEMP_DIR"/sosc/*; do
-            if [ -f "$d/portable_config/scripts/sosc-palettes.lua" ]; then SRC_CONFIG="$d/portable_config"; return 0; fi
+        for d in "$TEMP_DIR/hikari" "$TEMP_DIR"/hikari/*; do
+            if [ -f "$d/portable_config/scripts/hikari-palettes.lua" ]; then SRC_CONFIG="$d/portable_config"; return 0; fi
         done
-        SOSC_ERR=$(T source_missing "$TEMP_DIR/sosc")
+        HIKARI_ERR=$(T source_missing "$TEMP_DIR/hikari")
         return 1
     fi
     if [ -n "$SCRIPT_FILE" ] && [ -f "$SCRIPT_FILE" ]; then
         local repo
         repo=$(cd "$(dirname "$SCRIPT_FILE")/.." && pwd)
-        if [ -f "$repo/portable_config/scripts/sosc-palettes.lua" ]; then
+        if [ -f "$repo/portable_config/scripts/hikari-palettes.lua" ]; then
             SRC_CONFIG="$repo/portable_config"
             SRC_COMMIT=$(repo_commit "$repo")
             return 0
         fi
     fi
-    SOSC_ERR=$(T release_unpublished)
+    HIKARI_ERR=$(T release_unpublished)
     return 1
 }
 
 # Downloads and verifies uosc and thumbfast (once for every folder).
 get_artifacts() {
     verified_download "$UOSC_URL" "$UOSC_SHA256" "$TEMP_DIR/uosc.zip" || return 1
-    unzip_to "$TEMP_DIR/uosc.zip" "$TEMP_DIR/uosc" || { SOSC_ERR=$(T source_missing "$UOSC_URL"); return 1; }
-    [ -f "$TEMP_DIR/uosc/scripts/uosc/main.lua" ] || { SOSC_ERR=$(T source_missing "$UOSC_URL"); return 1; }
+    unzip_to "$TEMP_DIR/uosc.zip" "$TEMP_DIR/uosc" || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
+    [ -f "$TEMP_DIR/uosc/scripts/uosc/main.lua" ] || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
     verified_download "$THUMBFAST_URL" "$THUMBFAST_SHA256" "$TEMP_DIR/thumbfast.lua" || return 1
 }
 
@@ -1529,7 +1561,7 @@ get_anime4k() {
     A4K_SRC=''
     A4K_ERROR=''
     local zip="$TEMP_DIR/anime4k.zip" dest="$TEMP_DIR/anime4k" names name missing=''
-    if ! verified_download "$ANIME4K_URL" "$ANIME4K_SHA256" "$zip"; then A4K_ERROR=$SOSC_ERR; return 1; fi
+    if ! verified_download "$ANIME4K_URL" "$ANIME4K_SHA256" "$zip"; then A4K_ERROR=$HIKARI_ERR; return 1; fi
     names=()
     while IFS= read -r name; do
         [[ $name =~ $ANIME4K_PATTERN ]] && names[${#names[@]}]=$name
@@ -1548,26 +1580,26 @@ get_anime4k() {
 # ---------------------------------------------------------------------------
 
 # Replaceable in tests.
-sosc_uname() { uname -s; }
-sosc_cpu_brand() { sysctl -n machdep.cpu.brand_string 2>/dev/null; }
-sosc_lspci() { if command -v lspci >/dev/null 2>&1; then lspci 2>/dev/null; fi; }
-sosc_brew() { # path of brew, or nothing
+hikari_uname() { uname -s; }
+hikari_cpu_brand() { sysctl -n machdep.cpu.brand_string 2>/dev/null; }
+hikari_lspci() { if command -v lspci >/dev/null 2>&1; then lspci 2>/dev/null; fi; }
+hikari_brew() { # path of brew, or nothing
     local b
     for b in "$(command -v brew 2>/dev/null)" /opt/homebrew/bin/brew /usr/local/bin/brew; do
         [ -n "$b" ] && [ -x "$b" ] && { printf '%s' "$b"; return; }
     done
 }
-sosc_iina() { [ -d /Applications/IINA.app ] || [ -d "$HOME/Applications/IINA.app" ]; }
-sosc_flatpak_mpv() {
+hikari_iina() { [ -d /Applications/IINA.app ] || [ -d "$HOME/Applications/IINA.app" ]; }
+hikari_flatpak_mpv() {
     [ -d "$HOME/.var/app/io.mpv.Mpv" ] && return 0
     command -v flatpak >/dev/null 2>&1 && flatpak info io.mpv.Mpv >/dev/null 2>&1
 }
-sosc_snap_mpv() { [ -e /snap/bin/mpv ] || [ -d "$HOME/snap/mpv" ]; }
+hikari_snap_mpv() { [ -e /snap/bin/mpv ] || [ -d "$HOME/snap/mpv" ]; }
 
 # Absolute path of the mpv binary (not the Flatpak or Snap one), or nothing.
 # On macOS also where Homebrew, MacPorts and mpv.app put it: launched from
 # Finder (or Seanime) mpv does not get the shell's PATH.
-sosc_find_mpv() {
+hikari_find_mpv() {
     local p
     p=$(command -v mpv 2>/dev/null)
     case $p in /snap/*) p='' ;; /*) ;; *) p='' ;; esac
@@ -1610,8 +1642,8 @@ find_candidates() {
     if [ -n "$MPV_EXE" ] || [ -d "$xdg/mpv" ] || [ -n "${MPV_HOME:-}" ]; then
         if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$xdg/mpv" "$MPV_EXE"; fi
     fi
-    if sosc_flatpak_mpv; then add_candidate flatpak "$HOME/.var/app/io.mpv.Mpv/config/mpv" ''; fi
-    if sosc_snap_mpv; then add_candidate snap "$HOME/snap/mpv/current/.config/mpv" ''; fi
+    if hikari_flatpak_mpv; then add_candidate flatpak "$HOME/.var/app/io.mpv.Mpv/config/mpv" ''; fi
+    if hikari_snap_mpv; then add_candidate snap "$HOME/snap/mpv/current/.config/mpv" ''; fi
     return 0
 }
 
@@ -1628,10 +1660,12 @@ kind_label() {
 candidate_tags() {
     local dir=${C_DIR[$1]} tags='' f
     if read_record "$dir" 1; then
-        rec_get sosc_version
+        rec_get hikari_version
         tags=$(T tag_installed "$REC_VALUE")
+    elif sosc_present "$dir"; then
+        tags=$(T tag_sosc)
     else
-        for f in "$dir"/scripts/sosc-*.lua; do
+        for f in "$dir"/scripts/hikari-*.lua; do
             if [ -f "$f" ]; then tags=$(T tag_manual); break; fi
         done
     fi
@@ -1643,8 +1677,9 @@ candidate_tags() {
 candidate_installed() {
     local f
     [ -f "${C_DIR[$1]}/$RECORD_NAME" ] && return 0
-    for f in "${C_DIR[$1]}"/scripts/sosc-*.lua; do [ -f "$f" ] && return 0; done
-    return 1
+    for f in "${C_DIR[$1]}"/scripts/hikari-*.lua; do [ -f "$f" ] && return 0; done
+    sosc_present "${C_DIR[$1]}"
+
 }
 
 # The root folder and the bare home folder are never config folders.
@@ -1675,7 +1710,7 @@ gpu_detect() {
     GPU_NAME=''
     GPU_QUALITY=fast
     if [ "$OS" = Darwin ]; then
-        GPU_NAME=$(sosc_cpu_brand)
+        GPU_NAME=$(hikari_cpu_brand)
         trim "$GPU_NAME"
         GPU_NAME=$TRIMMED
         local re='^Apple[[:space:]]+M[0-9]+[[:space:]]+(Pro|Max|Ultra)([[:space:]]|$)'
@@ -1683,7 +1718,7 @@ gpu_detect() {
         return 0
     fi
     local line name first='' lines
-    lines=$(sosc_lspci | grep -iE 'vga|3d controller|display controller')
+    lines=$(hikari_lspci | grep -iE 'vga|3d controller|display controller')
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         name=${line#*: }
@@ -1704,7 +1739,7 @@ EOF
 
 is_own_shader() { record_path_ok "$1" && [[ $1 =~ ^shaders/Anime4K_[A-Za-z0-9_]+\.glsl$ ]]; }
 
-# Anime4K_*.glsl files in shaders/ that sosc did not put there (MANUAL_A4K);
+# Anime4K_*.glsl files in shaders/ that hikari did not put there (MANUAL_A4K);
 # own shaders are in OWN (record paths).
 find_manual_anime4k() {
     MANUAL_A4K=()
@@ -1719,7 +1754,7 @@ find_manual_anime4k() {
     done
 }
 
-anime4k_complete() { # every required shader there, recorded as sosc's, this version
+anime4k_complete() { # every required shader there, recorded as hikari's, this version
     local cfg=$1 name o found
     [ "$A4K_VERSION" = "$ANIME4K_VERSION" ] || return 1
     for name in "${ANIME4K_REQUIRED[@]}"; do
@@ -1743,7 +1778,7 @@ osc_off_line() {
     [[ $1 =~ $re ]]
 }
 
-# Indexes (FOUND) of the lines of the loaded file, outside the sosc block, for
+# Indexes (FOUND) of the lines of the loaded file, outside the hikari block, for
 # which the test function $2 is true.
 find_lines() {
     local i=0
@@ -1755,7 +1790,7 @@ find_lines() {
     done
 }
 
-# comment_lines <path> <record key> <name> <test>: turns off (with the sosc
+# comment_lines <path> <record key> <name> <test>: turns off (with the hikari
 # prefix) the lines of FOUND, after adding them to the record; lines that could
 # not be read back from the record are left on. Appends to COMMENTED_OUT.
 comment_lines() {
@@ -1778,7 +1813,7 @@ comment_lines() {
     save_file "$path"
 }
 
-# Lines (FOUND) that sosc turned off outside the block and recorded (the list
+# Lines (FOUND) that hikari turned off outside the block and recorded (the list
 # after $3), still there with the prefix and still passing $2.
 find_commented() {
     local name=$1 test=$2 i=0 rest r
@@ -1823,11 +1858,11 @@ move_shader_aside() {
 }
 
 # Decides what to do with Anime4K in the folder and does it. Sets A4K_STATE
-# (sosc: installed and managed by sosc; declined; failed: the download or its
+# (hikari: installed and managed by hikari; declined; failed: the download or its
 # check failed, asked again next time; manual: one installed by hand left
-# alone; animejanai), A4K_FILES (record paths of sosc's shaders), A4K_MOVED,
-# A4K_COMMENTED, A4K_COMMENTED_MPV, A4K_VERSION and A4K_FRESH (sosc installed
-# it in this run and it was not sosc's before).
+# alone; animejanai), A4K_FILES (record paths of hikari's shaders), A4K_MOVED,
+# A4K_COMMENTED, A4K_COMMENTED_MPV, A4K_VERSION and A4K_FRESH (hikari installed
+# it in this run and it was not hikari's before).
 anime4k_step() {
     local prev='' choice=$OPT_ANIME4K take_over=0 update=0 keep_manual install f
     A4K_FRESH=0
@@ -1859,12 +1894,12 @@ anime4k_step() {
             return 0
         fi
         take_over=1
-    elif [ "$prev" = sosc ] && [ "${#OWN[@]}" -gt 0 ]; then
+    elif [ "$prev" = hikari ] && [ "${#OWN[@]}" -gt 0 ]; then
         update=1
-        if [ "$choice" = no ]; then info "$(T anime4k_kept)"; A4K_STATE=sosc; return 0; fi
+        if [ "$choice" = no ]; then info "$(T anime4k_kept)"; A4K_STATE=hikari; return 0; fi
         if anime4k_complete "$CFG"; then
             info "$(T anime4k_uptodate "$ANIME4K_VERSION")"
-            A4K_STATE=sosc
+            A4K_STATE=hikari
             return 0
         fi
     else
@@ -1884,11 +1919,11 @@ anime4k_step() {
     fi
 
     # Anime4K was downloaded and checked before anything was touched. If that
-    # failed, the rest of sosc is still installed: an earlier copy of sosc's
+    # failed, the rest of hikari is still installed: an earlier copy of hikari's
     # stays, and otherwise Anime4K is left out and offered again.
     if [ -z "$A4K_SRC" ]; then
         warn "$(T anime4k_failed "${A4K_ERROR:-?}")"
-        if [ "$update" = 1 ]; then A4K_STATE=sosc; else A4K_STATE=failed; fi
+        if [ "$update" = 1 ]; then A4K_STATE=hikari; else A4K_STATE=failed; fi
         return 0
     fi
 
@@ -1916,7 +1951,7 @@ anime4k_step() {
 
     # An Anime4K line in mpv.conf (Anime4K's templates have one, and so do
     # profiles that pick a mode by height) would keep a mode on even with
-    # "Apagado", now that the shaders are there. Asked when sosc starts
+    # "Apagado", now that the shaders are there. Asked when hikari starts
     # managing Anime4K, not on updates.
     if [ "$update" = 0 ] && [ -f "$CFG/mpv.conf" ]; then
         load_file "$CFG/mpv.conf"
@@ -1935,7 +1970,7 @@ anime4k_step() {
         fi
     fi
 
-    # Copy sosc's shaders, recording the new ones first.
+    # Copy hikari's shaders, recording the new ones first.
     local files entries known o name
     files=()
     entries=()
@@ -1954,22 +1989,22 @@ anime4k_step() {
         rm -f "$CFG/$f"
         cp "$A4K_SRC/${f#shaders/}" "$CFG/$f" || return 1
     done
-    # Files of an earlier Anime4K of sosc's that this one no longer has.
+    # Files of an earlier Anime4K of hikari's that this one no longer has.
     for o in ${OWN[@]+"${OWN[@]}"}; do
         known=0
         for f in "${files[@]}"; do [ "$f" = "$o" ] && { known=1; break; }; done
         if [ "$known" = 0 ] && [ -f "$CFG/$o" ]; then remove_item "$CFG/$o" "$CFG" || return 1; fi
     done
     ok "$(T anime4k_done "$ANIME4K_VERSION" "${#files[@]}" "$SHADERS_DIR")"
-    A4K_STATE=sosc
+    A4K_STATE=hikari
     A4K_FILES=("${files[@]}")
     A4K_VERSION=$ANIME4K_VERSION
     [ "$update" = 1 ] || A4K_FRESH=1
     return 0
 }
 
-# Writes sosc-upscale.conf with mode $1 (off or auto) and the quality of the
-# graphics card when it is missing, or always when $2 = 1 (sosc has just
+# Writes hikari-upscale.conf with mode $1 (off or auto) and the quality of the
+# graphics card when it is missing, or always when $2 = 1 (hikari has just
 # installed Anime4K here: it starts in "Automático"). Otherwise an existing one
 # holds the user's choice and is kept. $3 = 1: say which card was found.
 init_upscale_conf() {
@@ -1987,7 +2022,7 @@ init_upscale_conf() {
     fi
 }
 
-upscale_conf_text() { # <quality> <mode>: what sosc-upscale.lua writes for them
+upscale_conf_text() { # <quality> <mode>: what hikari-upscale.lua writes for them
     local q=$1 m=$2
     case $q in hq | fast) ;; *) q=fast ;; esac
     case $m in off | auto) ;; *) m=off ;; esac
@@ -1996,10 +2031,262 @@ upscale_conf_text() { # <quality> <mode>: what sosc-upscale.lua writes for them
 }
 
 # ---------------------------------------------------------------------------
+# Migration from sosc (the name of hikari until v0.3.0)
+# ---------------------------------------------------------------------------
+
+# Is there anything of sosc in folder $1? Its record, scripts, options, choice
+# files or managed blocks.
+sosc_present() {
+    local d=$1 f n
+    [ -e "$d/$SOSC_RECORD" ] && return 0
+    sosc_installed_files "$d"
+    for f in ${SOSC_FILES[@]+"${SOSC_FILES[@]}"}; do
+        if [ -f "$f" ] || [ -L "$f" ]; then return 0; fi
+    done
+    for n in "${SOSC_CHOICES[@]}"; do [ -f "$d/sosc-$n.conf" ] && return 0; done
+    for f in mpv.conf input.conf; do
+        [ -f "$d/$f" ] && grep -qF -- "$SOSC_BLOCK_BEGIN" "$d/$f" && return 0
+    done
+    return 1
+}
+
+# The paths in folder $1 of the scripts and options sosc 0.3.0 installed, into
+# SOSC_FILES (whether they are there or not).
+sosc_installed_files() {
+    local n
+    SOSC_FILES=()
+    for n in "${SOSC_LUA_FILES[@]}"; do SOSC_FILES[${#SOSC_FILES[@]}]="$1/scripts/sosc-$n.lua"; done
+    for n in "${SOSC_CONF_FILES[@]}"; do SOSC_FILES[${#SOSC_FILES[@]}]="$1/script-opts/sosc-$n.conf"; done
+}
+
+# $1 with the names of sosc's scripts, options and files changed to hikari's
+# (sosc_palettes/open-menu, script-message-to sosc_upscale, sosc-subs.conf,
+# sosc-update-enabled=...), into SOSC_CONVERTED. Only whole names: at the start
+# of the line or after a character that is not a letter, digit, _ or - (so
+# mysosc_skipper stays as it is).
+sosc_convert() {
+    local rest=$1 out='' before after n hit
+    while :; do
+        case $rest in *sosc*) ;; *) break ;; esac
+        before=${rest%%sosc*}
+        after=${rest#*sosc}
+        out=$out$before
+        hit=0
+        case ${out: -1} in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]) ;;
+            *)
+                for n in "${SOSC_SCRIPTS[@]}"; do
+                    case $after in "_$n"* | "-$n"*) hit=1; break ;; esac
+                done
+                ;;
+        esac
+        if [ "$hit" = 1 ]; then out=${out}hikari; else out=${out}sosc; fi
+        rest=$after
+    done
+    SOSC_CONVERTED=$out$rest
+}
+
+# read_record for sosc's record (quiet: it is checked like hikari's own).
+sosc_read_record() { local RECORD_NAME=$SOSC_RECORD; read_record "$CFG" 1; }
+
+# find_block and remove_block for sosc's markers (the loaded file).
+sosc_find_block() { local BLOCK_BEGIN=$SOSC_BLOCK_BEGIN BLOCK_END=$SOSC_BLOCK_END; find_block "$1 (sosc)"; }
+sosc_remove_block() { local BLOCK_BEGIN=$SOSC_BLOCK_BEGIN BLOCK_END=$SOSC_BLOCK_END; remove_block "$1 (sosc)" 0; }
+
+# Checks the blocks of mpv.conf and input.conf before anything is changed.
+sosc_check_blocks() {
+    local name
+    for name in mpv.conf input.conf; do
+        [ -f "$CFG/$name" ] || continue
+        load_file "$CFG/$name"
+        find_block "$name" || return 1
+        sosc_find_block "$name" || return 1
+    done
+}
+
+# sosc_migrate_file <name> <recorded lines...>: in mpv.conf or input.conf, the
+# sosc block becomes the hikari block, in the same place (or goes, when there
+# is a hikari block already); the lines sosc turned off and recorded get the
+# hikari prefix, so uninstalling hikari turns them back on; and lines of the
+# user's own that use sosc's names are changed to hikari's, one warning each.
+sosc_migrate_file() {
+    local name=$1 path="$CFG/$1" i line rest r changed=0 known
+    shift
+    [ -f "$path" ] || return 0
+    load_file "$path"
+    find_block "$name" || return 1
+    local hikari_block=$BLOCK_BEGIN_AT
+    sosc_find_block "$name" || return 1
+    if [ "$BLOCK_BEGIN_AT" -ge 0 ]; then
+        if [ "$hikari_block" -ge 0 ]; then
+            sosc_remove_block "$name" || return 1
+        else
+            F_LINE[BLOCK_BEGIN_AT]=$BLOCK_BEGIN
+            F_LINE[BLOCK_END_AT]=$BLOCK_END
+        fi
+        changed=1
+    fi
+    find_block "$name" || return 1
+    i=0
+    while [ "$i" -lt "$F_COUNT" ]; do
+        if outside_block "$i"; then
+            line=${F_LINE[i]}
+            case $line in
+                "$SOSC_COMMENT_PREFIX"*)
+                    rest=${line#"$SOSC_COMMENT_PREFIX"}
+                    trim "$rest"
+                    known=0
+                    for r in ${1+"$@"}; do [ "$r" = "$TRIMMED" ] && { known=1; break; }; done
+                    if [ "$known" = 1 ]; then F_LINE[i]="$COMMENT_PREFIX$rest"; changed=1; fi
+                    ;;
+                *)
+                    trim "$line"
+                    case $TRIMMED in
+                        '' | '#'*) ;;
+                        *)
+                            sosc_convert "$line"
+                            if [ "$SOSC_CONVERTED" != "$line" ]; then
+                                F_LINE[i]=$SOSC_CONVERTED
+                                changed=1
+                                trim "$SOSC_CONVERTED"
+                                # Control characters of the line are not sent to the terminal.
+                                warn "$(T sosc_line_changed "$name" "${TRIMMED//[[:cntrl:]]/}")"
+                            fi
+                            ;;
+                    esac
+                    ;;
+            esac
+        fi
+        i=$((i + 1))
+    done
+    [ "$changed" = 0 ] || save_file "$path"
+}
+
+# Carries an installation of sosc in $CFG over to hikari, after the backup and
+# before anything else. The record of sosc becomes the record of hikari (what
+# sosc set aside, turned off or found there before it), so uninstalling hikari
+# puts everything back as it was before sosc; sosc's choices are kept under
+# hikari's names; then everything of sosc goes. Each step can run again: a
+# migration cut short is finished by the next run. Old sosc backups are left
+# alone (hikari's rotation only counts its own).
+migrate_sosc() {
+    local f n old new i key value count=0
+    sosc_present "$CFG" || return 0
+    info "$(T sosc_found)"
+    sosc_check_blocks || return 1
+
+    # What sosc recorded (an empty record without a file).
+    local has_rec=0 s_keys s_vals s_files s_disabled s_broken s_moved s_commented s_commented_mpv
+    s_keys=(); s_vals=(); s_files=(); s_disabled=(); s_broken=(); s_moved=(); s_commented=(); s_commented_mpv=()
+    if [ -f "$CFG/$SOSC_RECORD" ]; then
+        if sosc_read_record; then
+            has_rec=1
+            s_keys=(${REC_KEYS[@]+"${REC_KEYS[@]}"}); s_vals=(${REC_VALS[@]+"${REC_VALS[@]}"})
+            s_files=(${REC_FILES[@]+"${REC_FILES[@]}"}); s_disabled=(${REC_DISABLED[@]+"${REC_DISABLED[@]}"})
+            s_broken=(${REC_BROKEN[@]+"${REC_BROKEN[@]}"}); s_moved=(${REC_MOVED[@]+"${REC_MOVED[@]}"})
+            s_commented=(${REC_COMMENTED[@]+"${REC_COMMENTED[@]}"}); s_commented_mpv=(${REC_COMMENTED_MPV[@]+"${REC_COMMENTED_MPV[@]}"})
+        fi
+    fi
+
+    sosc_migrate_file mpv.conf ${s_commented_mpv[@]+"${s_commented_mpv[@]}"} || return 1
+    sosc_migrate_file input.conf ${s_commented[@]+"${s_commented[@]}"} || return 1
+
+    # The user's choices, with their keys under hikari's names.
+    for n in "${SOSC_CHOICES[@]}"; do
+        old="$CFG/sosc-$n.conf"
+        new="$CFG/hikari-$n.conf"
+        [ -f "$old" ] || continue
+        if [ ! -e "$new" ] && [ ! -L "$new" ]; then
+            load_file "$old"
+            i=0
+            while [ "$i" -lt "$F_COUNT" ]; do
+                sosc_convert "${F_LINE[i]}"
+                F_LINE[i]=$SOSC_CONVERTED
+                i=$((i + 1))
+            done
+            save_file "$new" || return 1
+            info "$(T sosc_choice_moved "sosc-$n.conf" "hikari-$n.conf")"
+        fi
+        remove_item "$old" "$CFG" || return 1
+    done
+
+    # The user's uosc.conf and thumbfast.conf from before sosc.
+    # Nothing is moved through a symbolic link (it could lead out of the folder):
+    # with one in the way, sosc-originales is left as it is.
+    if [ -d "$CFG/$SOSC_ORIGINALS_DIR" ] && [ ! -L "$CFG/$SOSC_ORIGINALS_DIR" ]; then
+        if [ ! -e "$CFG/$ORIGINALS_DIR" ] && [ ! -L "$CFG/$ORIGINALS_DIR" ]; then
+            mv "$CFG/$SOSC_ORIGINALS_DIR" "$CFG/$ORIGINALS_DIR" || return 1
+        elif [ -L "$CFG/$SOSC_ORIGINALS_DIR/script-opts" ]; then
+            warn "$(T sosc_link_left "$CFG/$SOSC_ORIGINALS_DIR/script-opts")"
+        elif [ -L "$CFG/$ORIGINALS_DIR" ]; then
+            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR")"
+        elif [ -L "$CFG/$ORIGINALS_DIR/script-opts" ]; then
+            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR/script-opts")"
+        else
+            for f in "$CFG/$SOSC_ORIGINALS_DIR"/script-opts/*; do
+                [ -L "$f" ] && continue
+                [ -f "$f" ] || continue
+                n=${f##*/}
+                if [ ! -e "$CFG/$ORIGINALS_DIR/script-opts/$n" ] && [ ! -L "$CFG/$ORIGINALS_DIR/script-opts/$n" ]; then
+                    mkdir -p "$CFG/$ORIGINALS_DIR/script-opts" || return 1
+                    mv "$f" "$CFG/$ORIGINALS_DIR/script-opts/$n" || return 1
+                fi
+            done
+            remove_item "$CFG/$SOSC_ORIGINALS_DIR" "$CFG" || return 1
+        fi
+    fi
+
+    # The record. When hikari has one already (a migration cut short after
+    # writing it), that one has everything. Never written through a link
+    # (broken or not).
+    if [ "$has_rec" = 1 ] && [ -L "$CFG/$RECORD_NAME" ]; then
+        warn "$(T sosc_link_left "$CFG/$RECORD_NAME")"
+    elif [ "$has_rec" = 1 ] && [ ! -e "$CFG/$RECORD_NAME" ]; then
+        {
+            printf '%s\n' "$RECORD_HEADER"
+            i=0
+            while [ "$i" -lt "${#s_keys[@]}" ]; do
+                key=${s_keys[i]}
+                value=${s_vals[i]}
+                case $key in
+                    sosc_version) key=hikari_version ;;
+                    sosc_commit) key=hikari_commit ;;
+                    anime4k) [ "$value" = sosc ] && value=hikari ;;
+                esac
+                printf '%s=%s\n' "$key" "$value"
+                i=$((i + 1))
+            done
+            for f in ${s_disabled[@]+"${s_disabled[@]}"}; do printf 'disabled=%s\n' "$f"; done
+            for f in ${s_broken[@]+"${s_broken[@]}"}; do printf 'broken=%s\n' "$f"; done
+            for f in ${s_moved[@]+"${s_moved[@]}"}; do printf 'a4k_moved=%s\n' "$f"; done
+            for f in ${s_commented[@]+"${s_commented[@]}"}; do printf 'a4k_commented=%s\n' "$f"; done
+            for f in ${s_commented_mpv[@]+"${s_commented_mpv[@]}"}; do printf 'a4k_commented_mpv=%s\n' "$f"; done
+            for f in ${s_files[@]+"${s_files[@]}"}; do
+                case $f in scripts/sosc-* | script-opts/sosc-*) continue ;; esac
+                printf 'file=%s\n' "$f"
+            done
+        } | write_file "$CFG/$RECORD_NAME" || return 1
+    fi
+
+    # Everything else of sosc goes (it is all in the backup).
+    sosc_installed_files "$CFG"
+    for f in ${SOSC_FILES[@]+"${SOSC_FILES[@]}"} "$CFG/$SOSC_UPDATE_STATE" "$CFG/$SOSC_UPDATE_STATE.tmp" "$CFG/$SOSC_RECORD"; do
+        if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
+    done
+    ok "$(T sosc_done)"
+
+    for f in "$CFG"-respaldo-sosc-*; do
+        if [ -d "$f" ] && [ ! -L "$f" ]; then count=$((count + 1)); fi
+    done
+    [ "$count" = 0 ] || info "$(T sosc_old_backups "$count" "$CFG")"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Install steps
 # ---------------------------------------------------------------------------
 
-# Copies what the installer may change to <config>-respaldo-sosc-<stamp>, next
+# Copies what the installer may change to <config>-respaldo-hikari-<stamp>, next
 # to it (BACKUP; '' when there is nothing to copy). Symbolic links to folders
 # are skipped, never followed; a linked file is copied as the file. A copy
 # that fails half-way is deleted.
@@ -2007,7 +2294,7 @@ make_backup() {
     local cfg=$1 parent name p items kb=0 k base n
     BACKUP=''
     parent=${cfg%/*}
-    [ -n "$parent" ] || { SOSC_ERR=$(T target_root "$cfg"); return 1; }
+    [ -n "$parent" ] || { HIKARI_ERR=$(T target_root "$cfg"); return 1; }
     items=()
     for name in "${BACKUP_ITEMS[@]}"; do
         p="$cfg/$name"
@@ -2017,7 +2304,7 @@ make_backup() {
         items[${#items[@]}]=$name
     done
     [ "${#items[@]}" -gt 0 ] || return 0
-    base="$cfg-respaldo-sosc-$STAMP"
+    base="$cfg-respaldo-hikari-$STAMP"
     BACKUP=$base
     n=2
     while [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; do BACKUP="$base-$n"; n=$((n + 1)); done
@@ -2026,29 +2313,29 @@ make_backup() {
         kb=$((kb + ${k:-0}))
     done
     info "$(T backup_size "$((kb / 1024)).$(((kb % 1024) * 10 / 1024))")"
-    if ! mkdir "$BACKUP"; then SOSC_ERR=$BACKUP; BACKUP=''; return 1; fi
+    if ! mkdir "$BACKUP"; then HIKARI_ERR=$BACKUP; BACKUP=''; return 1; fi
     for name in "${items[@]}"; do
         if [ -d "$cfg/$name" ]; then
-            cp -pPR "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; SOSC_ERR=$name; BACKUP=''; return 1; }
+            cp -pPR "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         else
-            cp -p "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; SOSC_ERR=$name; BACKUP=''; return 1; }
+            cp -p "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         fi
     done
     return 0
 }
 
 # Keeps the newest BACKUP_KEEP backups of the folder and deletes older ones.
-# Only folders named exactly <config>-respaldo-sosc-<stamp>[-n] next to it
-# count; links are never touched; the backup from before sosc's first install
+# Only folders named exactly <config>-respaldo-hikari-<stamp>[-n] next to it
+# count; links are never touched; the backup from before hikari's first install
 # (it holds the mark file, or is the record's first_backup) is never deleted.
 prune_backups() {
     local cfg=$1 protect=${2:-} parent leaf d name re list stamp num path kept=0
     parent=${cfg%/*}
     leaf=${cfg##*/}
     [ -d "$parent" ] || return 0
-    re='^-respaldo-sosc-([0-9]{8}-[0-9]{6})(-([0-9]+))?$'
+    re='^-respaldo-hikari-([0-9]{8}-[0-9]{6})(-([0-9]+))?$'
     list=''
-    for d in "$parent/$leaf"-respaldo-sosc-*; do
+    for d in "$parent/$leaf"-respaldo-hikari-*; do
         if [ ! -d "$d" ] || [ -L "$d" ]; then continue; fi
         name=${d##*/}
         name=${name#"$leaf"}
@@ -2077,13 +2364,13 @@ EOF
 # Is there a backup of this folder, other than $2, marked as the original?
 other_original_backup() {
     local d
-    for d in "$1"-respaldo-sosc-*; do
+    for d in "$1"-respaldo-hikari-*; do
         [ -d "$d" ] && [ ! -L "$d" ] && [ "$d" != "$2" ] && [ -f "$d/$BACKUP_ORIGINAL_MARK" ] && return 0
     done
     return 1
 }
 
-# Conflicting interfaces (CONFLICTS: paths), as install/sosc.ps1.
+# Conflicting interfaces (CONFLICTS: paths), as install/hikari.ps1.
 find_conflicts() {
     local cfg=$1 f name pat stem names
     CONFLICTS=()
@@ -2150,7 +2437,7 @@ find_broken_scripts() {
 # sub-folder (scripts/, script-opts/, fonts/). Sets MOVED_PAIR "moved|original".
 move_to_disabled() {
     local p=$1 rel sub dest_dir name dest
-    is_inside "$p" "$CFG" || { SOSC_ERR=$(T outside_target "$p" "$CFG"); return 1; }
+    is_inside "$p" "$CFG" || { HIKARI_ERR=$(T outside_target "$p" "$CFG"); return 1; }
     rel=$(rel_path "$p" "$CFG")
     sub=''
     case $rel in */*) sub=${rel%/*} ;; esac
@@ -2215,8 +2502,9 @@ install_target() {
     info "$(T installing_to "$CFG")"
     BACKUP=''
     if [ -d "$CFG" ]; then
-        [ -e "$CFG/$RECORD_NAME" ] && had_record=1
-        if ! make_backup "$CFG"; then SOSC_ERR=$(T backup_failed "$CFG" "$SOSC_ERR"); return 1; fi
+        # A record of sosc counts too: its first backup, from before sosc, is the original.
+        if [ -e "$CFG/$RECORD_NAME" ] || [ -e "$CFG/$SOSC_RECORD" ]; then had_record=1; fi
+        if ! make_backup "$CFG"; then HIKARI_ERR=$(T backup_failed "$CFG" "$HIKARI_ERR"); return 1; fi
         if [ -n "$BACKUP" ]; then
             info "$(T backup_done "$BACKUP")"
             if [ "$had_record" = 0 ] && ! other_original_backup "$CFG" "$BACKUP"; then
@@ -2224,10 +2512,10 @@ install_target() {
             fi
         fi
     else
-        mkdir -p "$CFG" || { SOSC_ERR=$CFG; return 1; }
+        mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
     fi
-    if ! install_steps "$kind" "$exe"; then
-        [ -z "$BACKUP" ] || SOSC_ERR="$SOSC_ERR $(T restore_hint "$BACKUP")"
+    if ! migrate_sosc || ! install_steps "$kind" "$exe"; then
+        [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP")"
         return 1
     fi
     ok "$(T install_ok "$CFG")"
@@ -2312,10 +2600,10 @@ install_steps() {
     cp "$TEMP_DIR/thumbfast.lua" "$CFG/scripts/thumbfast.lua" || return 1
     ok "$(T thumbfast_done)"
 
-    # e. sosc files.
+    # e. hikari files.
     local installed shared s
     installed=()
-    for f in "$SRC_CONFIG"/scripts/sosc-*.lua; do
+    for f in "$SRC_CONFIG"/scripts/hikari-*.lua; do
         [ -f "$f" ] || continue
         name=${f##*/}
         rm -f "$CFG/scripts/$name"
@@ -2346,25 +2634,25 @@ install_steps() {
         keep=0
         for f in "${installed[@]}"; do [ "$f" = "$old" ] && keep=1; done
         [ "$keep" = 0 ] || continue
-        [[ $old =~ ^scripts/sosc-[^/]+\.lua$ || $old =~ ^script-opts/sosc-[^/]+\.conf$ ]] || continue
+        [[ $old =~ ^scripts/hikari-[^/]+\.lua$ || $old =~ ^script-opts/hikari-[^/]+\.conf$ ]] || continue
         record_path_ok "$old" || continue
         if [ -f "$CFG/$old" ]; then
             remove_item "$CFG/$old" "$CFG" || return 1
             info "$(T removed_stale "$old")"
         fi
     done
-    ok "$(T sosc_files_done "${#installed[@]}")"
+    ok "$(T hikari_files_done "${#installed[@]}")"
 
-    # e2. Anime4K, and the upscale choice file: "Automático" when sosc has just
+    # e2. Anime4K, and the upscale choice file: "Automático" when hikari has just
     # installed Anime4K here; on updates the user's mode is kept.
     anime4k_step || return 1
     local up_mode=off announce=0
-    [ "$A4K_STATE" = sosc ] && up_mode=auto
-    case $A4K_STATE in sosc | manual) announce=1 ;; esac
+    [ "$A4K_STATE" = hikari ] && up_mode=auto
+    case $A4K_STATE in hikari | manual) announce=1 ;; esac
     init_upscale_conf "$up_mode" "$A4K_FRESH" "$announce" || return 1
     local extra
     extra=()
-    [ "$A4K_STATE" = sosc ] && extra=("${ANIME4K_BINDINGS[@]}")
+    [ "$A4K_STATE" = hikari ] && extra=("${ANIME4K_BINDINGS[@]}")
 
     # g. thumbfast starts a second mpv for the thumbnails. Started from Finder
     # (or another app), mpv does not have /opt/homebrew/bin in its PATH and
@@ -2372,7 +2660,7 @@ install_steps() {
     # Flatpak or Snap, where "mpv" inside the sandbox is the right one.
     if [ "$kind" = mpv ] && [ -n "$exe" ]; then
         set_conf_option "$CFG/script-opts/thumbfast.conf" mpv_path "$exe" \
-            'Added by the sosc installer: mpv started from Finder or another app may not find mpv in its PATH.' || return 1
+            'Added by the hikari installer: mpv started from Finder or another app may not find mpv in its PATH.' || return 1
         info "$(T mpvpath_set "$exe")"
     fi
 
@@ -2385,8 +2673,8 @@ install_steps() {
     if [ "$FIRST" = 0 ] && rec_get first_backup; then first_backup=$REC_VALUE; fi
     {
         printf '%s\n' "$RECORD_HEADER"
-        printf 'sosc_version=%s\n' "$SRC_VERSION"
-        printf 'sosc_commit=%s\n' "$SRC_COMMIT"
+        printf 'hikari_version=%s\n' "$SRC_VERSION"
+        printf 'hikari_commit=%s\n' "$SRC_COMMIT"
         printf 'uosc_version=%s\n' "$UOSC_VERSION"
         printf 'thumbfast_commit=%s\n' "$THUMBFAST_COMMIT"
         printf 'installed_at=%s\n' "$(date +%Y-%m-%dT%H:%M:%S)"
@@ -2457,10 +2745,10 @@ uninstall_target() {
     info ''
     info "$(T uninstalling_from "$CFG")"
     BACKUP=''
-    if ! make_backup "$CFG"; then SOSC_ERR=$(T backup_failed "$CFG" "$SOSC_ERR"); return 1; fi
+    if ! make_backup "$CFG"; then HIKARI_ERR=$(T backup_failed "$CFG" "$HIKARI_ERR"); return 1; fi
     [ -z "$BACKUP" ] || info "$(T backup_done "$BACKUP")"
-    if ! uninstall_steps; then
-        [ -z "$BACKUP" ] || SOSC_ERR="$SOSC_ERR $(T restore_hint "$BACKUP")"
+    if ! migrate_sosc || ! uninstall_steps; then
+        [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP")"
         return 1
     fi
     ok "$(T uninstall_ok "$CFG")"
@@ -2484,10 +2772,10 @@ uninstall_steps() {
         prune_backups "$CFG" "$protect"
     fi
 
-    for f in "$CFG"/scripts/sosc-*.lua "$CFG"/script-opts/sosc-*.conf; do
+    for f in "$CFG"/scripts/hikari-*.lua "$CFG"/script-opts/hikari-*.conf; do
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
-    # Anime4K shaders: only the ones the record says sosc installed.
+    # Anime4K shaders: only the ones the record says hikari installed.
     for rel in ${files[@]+"${files[@]}"}; do
         is_own_shader "$rel" || continue
         if [ -f "$CFG/$rel" ]; then remove_item "$CFG/$rel" "$CFG" || return 1; fi
@@ -2578,7 +2866,7 @@ uninstall_steps() {
         fi
     fi
 
-    # Anime4K installed by hand that sosc set aside, and the lines it turned off.
+    # Anime4K installed by hand that hikari set aside, and the lines it turned off.
     if [ "${#moved[@]}" -gt 0 ]; then
         if confirm "$(T ask_restore_anime4k "$SHADERS_DISABLED_DIR")" yes; then
             RESTORE_QUIET=1 restore_pairs "${moved[@]}" || return 1
@@ -2618,8 +2906,8 @@ uninstall_steps() {
         done
     fi
 
-    # Folders left empty (sosc may have created them) go too; shaders only when
-    # the record says sosc created it.
+    # Folders left empty (hikari may have created them) go too; shaders only when
+    # the record says hikari created it.
     local d dirs
     dirs=(fonts script-opts scripts)
     [ "$(was_there shaders_preexisting)" = no ] && dirs[${#dirs[@]}]=$SHADERS_DIR
@@ -2831,18 +3119,18 @@ check_targets() {
 # mpv missing: on macOS offer Homebrew, otherwise explain how to get it.
 # Succeeds when mpv is there afterwards.
 ensure_mpv() {
-    MPV_EXE=$(sosc_find_mpv)
+    MPV_EXE=$(hikari_find_mpv)
     if [ -n "$MPV_EXE" ]; then info "$(T mpv_found "$MPV_EXE")"; return 0; fi
-    if [ "$OS" != Darwin ] && { sosc_flatpak_mpv || sosc_snap_mpv; }; then return 0; fi
+    if [ "$OS" != Darwin ] && { hikari_flatpak_mpv || hikari_snap_mpv; }; then return 0; fi
     warn "$(T none_found)"
     if [ "$OS" = Darwin ]; then
         local brew code
-        brew=$(sosc_brew)
+        brew=$(hikari_brew)
         if [ -n "$brew" ] && [ "$NONINTERACTIVE" != 1 ] && confirm "$(T brew_offer)" yes; then
             "$brew" install mpv
             code=$?
             [ "$code" = 0 ] || warn "$(T brew_failed "$code")"
-            MPV_EXE=$(sosc_find_mpv)
+            MPV_EXE=$(hikari_find_mpv)
             if [ -n "$MPV_EXE" ]; then info "$(T mpv_found "$MPV_EXE")"; return 0; fi
         fi
         printf '%b\n' "$(T none_mac_help)"
@@ -2852,7 +3140,7 @@ ensure_mpv() {
     return 1
 }
 
-sosc_cleanup() {
+hikari_cleanup() {
     [ -z "$STTY_SAVED" ] || menu_exit
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then rm -rf "$TEMP_DIR"; fi
     TEMP_DIR=''
@@ -2898,13 +3186,13 @@ main() {
     # Unset variables are errors; every other failure is checked where it
     # happens (no set -e: its rules in functions and conditions are a trap).
     set -u
-    sosc_defaults
+    hikari_defaults
     STTY_SAVED=''
-    SOSC_LANG_CODE=$(sosc_language)
+    HIKARI_LANG_CODE=$(hikari_language)
     COLOR=0
     if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ] && [ -z "${NO_COLOR:-}" ]; then COLOR=1; fi
     SCRIPT_FILE=${BASH_SOURCE[0]:-}
-    SOSC_ERR=''
+    HIKARI_ERR=''
     TEMP_DIR=''
     REFUSED=0
     USAGE_ERROR=0
@@ -2914,11 +3202,11 @@ main() {
     rc=$?
     case $rc in 0) ;; 1) return 0 ;; *) usage >&2; return 2 ;; esac
 
-    trap 'sosc_cleanup' EXIT
-    trap 'sosc_cleanup; trap - EXIT; exit 130' INT
-    trap 'sosc_cleanup; trap - EXIT; exit 143' TERM
+    trap 'hikari_cleanup' EXIT
+    trap 'hikari_cleanup; trap - EXIT; exit 130' INT
+    trap 'hikari_cleanup; trap - EXIT; exit 143' TERM
 
-    OS=$(sosc_uname)
+    OS=$(hikari_uname)
     case $OS in Darwin | Linux) ;; *) error "$(T unsupported_os "$OS")"; return 2 ;; esac
     local tool
     for tool in curl unzip; do
@@ -2957,9 +3245,9 @@ main() {
     info "$(T detecting)"
     if [ "$action" = install ]; then
         ensure_mpv || return 2
-        if [ "$OS" = Darwin ] && sosc_iina; then info "$(T iina_note)"; fi
+        if [ "$OS" = Darwin ] && hikari_iina; then info "$(T iina_note)"; fi
     else
-        MPV_EXE=$(sosc_find_mpv)
+        MPV_EXE=$(hikari_find_mpv)
     fi
     [ -z "${MPV_HOME:-}" ] || info "$(T mpv_home_note "$MPV_HOME")"
     find_candidates
@@ -2981,9 +3269,9 @@ main() {
     STAMP=$(date +%Y%m%d-%H%M%S)
     local done_count=0 t
     if [ "$action" = install ]; then
-        TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/sosc-install.XXXXXX") || { error "$(T error_generic mktemp)"; return 1; }
+        TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hikari-install.XXXXXX") || { error "$(T error_generic mktemp)"; return 1; }
         if ! get_source || ! get_artifacts; then
-            error "$(T error_generic "$SOSC_ERR")"
+            error "$(T error_generic "$HIKARI_ERR")"
             return 1
         fi
         A4K_SRC=''
@@ -2991,14 +3279,14 @@ main() {
         [ "$OPT_ANIME4K" = no ] || get_anime4k || :
     fi
     for t in "${TARGETS[@]}"; do
-        SOSC_ERR=''
+        HIKARI_ERR=''
         if [ "$action" = install ]; then
-            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$SOSC_ERR")"; fi
+            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
         else
-            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$SOSC_ERR")"; fi
+            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
         fi
     done
-    sosc_cleanup
+    hikari_cleanup
     info ''
     info "$(T summary "$done_count" "${#TARGETS[@]}")"
     [ "$done_count" -eq 0 ] || info "$(T restart)"

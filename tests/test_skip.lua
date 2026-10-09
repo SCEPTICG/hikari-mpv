@@ -2,8 +2,8 @@
 package.path = './tests/?.lua;' .. package.path
 local mock = require('mock_mp')
 
-local SCRIPT = 'portable_config/scripts/sosc-skip.lua'
-local SCRIPT_NAME = 'sosc_skip'
+local SCRIPT = 'portable_config/scripts/hikari-skip.lua'
+local SCRIPT_NAME = 'hikari_skip'
 
 local passed, failed = 0, 0
 local function test(name, fn)
@@ -27,7 +27,7 @@ end
 local function load(opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = opts or {}
-	SOSC_SKIP_TEST = true
+	HIKARI_SKIP_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
 end
@@ -92,13 +92,13 @@ test('intros are on and outros off by default', function()
 	for _, title in ipairs({'Outro', 'Closing', 'Preview', 'PV'}) do
 		eq(s.classify(title), nil, title)
 	end
-	s = load({['sosc-skip-intros'] = 'no'})
+	s = load({['hikari-skip-intros'] = 'no'})
 	eq(s.classify('Intro'), nil, 'intros=no')
 end)
 
 test('intros and outros can be enabled, openings and endings disabled', function()
-	local s = load({['sosc-skip-intros'] = 'yes', ['sosc-skip-outros'] = 'yes',
-		['sosc-skip-openings'] = 'no', ['sosc-skip-endings'] = 'no'})
+	local s = load({['hikari-skip-intros'] = 'yes', ['hikari-skip-outros'] = 'yes',
+		['hikari-skip-openings'] = 'no', ['hikari-skip-endings'] = 'no'})
 	for _, title in ipairs({'Intro', 'Cold intro', 'Avant', 'Prologue'}) do
 		eq(s.classify(title).name, 'intros', title)
 	end
@@ -112,8 +112,8 @@ test('intros and outros can be enabled, openings and endings disabled', function
 end)
 
 test('extra patterns are added; malformed ones are ignored safely', function()
-	local s = load({['sosc-skip-extra_openings'] = '^op%d+$|^opening %d+$|[',
-		['sosc-skip-extra_endings'] = '^credits$'})
+	local s = load({['hikari-skip-extra_openings'] = '^op%d+$|^opening %d+$|[',
+		['hikari-skip-extra_endings'] = '^credits$'})
 	eq(s.classify('OP1').name, 'openings')
 	eq(s.classify('Opening 2').name, 'openings')
 	eq(s.classify('Credits').name, 'endings')
@@ -207,7 +207,7 @@ test('stays visible when paused, hides when idle or a menu is open', function()
 	local s = play(95)
 	mock.set('pause', true)
 	eq(s.is_visible(), true, 'paused')
-	mock.set('user-data/uosc/menu/type', 'sosc-speed')
+	mock.set('user-data/uosc/menu/type', 'hikari-speed')
 	eq(s.is_visible(), false, 'uosc menu'); eq(overlay(s).visible, false)
 	mock.set('user-data/uosc/menu/type', nil)
 	eq(s.is_visible(), true, 'menu closed'); eq(overlay(s).visible, true)
@@ -236,7 +236,7 @@ test('layout sits above uosc bar at the bottom right and scales', function()
 end)
 
 test('margins are configurable', function()
-	local s = play(95, nil, {['sosc-skip-margin_bottom'] = '150', ['sosc-skip-margin_right'] = '40'})
+	local s = play(95, nil, {['hikari-skip-margin_bottom'] = '150', ['hikari-skip-margin_right'] = '40'})
 	local r = s.layout()
 	eq(r.x1, 1280 - 40); eq(r.y1, 720 - 150)
 end)
@@ -391,7 +391,7 @@ end)
 
 test('a click started in the guard never skips a range that appears under it', function()
 	local list = chapters({{0, 'Part A'}, {90, 'OP'}, {180, 'Preview'}, {200, 'Part B'}})
-	local s = play(95, list, {['sosc-skip-outros'] = 'yes'})
+	local s = play(95, list, {['hikari-skip-outros'] = 'yes'})
 	local sec = section(s)
 	local on_up, on_down = sec.bindings[1][2], sec.bindings[1][3]
 	local rect = s.layout()
@@ -548,13 +548,13 @@ test('last ending with no next entry and unknown duration: no skip', function()
 end)
 
 test('size options are clamped to finite ranges', function()
-	local s = load({['sosc-skip-margin_bottom'] = '1e999', ['sosc-skip-margin_right'] = '-5',
-		['sosc-skip-scale'] = '1e999', ['sosc-skip-scale_fullscreen'] = '0', ['sosc-skip-font_size'] = 'nan',
-		['sosc-skip-opacity'] = '7'})
+	local s = load({['hikari-skip-margin_bottom'] = '1e999', ['hikari-skip-margin_right'] = '-5',
+		['hikari-skip-scale'] = '1e999', ['hikari-skip-scale_fullscreen'] = '0', ['hikari-skip-font_size'] = 'nan',
+		['hikari-skip-opacity'] = '7'})
 	eq(s.opts.margin_bottom, 10000); eq(s.opts.margin_right, 0)
 	eq(s.opts.scale, 10); eq(s.opts.scale_fullscreen, 0.1)
 	eq(s.opts.font_size, 18); eq(s.opts.opacity, 1)
-	s = load({['sosc-skip-margin_bottom'] = 'abc', ['sosc-skip-scale'] = '0/0'})
+	s = load({['hikari-skip-margin_bottom'] = 'abc', ['hikari-skip-scale'] = '0/0'})
 	eq(s.opts.margin_bottom, 96); eq(s.opts.scale, 1)
 end)
 

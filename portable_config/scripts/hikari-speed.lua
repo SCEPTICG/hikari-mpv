@@ -1,10 +1,10 @@
--- sosc-speed: playback speed menu for uosc.
+-- hikari-speed: playback speed menu for uosc.
 --
 -- Opens a uosc menu with a few fixed speeds; picking one sets `speed` and uosc
 -- closes the menu.
 --
--- mpv turns this file name into the script name `sosc_speed`, so:
---   input.conf:  <key> script-binding sosc_speed/open-menu
+-- mpv turns this file name into the script name `hikari_speed`, so:
+--   input.conf:  <key> script-binding hikari_speed/open-menu
 
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -53,7 +53,7 @@ local function menu_data()
 			value = {'script-message-to', script_name, 'select-speed', speed.arg},
 		}
 	end
-	return {type = 'sosc-speed', title = 'Velocidad', items = items}
+	return {type = 'hikari-speed', title = 'Velocidad', items = items}
 end
 
 local function open_menu()
@@ -68,6 +68,6 @@ end
 mp.register_script_message('select-speed', select_speed)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 
-if SOSC_SPEED_TEST then
+if HIKARI_SPEED_TEST then
 	return {SPEEDS = SPEEDS, select_speed = select_speed, menu_data = menu_data, open_menu = open_menu}
 end

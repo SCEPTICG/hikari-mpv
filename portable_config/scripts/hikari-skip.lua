@@ -1,4 +1,4 @@
--- sosc-skip: "skip opening / ending" button for uosc.
+-- hikari-skip: "skip opening / ending" button for uosc.
 --
 -- While playback is inside a chapter that looks like an opening or an ending,
 -- a rounded button is drawn at the bottom right, above uosc's controls and
@@ -6,8 +6,8 @@
 -- chapter. Outside those chapters, and in files without chapters, nothing is
 -- drawn and no input is taken.
 --
--- mpv turns this file name into the script name `sosc_skip`, so:
---   input.conf:  <key> script-binding sosc_skip/skip
+-- mpv turns this file name into the script name `hikari_skip`, so:
+--   input.conf:  <key> script-binding hikari_skip/skip
 --
 -- Decisions:
 -- - Chapters are classified with the same title patterns uosc uses for its
@@ -41,12 +41,12 @@
 -- - Chapter titles come from the file: they are only cut to MAX_TITLE bytes and
 --   compared with patterns, never shown.
 --
--- Options (script-opts/sosc-skip.conf): see that file.
+-- Options (script-opts/hikari-skip.conf): see that file.
 
 local msg = require('mp.msg')
 local options = require('mp.options')
 
-local OPTIONS_ID = 'sosc-skip'
+local OPTIONS_ID = 'hikari-skip'
 -- Input section names are global to mpv, so ours carries the script name.
 local MOUSE_SECTION = mp.get_script_name() .. '_button'
 local MAX_TITLE = 200
@@ -566,7 +566,7 @@ end)
 
 mp.add_key_binding(nil, 'skip', skip)
 
-if SOSC_SKIP_TEST then
+if HIKARI_SKIP_TEST then
 	return {
 		KINDS = KINDS, opts = opts, state = state, overlay = overlay, MOUSE_SECTION = MOUSE_SECTION,
 		classify = classify, build_ranges = build_ranges, range_at = range_at,

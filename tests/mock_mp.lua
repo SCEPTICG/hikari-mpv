@@ -1,4 +1,4 @@
--- Minimal stand-in for mpv's Lua API, enough to load the sosc scripts outside mpv.
+-- Minimal stand-in for mpv's Lua API, enough to load the hikari scripts outside mpv.
 local M = {}
 
 M.commands = {}      -- every mp.commandv call, as an array of arguments

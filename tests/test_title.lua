@@ -2,8 +2,8 @@
 package.path = './tests/?.lua;' .. package.path
 local mock = require('mock_mp')
 
-local SCRIPT = 'portable_config/scripts/sosc-title.lua'
-local SCRIPT_NAME = 'sosc_title'
+local SCRIPT = 'portable_config/scripts/hikari-title.lua'
+local SCRIPT_NAME = 'hikari_title'
 
 local passed, failed = 0, 0
 local function test(name, fn)
@@ -26,7 +26,7 @@ end
 local function load(opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = opts or {}
-	SOSC_TITLE_TEST = true
+	HIKARI_TITLE_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
 end
@@ -66,7 +66,7 @@ test('invalid %-sequences do not fail and are kept literally', function()
 end)
 
 test('unknown extensions are kept', function()
-	local t = load({['sosc-title-pretty'] = 'no'})
+	local t = load({['hikari-title-pretty'] = 'no'})
 	eq(t.title_for('https://h/x?filename=Show.S01E01.part2'), 'Show.S01E01.part2')
 end)
 
@@ -130,7 +130,7 @@ test('long titles are cut on a character boundary with an ellipsis', function()
 end)
 
 test('enabled=no disables the script', function()
-	load({['sosc-title-enabled'] = 'no'})
+	load({['hikari-title-enabled'] = 'no'})
 	eq(start(SEANIME), nil)
 end)
 
@@ -279,7 +279,7 @@ test('pretty: only filename= titles; pretty=no keeps the name', function()
 	mock.props['playlist-playing-pos'] = 0
 	mock.props['playlist/0/title'] = 'Show.S01E01.1080p'
 	eq(start(SEANIME), nil, 'playlist title left alone')
-	load({['sosc-title-pretty'] = 'no'})
+	load({['hikari-title-pretty'] = 'no'})
 	eq(start(SEANIME), SEANIME_RAW)
 end)
 

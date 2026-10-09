@@ -1,12 +1,14 @@
-# sosc
+# hikari
+
+> hikari was called **sosc** until v0.3.0. Installing hikari over sosc carries everything over: see [Coming from sosc](#coming-from-sosc).
 
 A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https://github.com/tomasklaen/uosc), with its own colour palettes and a few extras for watching series and anime.
 
 https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
 
-<sub>A one-minute showreel of sosc, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. sosc is not affiliated with them.</sub>
+<sub>A one-minute showreel of hikari, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. hikari is not affiliated with them.</sub>
 
-- **Palettes**: 14 colour palettes for uosc, including sosc's own, SCEPTIC, picked from a menu and applied straight away.
+- **Palettes**: 14 colour palettes for uosc, including hikari's own, SCEPTIC, picked from a menu and applied straight away.
 - **Skip button**: a *Saltar opening / intro / ending* button while a chapter looks like an opening, intro or ending.
 - **Stream titles**: readable titles for streamed URLs, with the access token kept out of the title bar.
 - **Speed menu**: a button with fixed speeds (0.5× to 2×) instead of a slider.
@@ -14,9 +16,9 @@ https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
 - **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
 - **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automático*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
 - **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
-- **Update check**: a short notice and a button when a new sosc version is out, with its release notes and the update command one click away. It never updates anything by itself, and it can be turned off.
+- **Update check**: a short notice and a button when a new hikari version is out, with its release notes and the update command one click away. It never updates anything by itself, and it can be turned off.
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar sosc*).
+The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar hikari*).
 
 ## Requirements
 
@@ -29,14 +31,14 @@ The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *V
 On Windows, open PowerShell (Start menu, type *PowerShell*) and run (for macOS and Linux, see [macOS and Linux](#macos-and-linux)):
 
 ```
-irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
+irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex
 ```
 
-`irm` downloads the installer of the latest release and `iex` runs it. A menu opens: choose *Install or update*, then the player (or players) to install sosc for. The installer:
+`irm` downloads the installer of the latest release and `iex` runs it. A menu opens: choose *Install or update*, then the player (or players) to install hikari for. The installer:
 
 - finds mpv, mpv.net and AnimeJaNai and the config folder each one reads;
-- backs up the files it may change, next to that folder (`<folder>-respaldo-sosc-<date>`; it keeps the three newest and the one from before the first install);
-- downloads sosc, uosc and thumbfast (and Anime4K, if you want it) from GitHub, always the same versions, and checks every download against its SHA256 before using it;
+- backs up the files it may change, next to that folder (`<folder>-respaldo-hikari-<date>`; it keeps the three newest and the one from before the first install);
+- downloads hikari, uosc and thumbfast (and Anime4K, if you want it) from GitHub, always the same versions, and checks every download against its SHA256 before using it;
 - sets aside other on-screen controllers that would clash with uosc (nothing is deleted);
 - copies the scripts and their settings, and adds a marked block to `mpv.conf` and `input.conf`, leaving the rest of both files as it is.
 
@@ -45,18 +47,18 @@ It only touches that config folder and the backup next to it, plus a temporary f
 If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windows PowerShell 5.1 does not use TLS 1.2 by default (older Windows 10 builds). Switch it on for that window and run the line again:
 
 ```
-[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex
 ```
 
 - **Update**: run the same line again and choose *Install or update*. Your saved palette, subtitle and upscaling choices are kept.
-- **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes sosc and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
+- **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes hikari and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
 
 ### Options
 
 `iex` cannot pass options to the installer. To pass them, run it as a script block:
 
 ```
-& ([scriptblock]::Create((irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1))) -Action uninstall
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Action uninstall
 ```
 
 | Option | Meaning |
@@ -70,24 +72,24 @@ If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windo
 Exit codes (in `$LASTEXITCODE`): 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. For example:
 
 ```
-& ([scriptblock]::Create((irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1))) -Action install -Target "$env:APPDATA\mpv" -Yes
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Action install -Target "$env:APPDATA\mpv" -Yes
 ```
 
 ### Checking the installer first
 
-`irm ... | iex` runs whatever the server sends without checking it: the installer verifies everything it downloads, but it cannot verify itself. The address always points to a file attached to a tagged release, never to the `main` branch. To check it yourself, download `sosc.ps1` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/sosc/releases/latest), compare the hash and run the file:
+`irm ... | iex` runs whatever the server sends without checking it: the installer verifies everything it downloads, but it cannot verify itself. The address always points to a file attached to a tagged release, never to the `main` branch. To check it yourself, download `hikari.ps1` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/hikari-mpv/releases/latest), compare the hash and run the file:
 
 ```
-Get-FileHash .\sosc.ps1 -Algorithm SHA256
+Get-FileHash .\hikari.ps1 -Algorithm SHA256
 Get-Content .\SHA256SUMS
-powershell -ExecutionPolicy Bypass -File .\sosc.ps1
+powershell -ExecutionPolicy Bypass -File .\hikari.ps1
 ```
 
-The first line must print the hash `SHA256SUMS` lists for `sosc.ps1`. The options above work after the file name too (`-File .\sosc.ps1 -Action uninstall`). Each release's `sosc.ps1` only installs the `sosc.zip` of that same release, and only if its SHA256 matches the one written inside the script.
+The first line must print the hash `SHA256SUMS` lists for `hikari.ps1`. The options above work after the file name too (`-File .\hikari.ps1 -Action uninstall`). Each release's `hikari.ps1` only installs the `hikari.zip` of that same release, and only if its SHA256 matches the one written inside the script.
 
-Be aware of what this check proves: `SHA256SUMS` comes from the same release, published by the same GitHub account, as `sosc.ps1`. It catches a file that was corrupted or changed on the way to you, but not a compromised account: whoever could replace `sosc.ps1` there could replace `SHA256SUMS` too. Reading `sosc.ps1` before running it is the only check that does not depend on the account.
+Be aware of what this check proves: `SHA256SUMS` comes from the same release, published by the same GitHub account, as `hikari.ps1`. It catches a file that was corrupted or changed on the way to you, but not a compromised account: whoever could replace `hikari.ps1` there could replace `SHA256SUMS` too. Reading `hikari.ps1` before running it is the only check that does not depend on the account.
 
-From a copy of this repository (clone it, or download it as a zip and extract it), open PowerShell in that folder and run `powershell -ExecutionPolicy Bypass -File install\sosc.ps1`: the sosc files then come from that copy.
+From a copy of this repository (clone it, or download it as a zip and extract it), open PowerShell in that folder and run `powershell -ExecutionPolicy Bypass -File install\hikari.ps1`: the hikari files then come from that copy.
 
 ### How the installer works
 
@@ -103,27 +105,38 @@ Pick one or several (or, with `-NoMenu`, type their numbers: `1,3`), or type ano
 
 For each folder it:
 
-1. Copies the files it may change to `<folder>-respaldo-sosc-<date>` next to it, and shows the size of that copy: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf`, `sosc-installed.txt`, and `scripts-desactivados`, `shaders-desactivados` and `sosc-originales` if they exist. Nothing else in the folder is copied (`cache`, `watch_later`...); in `shaders` sosc only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so `shaders` is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before sosc's first install (the only one with your config as it was before sosc, marked with a `sosc-backup-original.txt` file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly `<folder>-respaldo-sosc-<date>` next to it count: nothing else is touched.
+1. Copies the files it may change to `<folder>-respaldo-hikari-<date>` next to it, and shows the size of that copy: `mpv.conf`, `input.conf`, `scripts`, `script-opts`, `fonts`, `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf`, `hikari-installed.txt`, and `scripts-desactivados`, `shaders-desactivados` and `hikari-originales` if they exist. Nothing else in the folder is copied (`cache`, `watch_later`...); in `shaders` hikari only adds and removes its own Anime4K files, and an Anime4K installed by hand is moved, never deleted, so `shaders` is not copied either. Junctions and symbolic links are skipped with a warning, never followed. If the copy fails, the half-made copy is deleted and that folder is left alone. Then only the three newest backups of that folder are kept, plus the one made before hikari's first install (the only one with your config as it was before hikari, marked with a `hikari-backup-original.txt` file inside so it is kept even after uninstalling and installing again); older ones are deleted, and the installer says which. Only folders named exactly `<folder>-respaldo-hikari-<date>` next to it count: nothing else is touched.
 2. Moves other on-screen controllers that clash with uosc (ModernX, ModernZ, custom `osc.lua`, `mpv-osc-*`...) to `scripts-desactivados`, together with their `script-opts` and fonts. Nothing is deleted. It also offers to move there the `.lua` files in `scripts` that are really the error page of a failed download (first line `404: Not Found`, `Not Found` or an HTML page), for which mpv logs an error at every start; they come back on uninstall.
-3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: sosc's is.
-4. Copies the sosc scripts and `script-opts`. `sosc-palette.conf` and `sosc-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
-5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `sosc-upscale.conf` if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in *Automático*.
-6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, `Alt+u`, and `Ctrl+0` to `Ctrl+7` when sosc installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
+3. Downloads uosc 5.13.0 and thumbfast (fixed commit) from GitHub and checks their SHA256 before using them. uosc's own `uosc.conf` is not installed: hikari's is.
+4. Copies the hikari scripts and `script-opts`. `hikari-palette.conf` and `hikari-subs.conf` are only copied when missing, so your saved palette and subtitle choices survive updates.
+5. Anime4K: asks whether to install it (see [Anime4K upscaling](#anime4k-upscaling)) and writes `hikari-upscale.conf` if it is missing, with the quality that suits your graphics card; when it has just installed Anime4K there, in *Automático*.
+6. Adds a marked block at the end of `mpv.conf` (`osc=no`, `osd-bar=no` and the three `include` lines) and of `input.conf` (`Alt+p`, `Alt+s`, `Alt+t`, `Alt+u`, and `Ctrl+0` to `Ctrl+7` when hikari installed Anime4K). The rest of both files is left as it is. Running the installer again rewrites the block: in `mpv.conf` it is moved back to the end, so the saved subtitle style still wins over `sub-*` lines you added later; in `input.conf` it stays where it is. If `mpv.conf` ends inside a `[profile]`, the block starts with `[default]`. A key you already use for something else is left to you, and the installer says so.
 7. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](#thumbnails)).
-8. Writes `sosc-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
+8. Writes `hikari-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
-Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the sosc scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if sosc installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as sosc left them), and whether to delete your saved choices. `sosc-update.txt`, where the update check keeps its state, goes without asking, like `sosc-installed.txt`; updating keeps it. A file that had no line break at its end gets it back that way.
+Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the hikari scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if hikari installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as hikari left them), and whether to delete your saved choices. `hikari-update.txt`, where the update check keeps its state, goes without asking, like `hikari-installed.txt`; updating keeps it. A file that had no line break at its end gets it back that way.
 
-If uosc goes and your own `mpv.conf` (outside the sosc block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# sosc: ` in front of it. With `-Yes` it only warns.
+If uosc goes and your own `mpv.conf` (outside the hikari block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# hikari: ` in front of it. With `-Yes` it only warns.
 
-Lines you added to `mpv.conf` or `input.conf` by hand for an earlier sosc install are not touched: once the installer's block is there you can delete them.
+Lines you added to `mpv.conf` or `input.conf` by hand, for a copy of hikari installed without the installer, are not touched: once the installer's block is there you can delete them.
+
+### Coming from sosc
+
+hikari was called sosc until v0.3.0. Both installers recognise a folder with sosc in it (its `sosc-installed.txt`, or `sosc-*` files) and, after the usual backup, which includes the files of sosc, carry it over to hikari:
+
+- Your palette, subtitle and upscaling choices move to `hikari-palette.conf`, `hikari-subs.conf` and `hikari-upscale.conf`.
+- The sosc blocks in `mpv.conf` and `input.conf` become hikari blocks, and what sosc set aside or turned off (with `# sosc: ` in front) is taken over by hikari, so uninstalling hikari leaves the folder as it was before sosc.
+- Lines of your own outside the blocks that use the names of sosc (`script-binding sosc_palettes/open-menu`, `script-message-to sosc_upscale set-mode a`, `include="~~/sosc-subs.conf"`, `script-opts-append=sosc-update-enabled=no`...) are changed to hikari's, and the installer shows each one.
+- The sosc scripts, options, record and update-check state go. Old `<folder>-respaldo-sosc-<date>` backups are left alone (the installer says how many there are): delete them yourself when you no longer need them.
+
+*Uninstall* works on a folder with sosc too. sosc itself is never put back. The update check of sosc 0.3.0 does not announce hikari, so run the install line once by hand.
 
 ### macOS and Linux
 
 Open Terminal and run:
 
 ```
-curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
 ```
 
 `curl` downloads the installer of the latest release and `bash` runs it. It is the same installer as on Windows, written for the `bash` 3.2 that comes with macOS: the same menus (`↑`/`↓`, `Enter`, `Esc`, `Space`, `Y`/`N`, `S`/`N` in Spanish), messages, backups and rotation, marked blocks, record, set-aside interfaces, Anime4K questions and uninstall (see [How the installer works](#how-the-installer-works)). The questions are read from the terminal even though the script itself comes through the pipe. Messages are in Spanish when `LC_ALL`, `LC_MESSAGES` or `LANG` (the first one set) starts with `es`, in English otherwise. What is different:
@@ -137,7 +150,7 @@ curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | b
 Run the same line to update. To uninstall:
 
 ```
-curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash -s -- --uninstall
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --uninstall
 ```
 
 | Option | Meaning |
@@ -150,7 +163,7 @@ curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | b
 
 Options go after `bash -s --`, as above. With no terminal at all (a script, `ssh` without `-t`...) it runs as with `--yes`, and when an answer is really needed (several folders and no `--target`) it stops with a clear message. Exit codes: 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. The whole script is inside one function that its last line calls, so a download cut short runs nothing.
 
-To check it before running it, download `sosc.sh` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/sosc/releases/latest), compare `shasum -a 256 sosc.sh` (`sha256sum sosc.sh` on Linux) with the line for `sosc.sh` in `SHA256SUMS`, and run `bash sosc.sh` (the options above work after it). The same caveat as for `sosc.ps1` applies (see [Checking the installer first](#checking-the-installer-first)). From a copy of this repository, `bash install/sosc.sh` installs the sosc files of that copy.
+To check it before running it, download `hikari.sh` and `SHA256SUMS` from the [release page](https://github.com/SCEPTICG/hikari-mpv/releases/latest), compare `shasum -a 256 hikari.sh` (`sha256sum hikari.sh` on Linux) with the line for `hikari.sh` in `SHA256SUMS`, and run `bash hikari.sh` (the options above work after it). The same caveat as for `hikari.ps1` applies (see [Checking the installer first](#checking-the-installer-first)). From a copy of this repository, `bash install/hikari.sh` installs the hikari files of that copy.
 
 ## Usage
 
@@ -159,12 +172,12 @@ To check it before running it, download `sosc.sh` and `SHA256SUMS` from the [rel
 | `Alt+p` | Palette menu |
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
 | `Alt+t` | Subtitle menu (style, size, height) |
-| `Alt+u` | New sosc version: release notes, update command (see [Update check](#update-check)) |
-| `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when sosc installed Anime4K) |
+| `Alt+u` | New hikari version: release notes, update command (see [Update check](#update-check)) |
+| `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when hikari installed Anime4K) |
 | `Ctrl+7` | Anime4K *Automático*: the mode from each video's resolution |
 | `Ctrl+0` | Anime4K off |
 
-The controls bar has up to five sosc buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed, palettes and *Actualizar sosc* (download icon, only when a new sosc version is out). The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
+The controls bar has up to five hikari buttons before *fullscreen*: subtitles (text icon), *Escalado* (sparkles icon, only for videos and only when Anime4K is installed), speed, palettes and *Actualizar hikari* (download icon, only when a new hikari version is out). The *Saltar opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
 
 ## Configuration
 
@@ -174,16 +187,16 @@ Everything lives in the player's config folder (the one the installer showed you
 | --- | --- |
 | `script-opts/uosc.conf` | uosc: timeline style and the buttons of the controls bar. |
 | `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
-| `script-opts/sosc-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
-| `script-opts/sosc-title.conf` | Stream titles: on/off and tidying of release names. |
-| `script-opts/sosc-update.conf` | Update check: on/off and hours between checks. |
-| `sosc-palette.conf`, `sosc-subs.conf`, `sosc-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
+| `script-opts/hikari-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
+| `script-opts/hikari-title.conf` | Stream titles: on/off and tidying of release names. |
+| `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
+| `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf` | Your chosen palette, subtitle style and Anime4K mode and quality, saved by the menus. Kept on update. |
 
-Updating sosc replaces the `script-opts` files above with sosc's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `sosc-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked sosc block is.
+Updating hikari replaces the `script-opts` files above with hikari's (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is (and, once, lines that used the names of sosc: see [Coming from sosc](#coming-from-sosc)).
 
 ### Example: audio and subtitle languages
 
-sosc does not choose languages for you. A common recipe for anime with Spanish dubs (Spanish audio when there is one, otherwise Japanese with Spanish subtitles) goes in your own `mpv.conf`, before the sosc block:
+hikari does not choose languages for you. A common recipe for anime with Spanish dubs (Spanish audio when there is one, otherwise Japanese with Spanish subtitles) goes in your own `mpv.conf`, before the hikari block:
 
 ```
 alang=spa,es,es-ES,ja,jpn
@@ -195,21 +208,21 @@ subs-with-matching-audio=no
 
 ## Palettes
 
-sosc ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away.
+hikari ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away.
 
 - Dark: uosc (original), Catppuccin Mocha, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest.
 - Light: Catppuccin Latte, Gruvbox light, Solarized light.
-- Custom: SCEPTIC, defined in `portable_config/scripts/sosc-palettes.lua`.
+- Custom: SCEPTIC, defined in `portable_config/scripts/hikari-palettes.lua`.
 
 A palette can also set transparency through an optional `opacity` table (uosc's `opacity` keys, values 0 to 1); palettes without it use uosc's default opacity.
 
-sosc owns uosc's `color` and `opacity` options: values set in `script-opts/uosc.conf` are overridden by the active palette. Customise them by editing a palette instead.
+hikari owns uosc's `color` and `opacity` options: values set in `script-opts/uosc.conf` are overridden by the active palette. Customise them by editing a palette instead.
 
-The choice is saved to `~~/sosc-palette.conf` (the mpv config folder, `portable_config/` in a portable install), which `mpv.conf` includes on start-up. To bind another key, use `script-binding sosc_palettes/open-menu` in `input.conf`.
+The choice is saved to `~~/hikari-palette.conf` (the mpv config folder, `portable_config/` in a portable install), which `mpv.conf` includes on start-up. To bind another key, use `script-binding hikari_palettes/open-menu` in `input.conf`.
 
 ## Stream titles
 
-When mpv plays an http(s) URL with a query string, such as the links Seanime hands out (`https://host/<id>?token=...&filename=Show.S01E01.mkv`), `sosc-title.lua` sets the title to the decoded `filename` parameter without its video extension, or to the last path segment when there is no `filename`. The title is set as the file starts, so the token is kept out of the top bar except, at most, for an instant while the stream opens. Local files and URLs without a query keep mpv's own title, and a `force-media-title` you set yourself is left alone. The title only lasts for that file.
+When mpv plays an http(s) URL with a query string, such as the links Seanime hands out (`https://host/<id>?token=...&filename=Show.S01E01.mkv`), `hikari-title.lua` sets the title to the decoded `filename` parameter without its video extension, or to the last path segment when there is no `filename`. The title is set as the file starts, so the token is kept out of the top bar except, at most, for an instant while the stream opens. Local files and URLs without a query keep mpv's own title, and a `force-media-title` you set yourself is left alone. The title only lasts for that file.
 
 It also leaves alone playlist entries that carry their own title (M3U `#EXTINF`), and when there is no `filename` the path segment it falls back to (`stream`, `master.m3u8`...) gives way to the file's own `title` tag once the file has loaded.
 
@@ -227,14 +240,14 @@ With `pretty=yes` (the default) a title taken from `filename` is tidied up: dots
 
 Recognised markers: `S01E01`, `s1e1`, `S01E01v2`, `S01E01-E02`, `E01`, `EP01`, `Episode 01` and anime-style ` - 01` / ` - 01v2`. A name with no marker is treated as a film and only cut at its first technical tag (resolution, source, codec, audio...); if nothing sensible is left, the name is shown as it comes. The path-segment fallback and playlist titles are never changed. A name written all in lower case, as some groups do (Erai-raws calls one series just `jukishi`), gets a capital first letter (`Jukishi · E15`); a name with any capital letter is left as it was written. Only the filename is available: the full series title (which Seanime knows) is not passed to mpv. Set `pretty=no` to get the filename as it comes, without its video extension.
 
-Disable the whole script with `enabled=no` in `script-opts/sosc-title.conf`.
+Disable the whole script with `enabled=no` in `script-opts/hikari-title.conf`.
 
 ## Speed menu
 
 The speed button in the controls bar opens a menu with 0.5×, 0.75×, 1×, 1.25×, 1.5× and 2×; the current speed is marked. mpv's own `[`, `]` and `Backspace` keep working. To open the menu from the keyboard, add a line like this to `input.conf`:
 
 ```
-Alt+v  script-binding sosc_speed/open-menu
+Alt+v  script-binding hikari_speed/open-menu
 ```
 
 ## Subtitle styles
@@ -247,20 +260,20 @@ The subtitles button with the text icon (`text_fields`) in the controls bar, or 
 
 *Original* and *Normal* set nothing, so whatever your `mpv.conf` says (or mpv's default: `sub-scale=1`, `sub-pos=100`) stays in charge. Choosing them again puts back the values mpv had when the script started; if mpv was started with another choice saved, those values were already the choice's, so mpv's built-in defaults are used instead until the next start, when your `mpv.conf` applies again.
 
-The choice is saved to `~~/sosc-subs.conf`, which `mpv.conf` includes on start-up. The styles are defined in `portable_config/scripts/sosc-subs.lua`. Colours use mpv's `#AARRGGBB`, where the alpha is opacity (`FF` opaque, `00` invisible), the reverse of ASS. To bind another key, use `script-binding sosc_subs/open-menu` in `input.conf`.
+The choice is saved to `~~/hikari-subs.conf`, which `mpv.conf` includes on start-up. The styles are defined in `portable_config/scripts/hikari-subs.lua`. Colours use mpv's `#AARRGGBB`, where the alpha is opacity (`FF` opaque, `00` invisible), the reverse of ASS. To bind another key, use `script-binding hikari_subs/open-menu` in `input.conf`.
 
-ASS subtitles keep their own styling: sosc leaves mpv's `sub-ass-override=scale` alone, so the style only applies to text subtitles (SRT, WebVTT...). With that setting mpv still applies `sub-scale` to ASS, so the size options do change them. `sub-pos` is passed to libass as the line position and moves ASS dialogue too; lines placed with `\pos` (signs, karaoke) should stay where they are. This last point still has to be checked in mpv with real files.
+ASS subtitles keep their own styling: hikari leaves mpv's `sub-ass-override=scale` alone, so the style only applies to text subtitles (SRT, WebVTT...). With that setting mpv still applies `sub-scale` to ASS, so the size options do change them. `sub-pos` is passed to libass as the line position and moves ASS dialogue too; lines placed with `\pos` (signs, karaoke) should stay where they are. This last point still has to be checked in mpv with real files.
 
 mpv 0.39 changed the subtitle border options, and the script adapts to the version it runs on, always writing the real option name (never an alias):
 
 - mpv 0.39 and newer: `sub-outline-color`/`sub-outline-size`, `sub-back-color` for the shadow colour (`sub-shadow-color` is an alias of it), and `sub-border-style`. *Caja oscura* uses `sub-border-style=opaque-box`.
 - mpv 0.38 and older: `sub-border-color`/`sub-border-size`, a separate `sub-shadow-color`, and no `sub-border-style`. *Caja oscura* still gets its box: a translucent `sub-back-color` makes mpv draw a background box in that colour. The other styles never give `sub-back-color` any opacity of their own (they put back the value it had at start-up), so no box appears with them.
 
-A `sosc-subs.conf` written by mpv 0.39 or newer uses option names that mpv 0.38 and older don't know: if the same config folder is used with an older mpv, it logs an unknown-option error for those lines and starts normally, without that style until it is picked again.
+A `hikari-subs.conf` written by mpv 0.39 or newer uses option names that mpv 0.38 and older don't know: if the same config folder is used with an older mpv, it logs an unknown-option error for those lines and starts normally, without that style until it is picked again.
 
 ## Anime4K upscaling
 
-[Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. sosc does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Once installed it starts in **Automático** (see below); pick another mode, or *Apagado*, at any time.
+[Anime4K](https://github.com/bloc97/Anime4K) (by bloc97, MIT) is a set of mpv shaders that clean up and upscale anime on the graphics card. hikari does not include it: the installer downloads release v4.0.1 (`Anime4K_v4.0.zip`) from GitHub, checks its SHA256 and copies its `Anime4K_*.glsl` files, and nothing else, into `shaders/`. Once installed it starts in **Automático** (see below); pick another mode, or *Apagado*, at any time.
 
 The **Escalado** button in the controls bar (sparkles icon, `auto_awesome`) opens a menu with two groups; picking an option applies it straight away and the menu stays open:
 
@@ -277,17 +290,17 @@ The **Escalado** button in the controls bar (sparkles icon, `auto_awesome`) open
 
 `Ctrl+1` to `Ctrl+6` pick the modes in the same order and `Ctrl+0` turns Anime4K off, as in Anime4K's own instructions; `Ctrl+7` is *Automático*. Each shows a short message such as *Anime4K: Modo A (Rápido)* or *Anime4K: Automático (B, 720p)*. The shader lists are exactly those of Anime4K's official mpv templates. If the shaders are missing, the menu says so (*Anime4K no está instalado: ejecuta el instalador*) and the button stays hidden.
 
-The choice is saved to `~~/sosc-upscale.conf`, which `mpv.conf` includes, so a fixed mode is active from the first frame on the next start. With *Apagado* that file sets no `glsl-shaders` at all, so your own `glsl-shaders` line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and *Apagado* puts your list back. *Automático* cannot know the height before a file is open, so its file only says `mode=auto`: the script sets the shaders when each file loads, and with no mode for a video (too tall, or no video) your own list applies, as with *Apagado*. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (`;` on Windows, `:` elsewhere). The button needs mpv 0.36 or newer (it is shown through a `user-data` property); with an older mpv use the keys.
+The choice is saved to `~~/hikari-upscale.conf`, which `mpv.conf` includes, so a fixed mode is active from the first frame on the next start. With *Apagado* that file sets no `glsl-shaders` at all, so your own `glsl-shaders` line keeps working; with a mode on, the mode's Anime4K shaders replace the whole list (like Anime4K's own keys do), and *Apagado* puts your list back. *Automático* cannot know the height before a file is open, so its file only says `mode=auto`: the script sets the shaders when each file loads, and with no mode for a video (too tall, or no video) your own list applies, as with *Apagado*. The shader list is set as a list, never as one joined string, so it does not depend on the path separator (`;` on Windows, `:` elsewhere). The button needs mpv 0.36 or newer (it is shown through a `user-data` property); with an older mpv use the keys.
 
 What the installer does:
 
 - **AnimeJaNai**: nothing. It already upscales with AI and uses `Ctrl+1` to `Ctrl+9` for it.
-- **No Anime4K yet**: it explains what it is and asks *Install Anime4K?* (yes by default; with `-Yes`, yes). Installed, it starts in *Automático*: `sosc-upscale.conf` is written with `mode=auto` and the quality for your card, even if an earlier one said *Apagado*. If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of sosc; Anime4K is offered again next time, yes by default.
-- **Already installed by sosc**: an update leaves it alone when it is the same version and every shader sosc needs is there; if one is missing or the version changed, it is downloaded and installed again. The mode you chose is kept.
-- **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that sosc did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, sosc first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to `shaders-desactivados/` (nothing is deleted), sosc installs its own copy (in *Automático*), and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` (`CTRL+1` and `Ctrl+1` alike) can be turned off by putting `# sosc: ` in front of them, so the sosc keys can use those keys. A `glsl-shaders=` line with Anime4K shaders in your `mpv.conf` (Anime4K's templates have one; so do `[profile]`s that pick a mode by height, which *Automático* replaces) is turned off the same way (yes by default, and with `-Yes`): otherwise that mode would be on at every start, even with *Apagado*. The same happens if sosc installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
-- `-Anime4K yes` installs it (and takes over one installed by hand) without asking; `-Anime4K no` leaves it out (an Anime4K that sosc installed earlier is left as it is).
+- **No Anime4K yet**: it explains what it is and asks *Install Anime4K?* (yes by default; with `-Yes`, yes). Installed, it starts in *Automático*: `hikari-upscale.conf` is written with `mode=auto` and the quality for your card, even if an earlier one said *Apagado*. If you say no, it asks again on the next update, then with no as the default. If the download or its check fails, the installer says so and installs the rest of hikari; Anime4K is offered again next time, yes by default.
+- **Already installed by hikari**: an update leaves it alone when it is the same version and every shader hikari needs is there; if one is missing or the version changed, it is downloaded and installed again. The mode you chose is kept.
+- **Anime4K installed by hand** (`Anime4K_*.glsl` in `shaders/` that hikari did not put there): it offers to take it over (no by default; with `-Yes`, no). If you accept, hikari first downloads and checks its copy (if that fails, nothing of yours is touched), then your files are moved to `shaders-desactivados/` (nothing is deleted), hikari installs its own copy (in *Automático*), and `Ctrl+0` to `Ctrl+6` lines of yours that change `glsl-shaders` (`CTRL+1` and `Ctrl+1` alike) can be turned off by putting `# hikari: ` in front of them, so the hikari keys can use those keys. A `glsl-shaders=` line with Anime4K shaders in your `mpv.conf` (Anime4K's templates have one; so do `[profile]`s that pick a mode by height, which *Automático* replaces) is turned off the same way (yes by default, and with `-Yes`): otherwise that mode would be on at every start, even with *Apagado*. The same happens if hikari installs Anime4K where such a line was already waiting for the shaders. Uninstalling moves your files back and turns those lines on again. If you do not accept, nothing is touched: your keys keep working, but the *Escalado* menu does not know what they turned on.
+- `-Anime4K yes` installs it (and takes over one installed by hand) without asking; `-Anime4K no` leaves it out (an Anime4K that hikari installed earlier is left as it is).
 
-The quality is chosen from your graphics card the first time `sosc-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. The line follows [Anime4K's own guide](https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md), which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets *Rápida*:
+The quality is chosen from your graphics card the first time `hikari-upscale.conf` is written, and the installer says so in one line (*Gráfica: NVIDIA GeForce RTX 3060 → calidad Alta*). When there are several cards, the most capable one decides. The line follows [Anime4K's own guide](https://github.com/bloc97/Anime4K/blob/master/md/GLSL_Instructions_Windows_MPV.md), which puts GTX 1080, RTX 2070, RTX 3060, RX 590, Vega 56, 5700 XT and 6600 XT among the higher-end cards and GTX 980, GTX 1060 and RX 570 among the lower-end ones; a card that is not clearly as fast as an RTX 2070 gets *Rápida*:
 
 | | *Alta* | *Rápida* |
 | --- | --- | --- |
@@ -295,46 +308,46 @@ The quality is chosen from your graphics card the first time `sosc-upscale.conf`
 | AMD | RX 590; RX 5600, 5700; RX 6600 and up; RX 7600 and up; RX 9060 and up; RX Vega 56/64, Radeon VII | RX 580, 570 and older; RX 5500; RX 6400, 6500; RX 7400; integrated graphics (*Radeon Graphics*, *780M*...) |
 | Intel | Arc A580, A750, A770, B570, B580 (and A770M) | *Arc Graphics* with no model number and Arc 140V (integrated in Core Ultra), Arc A380, laptop Arc below A770M, UHD, Iris, HD |
 | Apple | M Pro, Max and Ultra | M base chips, Intel Macs |
-| Linux (`sosc.sh`, from `lspci`) | a dedicated NVIDIA or AMD card | Intel, AMD integrated, no `lspci` |
+| Linux (`hikari.sh`, from `lspci`) | a dedicated NVIDIA or AMD card | Intel, AMD integrated, no `lspci` |
 | Other | | anything unknown |
 
 It never changes the quality you picked afterwards: change it in the menu at any time. If the video stutters, use *Rápida* or a mode without `+`.
 
-The modes, qualities and shader lists are defined in `portable_config/scripts/sosc-upscale.lua`. To open the menu from the keyboard, bind `script-binding sosc_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to sosc_upscale set-mode <off|auto|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
+The modes, qualities and shader lists are defined in `portable_config/scripts/hikari-upscale.lua`. To open the menu from the keyboard, bind `script-binding hikari_upscale/open-menu` in `input.conf`; to pick a mode, `script-message-to hikari_upscale set-mode <off|auto|a|b|c|aa|bb|ca>` (and `set-quality <hq|fast>`).
 
 ## Skip openings and endings
 
-`sosc-skip.lua` shows a **Saltar opening ›** / **Saltar ending ›** button at the bottom right, above uosc's controls, for as long as playback is inside a chapter that looks like an opening or an ending, even when uosc's controls are hidden or playback is paused. Clicking it, or pressing `Alt+s`, jumps to the start of the next chapter. Outside those chapters, in files without chapters, while idle and while a uosc menu or the console is open, nothing is drawn and the mouse is left to uosc and mpv.
+`hikari-skip.lua` shows a **Saltar opening ›** / **Saltar ending ›** button at the bottom right, above uosc's controls, for as long as playback is inside a chapter that looks like an opening or an ending, even when uosc's controls are hidden or playback is paused. Clicking it, or pressing `Alt+s`, jumps to the start of the next chapter. Outside those chapters, in files without chapters, while idle and while a uosc menu or the console is open, nothing is drawn and the mouse is left to uosc and mpv.
 
 Chapters are recognised by title, with the same rules uosc uses to colour its chapter ranges: `OP`, `Opening`, `... OP`, `... Opening` and `オープニング` for openings (only when another chapter follows), `ED`, `Ending`, `ED ...`, `Ending ...`, `... ED`, `... Ending`, `Credits`, `Credits ...`, `... Credits` and `エンディング` for endings. Titles such as `Operation`, `OP1` or `Opening Night` do not count; add your own patterns with `extra_openings` / `extra_endings` (Lua patterns separated by `|`, matched against the lower-case title). Intros (`Intro`, `Avant`, `Prologue`, shown as **Saltar intro ›**) are on by default, because many releases name the opening song `Intro`; turn them off with `intros=no`. Outros (`Outro`, `Closing`, `Preview`, `PV`, shown as **Saltar avance ›**) are off by default; turn them on with `outros=yes`.
 
 When the ending is the last chapter, skipping it moves on to the next playlist entry if there is one; otherwise it seeks to one second before the end, so the file finishes as it normally would.
 
-The button follows the active palette (background and border from uosc's `background` and `foreground`, filled with `foreground` on hover). Position, size and opacity are set in `script-opts/sosc-skip.conf`. To use another key, bind `script-binding sosc_skip/skip` in `input.conf`.
+The button follows the active palette (background and border from uosc's `background` and `foreground`, filled with `foreground` on hover). Position, size and opacity are set in `script-opts/hikari-skip.conf`. To use another key, bind `script-binding hikari_skip/skip` in `input.conf`.
 
 ## Update check
 
-`sosc-update.lua` tells you when a new version of sosc is out. It only tells you: it never downloads or installs anything by itself.
+`hikari-update.lua` tells you when a new version of hikari is out. It only tells you: it never downloads or installs anything by itself.
 
-When there is one, opening a file shows *sosc 0.3.1 disponible · Alt+u* for a few seconds, and an *Actualizar sosc* button (download icon) appears in the controls bar, before *fullscreen*. The button, or `Alt+u`, opens a menu with:
+When there is one, opening a file shows *hikari 0.4.1 disponible · Alt+u* for a few seconds, and an *Actualizar hikari* button (download icon) appears in the controls bar, before *fullscreen*. The button, or `Alt+u`, opens a menu with:
 
-- **Ver novedades de la 0.3.1**: opens that version's release page on GitHub in your browser.
-- **Copiar comando de actualización**: copies the update command, the same one as in [Install](#install): `irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex` on Windows (paste it into PowerShell), `curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash` on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.
+- **Ver novedades de la 0.4.1**: opens that version's release page on GitHub in your browser.
+- **Copiar comando de actualización**: copies the update command, the same one as in [Install](#install): `irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex` on Windows (paste it into PowerShell), `curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash` on macOS and Linux (paste it into a terminal). If the clipboard cannot be reached, the command is shown on screen to type it by hand.
 - **No avisar de esta versión**: no more notice or button for that version. The next one is announced as usual, and `Alt+u` still opens the menu.
 
-How it checks: on the first file you open after starting mpv (never at start-up, so nothing waits for it), and at most once a day, sosc runs `curl` in the background to ask `https://github.com/SCEPTICG/sosc/releases/latest` where it points, and reads the version from the answer. That is the only request: no GitHub API, no account, nothing about you or your files is sent beyond what any visit to that page sends (your IP address and curl's name). Without `curl` or without network nothing is shown, and it tries again the next day. The installed version comes from `sosc-installed.txt`, which the installer writes; a copy installed by hand or from the repository (`dev`) is never checked. The time of the last check, the latest version found and the one you dismissed are kept in `sosc-update.txt` in the config folder. If that file cannot be written (a read-only config folder), it still asks only once per mpv session, but every new session asks again. On Windows it runs `curl.exe` (and, from the menu, `cmd.exe`, `clip.exe` and PowerShell) only from the `System32` folder of Windows, never from mpv's folder or the video's.
+How it checks: on the first file you open after starting mpv (never at start-up, so nothing waits for it), and at most once a day, hikari runs `curl` in the background to ask `https://github.com/SCEPTICG/hikari-mpv/releases/latest` where it points, and reads the version from the answer. That is the only request: no GitHub API, no account, nothing about you or your files is sent beyond what any visit to that page sends (your IP address and curl's name). Without `curl` or without network nothing is shown, and it tries again the next day. The installed version comes from `hikari-installed.txt`, which the installer writes; a copy installed by hand or from the repository (`dev`) is never checked. The time of the last check, the latest version found and the one you dismissed are kept in `hikari-update.txt` in the config folder. If that file cannot be written (a read-only config folder), it still asks only once per mpv session, but every new session asks again. On Windows it runs `curl.exe` (and, from the menu, `cmd.exe`, `clip.exe` and PowerShell) only from the `System32` folder of Windows, never from mpv's folder or the video's.
 
-It is on by default. To turn it off, set `enabled=no` in `script-opts/sosc-update.conf`; updating sosc replaces that file, so to keep it off for good add this line to your own `mpv.conf` instead (outside the sosc block):
+It is on by default. To turn it off, set `enabled=no` in `script-opts/hikari-update.conf`; updating hikari replaces that file, so to keep it off for good add this line to your own `mpv.conf` instead (outside the hikari block):
 
 ```
-script-opts-append=sosc-update-enabled=no
+script-opts-append=hikari-update-enabled=no
 ```
 
-`interval_hours` in the same file sets the hours between checks (24 by default, at least 1). To use another key, bind `script-binding sosc_update/open-menu` in `input.conf`.
+`interval_hours` in the same file sets the hours between checks (24 by default, at least 1). To use another key, bind `script-binding hikari_update/open-menu` in `input.conf`.
 
 ## Thumbnails
 
-Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). sosc ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On macOS the installer always writes it (`mpv_path=/opt/homebrew/bin/mpv`, say): mpv started from Finder or another app does not find `mpv` in its `PATH`, and the thumbnails come out black. On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
+Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). hikari ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On macOS the installer always writes it (`mpv_path=/opt/homebrew/bin/mpv`, say): mpv started from Finder or another app does not find `mpv` in its `PATH`, and the thumbnails come out black. On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
 
 ## Tests
 
@@ -353,11 +366,11 @@ bash tests/install.test.sh
 bash tests/make-release.test.sh
 ```
 
-The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/sosc.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs sosc from it, through `iex` and through `bash -s` as `curl ... | bash` does.
+The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/hikari.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs hikari from it, through `iex` and through `bash -s` as `curl ... | bash` does. To test the move from sosc, both installer test files also run the real installer of sosc 0.3.0, taken from the `v0.3.0` tag with `git` (skipped in a copy without that tag), and then install and uninstall hikari over it.
 
 ## Making a release
 
-The one-line installs download `https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1` and `.../sosc.sh`, which only works when every step below is done. For a release `v0.1.0`:
+The one-line installs download `https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1` and `.../hikari.sh`, which only works when every step below is done. For a release `v0.1.0`:
 
 1. Commit everything and tag that commit. The tag must exist before building and point to the current commit, or the script refuses:
 
@@ -366,20 +379,20 @@ The one-line installs download `https://github.com/SCEPTICG/sosc/releases/latest
    tools/make-release.sh v0.1.0
    ```
 
-   It needs a clean work tree and builds, from that commit, `dist/sosc.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/sosc.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.zip` and that zip's SHA256 filled in), `dist/sosc.sh` (the macOS and Linux installer, with the same three values) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
+   It needs a clean work tree and builds, from that commit, `dist/hikari.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/hikari.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.zip` and that zip's SHA256 filled in), `dist/hikari.sh` (the macOS and Linux installer, with the same three values) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
 
 2. Push the tag to the original repository: `git push origin v0.1.0`. The GitHub repository is a mirror of a Forgejo one (see [Contributing](#contributing)), so the tag reaches GitHub through the mirror: wait until `v0.1.0` shows up in GitHub's tag list (or sync the mirror by hand) before the next step.
 
 3. On GitHub, create the release **from that existing tag** (choose `v0.1.0` in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).
 
-4. Attach `dist/sosc.ps1`, `dist/sosc.sh`, `dist/sosc.zip` and `dist/SHA256SUMS` with exactly those names: `sosc.ps1` and `sosc.sh` look for `sosc.zip` under that tag, and the install lines look for `sosc.ps1` and `sosc.sh`.
+4. Attach `dist/hikari.ps1`, `dist/hikari.sh`, `dist/hikari.zip` and `dist/SHA256SUMS` with exactly those names: `hikari.ps1` and `hikari.sh` look for `hikari.zip` under that tag, and the install lines look for `hikari.ps1` and `hikari.sh`.
 
 5. Publish it as the **Latest** release: not a draft and not a pre-release. `releases/latest/download/...` only sees the release marked Latest.
 
 To try it before it becomes the Latest release, publish it first as a pre-release (a draft cannot be downloaded) and use the fixed address of its files, which works for any published release; then mark it Latest:
 
 ```
-irm https://github.com/SCEPTICG/sosc/releases/download/v0.1.0/sosc.ps1 | iex
+irm https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.ps1 | iex
 ```
 
 ## Contributing

@@ -2,8 +2,8 @@
 package.path = './tests/?.lua;' .. package.path
 local mock = require('mock_mp')
 
-local SCRIPT = 'portable_config/scripts/sosc-speed.lua'
-local SCRIPT_NAME = 'sosc_speed'
+local SCRIPT = 'portable_config/scripts/hikari-speed.lua'
+local SCRIPT_NAME = 'hikari_speed'
 
 local passed, failed = 0, 0
 local function test(name, fn)
@@ -25,7 +25,7 @@ end
 
 local function load()
 	mock.install(SCRIPT_NAME)
-	SOSC_SPEED_TEST = true
+	HIKARI_SPEED_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
 end
@@ -39,7 +39,7 @@ end)
 test('menu lists the six speeds with Spanish labels', function()
 	local s = load()
 	local data = s.menu_data()
-	eq(data.title, 'Velocidad'); eq(data.type, 'sosc-speed')
+	eq(data.title, 'Velocidad'); eq(data.type, 'hikari-speed')
 	local expected = {'0,5×', '0,75×', '1× (normal)', '1,25×', '1,5×', '2×'}
 	eq(#data.items, #expected, 'item count')
 	for i, label in ipairs(expected) do

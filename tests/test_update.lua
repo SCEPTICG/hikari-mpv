@@ -2,10 +2,10 @@
 package.path = './tests/?.lua;' .. package.path
 local mock = require('mock_mp')
 
-local SCRIPT = 'portable_config/scripts/sosc-update.lua'
-local SCRIPT_NAME = 'sosc_update'
-local AVAILABLE = 'user-data/sosc_update/available'
-local LATEST_URL = 'https://github.com/SCEPTICG/sosc/releases/latest'
+local SCRIPT = 'portable_config/scripts/hikari-update.lua'
+local SCRIPT_NAME = 'hikari_update'
+local AVAILABLE = 'user-data/hikari_update/available'
+local LATEST_URL = 'https://github.com/SCEPTICG/hikari-mpv/releases/latest'
 local DAY = 24 * 3600
 local T0 = 1800000000
 
@@ -63,7 +63,7 @@ end
 local function answer(tag, eol)
 	eol = eol or '\r\n'
 	return 'HTTP/2 302' .. eol .. 'content-type: text/html; charset=utf-8' .. eol
-		.. 'location: https://github.com/SCEPTICG/sosc/releases/tag/' .. tag .. eol .. eol
+		.. 'location: https://github.com/SCEPTICG/hikari-mpv/releases/tag/' .. tag .. eol .. eol
 end
 
 -- Loads the script with a record saying `version` (nil: no record) and the
@@ -72,12 +72,12 @@ local function load(version, state_text, script_opts)
 	mock.install(SCRIPT_NAME)
 	mock.script_opts = script_opts or {}
 	local env = {record = tmp_path(), state = tmp_path(), time = T0}
-	if version then write(env.record, '# Written by the sosc installer\r\nsosc_version=' .. version .. '\r\n') end
+	if version then write(env.record, '# Written by the hikari installer\r\nhikari_version=' .. version .. '\r\n') end
 	if state_text then write(env.state, state_text) end
-	mock.expand['~~/sosc-installed.txt'] = env.record
-	mock.expand['~~/sosc-update.txt'] = env.state
+	mock.expand['~~/hikari-installed.txt'] = env.record
+	mock.expand['~~/hikari-update.txt'] = env.state
 	mock.files[SYSTEM32 .. '\\curl.exe'] = {is_file = true}
-	SOSC_UPDATE_TEST = true
+	HIKARI_UPDATE_TEST = true
 	local t = assert(loadfile(SCRIPT))()
 	t.set_now(function() return env.time end)
 	env.t = t
@@ -99,8 +99,8 @@ end)
 
 test('Location: capitalised, LF only, HTTP/1.1, extra spaces', function()
 	local t = load()
-	eq(t.parse_location('HTTP/1.1 302 Found\nLocation:   https://github.com/SCEPTICG/sosc/releases/tag/v1.20.300  \n\n'), '1.20.300')
-	eq(t.parse_location('HTTP/1.1 302 Found\r\nLOCATION: https://github.com/SCEPTICG/sosc/releases/tag/v2.0.0\r\n'), '2.0.0')
+	eq(t.parse_location('HTTP/1.1 302 Found\nLocation:   https://github.com/SCEPTICG/hikari-mpv/releases/tag/v1.20.300  \n\n'), '1.20.300')
+	eq(t.parse_location('HTTP/1.1 302 Found\r\nLOCATION: https://github.com/SCEPTICG/hikari-mpv/releases/tag/v2.0.0\r\n'), '2.0.0')
 end)
 
 test('Location: leading zeros are normalised', function()
@@ -111,20 +111,22 @@ end)
 test('Location: strange URLs give nothing', function()
 	local t = load()
 	local bad = {
-		'https://github.com/SCEPTICG/sosc/releases',                       -- no release yet
-		'https://github.com/SCEPTICG/sosc/releases/tag/0.3.1',             -- no v
-		'https://github.com/SCEPTICG/sosc/releases/tag/v0.3',              -- two numbers
-		'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1.4',          -- four numbers
-		'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1-beta',       -- suffix
-		'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.x',            -- not a number
-		'https://github.com/SCEPTICG/sosc/releases/tag/v1234567890.0.0',   -- too long
-		'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1?x=1',        -- query
-		'https://evil.example/SCEPTICG/sosc/releases/tag/v9.9.9',          -- other host
-		'http://github.com/SCEPTICG/sosc/releases/tag/v9.9.9',             -- not https
-		'https://github.com/other/sosc/releases/tag/v9.9.9',               -- other repo
-		'https://github.com/SCEPTICG/sosc/releases/tag/v9.9.9/../../x',
-		'/SCEPTICG/sosc/releases/tag/v9.9.9',                              -- relative
-		'https://github.com/SCEPTICG/sosc/releases/tag/v',
+		'https://github.com/SCEPTICG/hikari-mpv/releases',                       -- no release yet
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/0.3.1',             -- no v
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3',              -- two numbers
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1.4',          -- four numbers
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1-beta',       -- suffix
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.x',            -- not a number
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v1234567890.0.0',   -- too long
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1?x=1',        -- query
+		'https://evil.example/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',          -- other host
+		'http://github.com/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',             -- not https
+		'https://github.com/other/hikari-mpv/releases/tag/v9.9.9',               -- other repo
+		'https://github.com/SCEPTICG/sosc/releases/tag/v9.9.9',                  -- the old name (sosc until v0.3.0)
+		'https://github.com/SCEPTICG/hikari/releases/tag/v9.9.9',                -- not the repository's name
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v9.9.9/../../x',
+		'/SCEPTICG/hikari-mpv/releases/tag/v9.9.9',                              -- relative
+		'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v',
 		'',
 	}
 	for _, url in ipairs(bad) do
@@ -134,7 +136,7 @@ end)
 
 test('Location: injection attempts give nothing', function()
 	local t = load()
-	local prefix = 'https://github.com/SCEPTICG/sosc/releases/tag/'
+	local prefix = 'https://github.com/SCEPTICG/hikari-mpv/releases/tag/'
 	for _, tag in ipairs({
 		'v0.3.1" & calc & "', 'v0.3.1;rm -rf ~', 'v0.3.1|whoami', 'v0.3.1`id`', 'v0.3.1$(id)',
 		'v0.3.1 v0.3.2', 'v0.3.1%0d%0a', 'v0.3.1\0', 'v0.3.1\tx',
@@ -183,13 +185,13 @@ end)
 
 test('record with spaces, CRLF and two versions: the last one counts', function()
 	local t, env = load(nil)
-	write(env.record, 'sosc_version=0.1.0\r\n  sosc_version = 0.2.1  \r\nsosc_commit=abc\r\n')
+	write(env.record, 'hikari_version=0.1.0\r\n  hikari_version = 0.2.1  \r\nhikari_commit=abc\r\n')
 	eq(t.installed_version(), '0.2.1')
 	cleanup(env)
 end)
 
 test('disabled: no request, no button, Alt+u says so', function()
-	local t, env = load('0.2.1', nil, {['sosc-update-enabled'] = 'no'})
+	local t, env = load('0.2.1', nil, {['hikari-update-enabled'] = 'no'})
 	eq(t.opts.enabled, false)
 	file_loaded()
 	eq(#mock.async, 0, 'no curl')
@@ -235,7 +237,7 @@ test('newer version: notice, button on, state saved', function()
 	mock.finish_async(true, {status = 0, stdout = answer('v0.3.1'), error_string = ''})
 	eq(button(), true, 'button on')
 	mock.advance(5)
-	eq(mock.osd[#mock.osd], 'sosc 0.3.1 disponible · Alt+u')
+	eq(mock.osd[#mock.osd], 'hikari 0.3.1 disponible · Alt+u')
 	local state = t.read_state()
 	eq(state.latest, '0.3.1')
 	eq(state.last_check, T0)
@@ -274,7 +276,7 @@ test('inside the interval: no network, the saved version is announced', function
 	mock.advance(3.9)
 	eq(#mock.osd, 0, 'still not')
 	mock.advance(0.2)
-	eq(mock.osd[1], 'sosc 0.3.1 disponible · Alt+u', '4 s after the file loaded')
+	eq(mock.osd[1], 'hikari 0.3.1 disponible · Alt+u', '4 s after the file loaded')
 	cleanup(env)
 end)
 
@@ -283,7 +285,7 @@ test('a slow answer is shown at once, a fast one waits for the 4 s', function()
 	file_loaded()
 	mock.advance(6)
 	mock.finish_async(true, {status = 0, stdout = answer('v0.3.1'), error_string = ''})
-	eq(mock.osd[1], 'sosc 0.3.1 disponible · Alt+u', 'answer after 6 s: no extra wait')
+	eq(mock.osd[1], 'hikari 0.3.1 disponible · Alt+u', 'answer after 6 s: no extra wait')
 	cleanup(env)
 	_, env = load('0.2.1')
 	file_loaded()
@@ -314,15 +316,15 @@ test('interval elapsed: checks again', function()
 end)
 
 test('interval_hours is read, and clamped to at least 1 hour', function()
-	local t, env = load('0.2.1', 'last_check=' .. (T0 - 2 * 3600) .. '\n', {['sosc-update-interval_hours'] = '3'})
+	local t, env = load('0.2.1', 'last_check=' .. (T0 - 2 * 3600) .. '\n', {['hikari-update-interval_hours'] = '3'})
 	eq(t.interval_seconds(), 3 * 3600)
 	file_loaded()
 	eq(#mock.async, 0, '2 h < 3 h')
 	cleanup(env)
-	t, env = load('0.2.1', nil, {['sosc-update-interval_hours'] = '0'})
+	t, env = load('0.2.1', nil, {['hikari-update-interval_hours'] = '0'})
 	eq(t.interval_seconds(), 3600, 'min 1 h')
 	cleanup(env)
-	t, env = load('0.2.1', nil, {['sosc-update-interval_hours'] = 'nope'})
+	t, env = load('0.2.1', nil, {['hikari-update-interval_hours'] = 'nope'})
 	eq(t.interval_seconds(), 24 * 3600, 'default for garbage')
 	cleanup(env)
 end)
@@ -336,7 +338,7 @@ end)
 
 test('no curl in PATH (outside Windows): no subprocess at all, saved version still used', function()
 	local real_getenv = os.getenv
-	os.getenv = function(name) if name == 'PATH' then return '/nonexistent-sosc-a:/nonexistent-sosc-b' end return real_getenv(name) end
+	os.getenv = function(name) if name == 'PATH' then return '/nonexistent-hikari-a:/nonexistent-hikari-b' end return real_getenv(name) end
 	local ok, err = pcall(function()
 		local _, env = load('0.2.1', 'last_check=' .. (T0 - 2 * DAY) .. '\nlatest=0.3.1\n')
 		mock.props.platform = 'linux'
@@ -356,10 +358,10 @@ test('curl in PATH is found; on Windows PATH is not searched', function()
 	assert(os.execute('mkdir -p "' .. dir .. '"'))
 	write(dir .. '/curl', '#!/bin/sh\n')
 	local real_getenv = os.getenv
-	os.getenv = function(name) if name == 'PATH' then return '/nonexistent-sosc:' .. dir end return real_getenv(name) end
+	os.getenv = function(name) if name == 'PATH' then return '/nonexistent-hikari:' .. dir end return real_getenv(name) end
 	local ok, err = pcall(function()
 		eq(t.in_path('curl'), true)
-		eq(t.in_path('nope-sosc'), false)
+		eq(t.in_path('nope-hikari'), false)
 		local _, env = load('0.2.1')
 		mock.props.platform = 'windows'
 		os.getenv = function(name) if name == 'PATH' then return '' end return real_getenv(name) end
@@ -391,7 +393,7 @@ test('curl fails (network, timeout, mpv error): silence, saved version still use
 	mock.finish_async(true, {status = 28, error_string = '', stdout = '', stderr = 'timeout'})
 	eq(button(), true, 'saved 0.3.1 still announced')
 	mock.advance(5)
-	eq(mock.osd[1], 'sosc 0.3.1 disponible · Alt+u')
+	eq(mock.osd[1], 'hikari 0.3.1 disponible · Alt+u')
 	cleanup(env)
 	_, env = load('0.2.1')
 	file_loaded()
@@ -442,7 +444,7 @@ test('dismissed version: no notice, no button; the next one is announced', funct
 	mock.finish_async(true, {status = 0, stdout = answer('v0.3.2'), error_string = ''})
 	eq(button(), true)
 	mock.advance(5)
-	eq(mock.osd[1], 'sosc 0.3.2 disponible · Alt+u')
+	eq(mock.osd[1], 'hikari 0.3.2 disponible · Alt+u')
 	cleanup(env)
 end)
 
@@ -456,7 +458,7 @@ test('"No avisar de esta versión": saved, button off, menu closed', function()
 	eq(t.read_state().latest, '0.3.1')
 	eq(t.read_state().last_check, T0, 'last check kept')
 	local last = mock.commands[#mock.commands]
-	eq(table.concat(last, ' '), 'script-message-to uosc close-menu sosc-update')
+	eq(table.concat(last, ' '), 'script-message-to uosc close-menu hikari-update')
 	-- A new session does not announce it again.
 	local _, env2 = load('0.2.1', read(env.state))
 	file_loaded()
@@ -483,14 +485,14 @@ test('menu: three items, sends to uosc, release notes of that version', function
 	local cmd = mock.commands[#mock.commands]
 	eq(cmd[1], 'script-message-to'); eq(cmd[2], 'uosc'); eq(cmd[3], 'open-menu')
 	local data = t.menu_data()
-	eq(data.type, 'sosc-update')
+	eq(data.type, 'hikari-update')
 	eq(#data.items, 3)
 	eq(data.items[1].title, 'Ver novedades de la 0.3.1')
 	eq(data.items[2].title, 'Copiar comando de actualización')
 	eq(data.items[3].title, 'No avisar de esta versión')
-	eq(table.concat(data.items[1].value, ' '), 'script-message-to sosc_update open-notes')
-	eq(table.concat(data.items[2].value, ' '), 'script-message-to sosc_update copy-command')
-	eq(table.concat(data.items[3].value, ' '), 'script-message-to sosc_update dismiss')
+	eq(table.concat(data.items[1].value, ' '), 'script-message-to hikari_update open-notes')
+	eq(table.concat(data.items[2].value, ' '), 'script-message-to hikari_update copy-command')
+	eq(table.concat(data.items[3].value, ' '), 'script-message-to hikari_update dismiss')
 	cleanup(env)
 end)
 
@@ -508,7 +510,7 @@ test('Alt+u with nothing new: an OSD line, no menu', function()
 	file_loaded()
 	mock.bindings['open-menu']()
 	eq(#mock.commands, 0)
-	eq(mock.osd[1], 'sosc 0.3.1: no hay ninguna versión nueva')
+	eq(mock.osd[1], 'hikari 0.3.1: no hay ninguna versión nueva')
 	cleanup(env)
 	_, env = load('dev')
 	mock.bindings['open-menu']()
@@ -518,7 +520,7 @@ test('Alt+u with nothing new: an OSD line, no menu', function()
 end)
 
 test('open notes: the command per platform, the URL of the version', function()
-	local url = 'https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1'
+	local url = 'https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1'
 	for platform, want in pairs({
 		windows = SYSTEM32 .. '\\cmd.exe /c start  ' .. url, darwin = 'open ' .. url, linux = 'xdg-open ' .. url, freebsd = 'xdg-open ' .. url,
 	}) do
@@ -543,7 +545,7 @@ test('open notes: launcher missing -> the URL on screen', function()
 	file_loaded()
 	mock.messages['open-notes']()
 	mock.finish_async(true, {status = -3, error_string = 'init'})
-	assert(mock.osd[#mock.osd]:find('https://github.com/SCEPTICG/sosc/releases/tag/v0.3.1', 1, true), mock.osd[#mock.osd])
+	assert(mock.osd[#mock.osd]:find('https://github.com/SCEPTICG/hikari-mpv/releases/tag/v0.3.1', 1, true), mock.osd[#mock.osd])
 	cleanup(env)
 end)
 
@@ -558,9 +560,9 @@ end)
 
 test('update command per platform', function()
 	local t = load()
-	eq(t.update_command('windows'), 'irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex')
-	eq(t.update_command('darwin'), 'curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash')
-	eq(t.update_command('linux'), 'curl -fsSL https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.sh | bash')
+	eq(t.update_command('windows'), 'irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex')
+	eq(t.update_command('darwin'), 'curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash')
+	eq(t.update_command('linux'), 'curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash')
 end)
 
 test('copy: mpv clipboard property first', function()
@@ -568,7 +570,7 @@ test('copy: mpv clipboard property first', function()
 	mock.props.platform = 'windows'
 	file_loaded()
 	mock.messages['copy-command']()
-	eq(mock.props['clipboard/text'], 'irm https://github.com/SCEPTICG/sosc/releases/latest/download/sosc.ps1 | iex')
+	eq(mock.props['clipboard/text'], 'irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex')
 	eq(#mock.async, 0, 'no external tool')
 	eq(mock.osd[#mock.osd], 'Comando copiado: pégalo en PowerShell')
 	cleanup(env)
@@ -742,7 +744,7 @@ end)
 
 test('state file cannot be written: a warning, still announced', function()
 	local _, env = load('0.2.1')
-	mock.expand['~~/sosc-update.txt'] = '/nonexistent-dir-sosc/sosc-update.txt'
+	mock.expand['~~/hikari-update.txt'] = '/nonexistent-dir-hikari/hikari-update.txt'
 	file_loaded()
 	mock.finish_async(true, {status = 0, stdout = answer('v0.3.1'), error_string = ''})
 	assert(#mock.logs.warn >= 1, 'warned')
