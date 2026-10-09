@@ -1,24 +1,87 @@
-# hikari
+<div align="center">
+
+<img src="docs/images/banner.png" alt="hikari, a modern theme for the mpv video player built on uosc" width="100%">
+
+[![Latest release](https://img.shields.io/github/v/release/SCEPTICG/hikari-mpv?color=5ad4e6&labelColor=0b0d12&label=release)](https://github.com/SCEPTICG/hikari-mpv/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-5ad4e6?labelColor=0b0d12)](LICENSE)
+[![Windows · macOS · Linux](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-one%20command-5ad4e6?labelColor=0b0d12)](#quick-install)
+[![Built on uosc](https://img.shields.io/badge/built%20on-uosc%205.13-5ad4e6?labelColor=0b0d12)](https://github.com/tomasklaen/uosc)
+
+**A modern theme for the [mpv](https://mpv.io) video player, built on [uosc](https://github.com/tomasklaen/uosc).**<br>
+14 colour palettes · skip openings and endings · timeline thumbnails · subtitle styles · automatic Anime4K upscaling<br>
+installed with one command on Windows, macOS and Linux
+
+[Quick install](#quick-install) · [What you get](#what-you-get) · [Screenshots](#screenshots) · [Documentation](#documentation)
+
+</div>
 
 > hikari was called **sosc** until v0.3.0. Installing hikari over sosc carries everything over: see [Coming from sosc](#coming-from-sosc).
 
-A theme for the [mpv](https://mpv.io) video player, built on top of [uosc](https://github.com/tomasklaen/uosc), with its own colour palettes and a few extras for watching series and anime.
+hikari is a *skin* for mpv in the sense people usually mean: a ready-made, good-looking setup for watching series and anime, not a new on-screen controller written from scratch. It installs the official [uosc](https://github.com/tomasklaen/uosc) and [thumbfast](https://github.com/po5/thumbfast), configures them, and adds a few small Lua scripts of its own on top. Everything it changes in your config folder is backed up first, and it can be uninstalled.
 
 https://github.com/user-attachments/assets/ed3f4f3a-c88e-47e5-9d99-4bc59951a60c
 
-<sub>A one-minute showreel of hikari, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. hikari is not affiliated with them.</sub>
+<sub>A one-minute showreel, drawn frame by frame in code; the Anime4K comparison is a real render in mpv. Footage and audio: *Demon Slayer: Kimetsu no Yaiba*, episode 19 © Koyoharu Gotōge / Shueisha, Aniplex, ufotable, used only to demonstrate the player. hikari is not affiliated with them.</sub>
 
-- **Palettes**: 14 colour palettes for uosc, including hikari's own, SCEPTIC, picked from a menu and applied straight away.
-- **Skip button**: a *Saltar opening / intro / ending* button while a chapter looks like an opening, intro or ending.
-- **Stream titles**: readable titles for streamed URLs, with the access token kept out of the title bar.
-- **Speed menu**: a button with fixed speeds (0.5× to 2×) instead of a slider.
-- **Subtitle styles**: a menu with three subtitle styles, plus size and height.
-- **Thumbnails**: timeline thumbnails through [thumbfast](https://github.com/po5/thumbfast), on network streams too.
+## What you get
+
+- **14 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original and hikari's own, SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away.
+- **Skip openings and endings**: a *Saltar opening ›* button while a chapter looks like an opening, intro or ending; one click or `Alt+s` jumps to the next chapter.
+- **Timeline thumbnails** through thumbfast, on network streams too.
+- **Subtitle styles**: *Caja oscura* (Netflix-like box), *Borde grueso* (Crunchyroll-like outline), *Amarillo clásico*, plus size and height (`Alt+t`).
 - **Anime4K upscaling**: an *Escalado* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automático*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
-- **Adapted controls bar**: a filled timeline and a controls bar arranged for watching single episodes.
-- **Update check**: a short notice and a button when a new hikari version is out, with its release notes and the update command one click away. It never updates anything by itself, and it can be turned off.
+- **Readable stream titles**: links from Seanime and similar apps show `Sousou no Frieren · E05` instead of a release name, with the access token kept out of the title bar.
+- **Speed menu**: fixed speeds from 0.5× to 2× instead of a slider.
+- **A controls bar made for single episodes**: a filled timeline with the opening and ending marked, and hikari's own buttons.
+- **Update check**: a short notice and a button when a new hikari version is out. It never updates anything by itself, and it can be turned off.
+- **A careful installer**: finds mpv, mpv.net and AnimeJaNai, backs up first, verifies every download against its SHA256, sets aside clashing interfaces such as ModernX, and puts everything back on uninstall.
 
-The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar hikari*).
+The on-screen labels are in Spanish for now (*Saltar opening*, *Subtítulos*, *Velocidad*, *Paletas*, *Escalado*, *Actualizar hikari*). The installer speaks English or Spanish, following your system.
+
+## Quick install
+
+**Windows** (PowerShell, no administrator rights):
+
+```
+irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex
+```
+
+**macOS and Linux** (Terminal, no `sudo`):
+
+```
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
+```
+
+A menu opens: choose *Install or update* and the player. Run the same line again to update or to uninstall. Details, options and how to check the installer before running it: [Install](#install) and [macOS and Linux](#macos-and-linux).
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/player.jpg" alt="mpv with the hikari theme: filled timeline, title bar and controls bar in the SCEPTIC palette"><br><sub><b>The player</b>: filled timeline with chapters, title bar and hikari's buttons (SCEPTIC palette).</sub></td>
+    <td width="50%"><img src="docs/images/palette-menu.jpg" alt="hikari palette menu in mpv with 14 colour palettes"><br><sub><b>Palettes</b> (<code>Alt+p</code>): 14 palettes, applied at once.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/skip-opening.jpg" alt="Skip opening button in mpv during the opening chapter"><br><sub><b>Saltar opening ›</b>: shown during openings, intros and endings.</sub></td>
+    <td><img src="docs/images/thumbnails.jpg" alt="Timeline thumbnail preview in mpv with uosc and thumbfast"><br><sub><b>Thumbnails</b> on hover, with the chapter name.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/subtitle-styles.jpg" alt="hikari subtitle styles menu in mpv: dark box, thick outline, classic yellow"><br><sub><b>Subtitle styles</b> (<code>Alt+t</code>): style, size and height.</sub></td>
+    <td><img src="docs/images/anime4k-menu.jpg" alt="Anime4K upscaling menu in mpv with automatic mode"><br><sub><b>Escalado</b>: Anime4K modes, with <i>Automático</i> by resolution.</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots of the real player on Linux, with <a href="https://durian.blender.org/">Sintel</a> © Blender Foundation (CC BY 3.0).</sub>
+
+## hikari and other mpv themes
+
+- **[uosc](https://github.com/tomasklaen/uosc)** is the on-screen controller hikari is built on. If you already use uosc, hikari is a configuration plus a few scripts on top of it, not a fork: your uosc stays the official one, and uosc's own updates keep working.
+- **[ModernX](https://github.com/cyl0/ModernX) and [ModernZ](https://github.com/Samillion/ModernZ)** are other replacements for mpv's built-in OSC. They clash with uosc, so the installer sets them aside (nothing is deleted) and puts them back on uninstall.
+- **mpv.net and AnimeJaNai** are supported on Windows: hikari installs into the config folder each of them reads.
+
+## Documentation
+
+[Requirements](#requirements) · [Install](#install) · [macOS and Linux](#macos-and-linux) · [Coming from sosc](#coming-from-sosc) · [Usage](#usage) · [Configuration](#configuration) · [Palettes](#palettes) · [Stream titles](#stream-titles) · [Speed menu](#speed-menu) · [Subtitle styles](#subtitle-styles) · [Anime4K upscaling](#anime4k-upscaling) · [Skip openings and endings](#skip-openings-and-endings) · [Update check](#update-check) · [Thumbnails](#thumbnails) · [Contributing](#contributing)
 
 ## Requirements
 
@@ -93,6 +156,9 @@ From a copy of this repository (clone it, or download it as a zip and extract it
 
 ### How the installer works
 
+<details>
+<summary>Keyboard, folders, backups and every step it takes (click to open)</summary>
+
 The installer is driven with the keyboard: `↑`/`↓` move through a menu (going past the last entry takes you back to the first), `Enter` chooses and `Esc` leaves. Where you can pick several folders, `Space` ticks or unticks each one and `Enter` confirms; with nothing ticked, `Enter` takes the highlighted folder, so with a single player found `Enter` is enough. *Other folder…* and *Exit* are entries you choose, not boxes you tick. Yes/no questions show `Yes` and `No` side by side, starting on the default answer: `←`/`→` change it, `Enter` confirms, and `Y`/`N` (`S`/`N` in Spanish) answer straight away. `Esc` (and `Ctrl+C` while a menu is open) always answers *No* or leaves, which is never the option that removes or moves anything. So `Ctrl+C` in a yes/no question answers *No* and the installation carries on: it does not stop it. Outside a menu (while it downloads or copies, or at a typed answer) `Ctrl+C` stops the script as usual. Letter shortcuts only count on their own (`Ctrl+S` or `Alt+Y` do not answer *Yes*), keys pressed before a question appears are ignored, and in the single-choice menus the old numbers still work (`1`, `2`... and `0` for *Exit*). In a window too low for a menu, the installer first draws a compact version (folders shortened on the same line, one short help line) and, if even that does not fit, asks with numbers. When there is no interactive console (input or output redirected, `-NonInteractive`, the PowerShell ISE...) the installer asks with numbers and typed answers instead, as it also does with `-NoMenu`. Typing a folder path is always a normal typed answer.
 
 Choose *Install or update* and the installer lists the players it finds, with the config folder each one reads:
@@ -119,6 +185,8 @@ Run it again at any time to update. *Uninstall* (after another backup of the sam
 If uosc goes and your own `mpv.conf` (outside the hikari block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# hikari: ` in front of it. With `-Yes` it only warns.
 
 Lines you added to `mpv.conf` or `input.conf` by hand, for a copy of hikari installed without the installer, are not touched: once the installer's block is there you can delete them.
+
+</details>
 
 ### Coming from sosc
 
@@ -208,7 +276,9 @@ subs-with-matching-audio=no
 
 ## Palettes
 
-hikari ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away.
+hikari ships a palette picker for uosc. Open it with the palette button in the controls bar or `Alt+p`, then pick a palette; it is applied straight away. Each palette is a uosc colour scheme with the names you may know from your editor or terminal theme.
+
+<img src="docs/images/palettes.png" alt="The 14 hikari palettes for mpv: Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest, Solarized and SCEPTIC" width="100%">
 
 - Dark: uosc (original), Catppuccin Mocha, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest.
 - Light: Catppuccin Latte, Gruvbox light, Solarized light.
@@ -349,55 +419,11 @@ script-opts-append=hikari-update-enabled=no
 
 Timeline thumbnails come from [thumbfast](https://github.com/po5/thumbfast), which uosc picks up automatically. thumbfast is not bundled (MPL-2.0); install `thumbfast.lua` into `scripts/` (the installer will do it). hikari ships `script-opts/thumbfast.conf` with thumbnails enabled on network streams (`network=yes`), GPU decoding (`hwdec=yes`) and the thumbnailer started only when the timeline is first hovered (`spawn_first=no`). On streams thumbfast opens its own connection, so it uses some extra bandwidth and the first thumbnail can take a moment. mpv.net 7+ is meant to work without extra setup, but some builds (seen with the AnimeJaNai bundle, mpv.net 7.1.2) do not report their path to thumbfast in time and it shows "install standalone mpv". In that case add the full path to `script-opts/thumbfast.conf`, e.g. `mpv_path=C:\Users\<you>\AppData\Local\Programs\mpv-AnimeJaNai\mpvnet.exe` (the installer will write it for you). On macOS the installer always writes it (`mpv_path=/opt/homebrew/bin/mpv`, say): mpv started from Finder or another app does not find `mpv` in its `PATH`, and the thumbnails come out black. On streams each new thumbnail takes a moment, since thumbfast has to fetch that part of the video over the network.
 
-## Tests
-
-From the repository root:
-
-```
-lua tests/test_palettes.lua
-lua tests/test_title.lua
-lua tests/test_speed.lua
-lua tests/test_skip.lua
-lua tests/test_subs.lua
-lua tests/test_upscale.lua
-lua tests/test_update.lua
-pwsh -NoProfile -File tests/install.Tests.ps1
-bash tests/install.test.sh
-bash tests/make-release.test.sh
-```
-
-The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new `pwsh` and run the installer through `iex`, as a user would, to check that it neither exits nor leaves anything behind in the session. `tests/install.test.sh` tests `install/hikari.sh` with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs `python3`. It runs the installer with the same `bash` that runs it, so run it also with a `bash` 3.2 (the one of macOS) to check the installer there: `/path/to/bash-3.2/bash tests/install.test.sh`. `tests/make-release.test.sh` builds a release in a throw-away copy of the repository and installs hikari from it, through `iex` and through `bash -s` as `curl ... | bash` does. To test the move from sosc, both installer test files also run the real installer of sosc 0.3.0, taken from the `v0.3.0` tag with `git` (skipped in a copy without that tag), and then install and uninstall hikari over it.
-
-## Making a release
-
-The one-line installs download `https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1` and `.../hikari.sh`, which only works when every step below is done. For a release `v0.1.0`:
-
-1. Commit everything and tag that commit. The tag must exist before building and point to the current commit, or the script refuses:
-
-   ```
-   git tag v0.1.0
-   tools/make-release.sh v0.1.0
-   ```
-
-   It needs a clean work tree and builds, from that commit, `dist/hikari.zip` (`portable_config/`, `LICENSE`, `README.md`), `dist/hikari.ps1` (the installer with the version, the URL `https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.zip` and that zip's SHA256 filled in), `dist/hikari.sh` (the macOS and Linux installer, with the same three values) and `dist/SHA256SUMS`. It uploads nothing; `dist/` is not tracked.
-
-2. Push the tag to the original repository: `git push origin v0.1.0`. The GitHub repository is a mirror of a Forgejo one (see [Contributing](#contributing)), so the tag reaches GitHub through the mirror: wait until `v0.1.0` shows up in GitHub's tag list (or sync the mirror by hand) before the next step.
-
-3. On GitHub, create the release **from that existing tag** (choose `v0.1.0` in the tag list; do not let GitHub create a new tag, which would point to the tip of the default branch instead of the commit the files were built from).
-
-4. Attach `dist/hikari.ps1`, `dist/hikari.sh`, `dist/hikari.zip` and `dist/SHA256SUMS` with exactly those names: `hikari.ps1` and `hikari.sh` look for `hikari.zip` under that tag, and the install lines look for `hikari.ps1` and `hikari.sh`.
-
-5. Publish it as the **Latest** release: not a draft and not a pre-release. `releases/latest/download/...` only sees the release marked Latest.
-
-To try it before it becomes the Latest release, publish it first as a pre-release (a draft cannot be downloaded) and use the fixed address of its files, which works for any published release; then mark it Latest:
-
-```
-irm https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.ps1 | iex
-```
-
 ## Contributing
 
 The GitHub repository is a read-only mirror of a self-hosted Forgejo repository, where the work happens. Issues are welcome on GitHub. Pull requests are not merged on GitHub, because the next sync of the mirror would overwrite them: a good one is applied by hand in the original repository, crediting its author, and reaches GitHub with the next sync.
+
+Running the tests and making a release: [docs/development.md](docs/development.md).
 
 ## Credits
 
@@ -406,6 +432,8 @@ The GitHub repository is a read-only mirror of a self-hosted Forgejo repository,
 - [Anime4K](https://github.com/bloc97/Anime4K) by bloc97, MIT.
 
 None of them is included in this repository: the installer downloads them from their official sources (uosc 5.13.0, a fixed thumbfast commit and Anime4K v4.0.1, the last only if you want it) and checks their SHA256.
+
+Screenshots: [Sintel](https://durian.blender.org/) © Blender Foundation, CC BY 3.0.
 
 ## License
 
