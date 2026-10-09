@@ -43,6 +43,24 @@ script-opts-append=uosc-languages=es,en
 
 The codes are those of the menu: `en`, `es`, `de`, `fr`, `it`, `pl`, `pt`, `ro`, `ru`, `tr`, `uk`, `zh-HK` and `zh-hans`. Uninstalling asks whether to delete this file together with your other choices.
 
+## uosc's own language setting
+
+The second line sets uosc's `languages` option, and a script option set in `mpv.conf` wins over the same option in `script-opts/uosc.conf`. So once the installer or `Alt+l` has written this file, hikari's language also decides uosc's: a `languages=` line of yours in `uosc.conf` is ignored, and uosc no longer follows `slang` (its default, `slang,en`, picks the language of your preferred subtitles).
+
+To give that back to uosc and keep hikari's language for hikari only, add a file of your own after hikari's, for example `~~/my-uosc-language.conf` with this line:
+
+```
+script-opts-remove=uosc-languages
+```
+
+and include it at the end of your `mpv.conf`, after the hikari block:
+
+```
+include="~~/my-uosc-language.conf"
+```
+
+It has to be an `include`: mpv reads the included files after the rest of `mpv.conf`, in order, so a `script-opts-remove` line written straight into `mpv.conf` would run before hikari's file and change nothing. `Alt+l` rewrites `hikari-language.conf`, but not your file, so this keeps working after every switch; uosc then reads `languages` from `uosc.conf` again (or uses `slang,en`). The only side effect is that the reminder to restart mpv shows after every switch, since hikari no longer knows uosc's language. To undo it, delete the `include` line.
+
 ## How the button tooltips are translated
 
 uosc translates the tooltips of its own buttons, but the tooltip of a custom button is the text after `?` in the `controls` line of `script-opts/uosc.conf`, shown as it is. hikari's `uosc.conf` writes them in English; `hikari-language.lua` gives hikari's buttons (subtitle style, upscaling, speed, palettes, update) the tooltip in your language when mpv starts and after every switch. Your own buttons and the rest of the `controls` line are left exactly as you wrote them.
