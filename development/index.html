@@ -1095,6 +1095,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#preview-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preview builds
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1170,6 +1181,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#preview-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preview builds
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1196,7 +1218,7 @@ pwsh -NoProfile -File tests/install.Tests.ps1
 bash tests/install.test.sh
 bash tests/make-release.test.sh
 </code></pre></div>
-<p>The Lua tests (<code>test_i18n</code>, <code>test_language</code>, <code>test_palettes</code>, <code>test_skip</code>, <code>test_speed</code>, <code>test_subs</code>, <code>test_title</code>, <code>test_update</code>, <code>test_upscale</code>) load each script with a small stand-in for mpv's API (<code>tests/mock_mp.lua</code>); they need Lua 5.1 or LuaJIT, as mpv uses. When <code>lua</code> is there, both installer test files also check that the installers write <code>hikari-language.conf</code> byte for byte as <code>hikari-language.lua</code> does, and read locale names with the same rules as <code>hikari-i18n.lua</code>.</p>
+<p>The Lua tests (<code>test_i18n</code>, <code>test_language</code>, <code>test_media_language</code>, <code>test_palettes</code>, <code>test_skip</code>, <code>test_speed</code>, <code>test_subs</code>, <code>test_title</code>, <code>test_update</code>, <code>test_upscale</code>) load each script with a small stand-in for mpv's API (<code>tests/mock_mp.lua</code>); they need Lua 5.1 or LuaJIT, as mpv uses. When <code>lua</code> is there, both installer test files also check that the installers write <code>hikari-language.conf</code> byte for byte as <code>hikari-language.lua</code> does, and read locale names with the same rules as <code>hikari-i18n.lua</code>.</p>
 <p>The installer tests need PowerShell 7 (on any system, no Pester) and simulate Windows folders, so they run on Linux too; they do not download anything. Some of them start a new <code>pwsh</code> and run the installer through <code>iex</code>, as a user would, to check that it neither exits nor leaves anything behind in the session. <code>tests/install.test.sh</code> tests <code>install/hikari.sh</code> with fake home folders and fake downloads (no network, no real config), including a copy of a real Mac config, the keyboard menus (through a pseudo-terminal) and a run without a terminal; it needs <code>python3</code>. It runs the installer with the same <code>bash</code> that runs it, so run it also with a <code>bash</code> 3.2 (the one of macOS) to check the installer there: <code>/path/to/bash-3.2/bash tests/install.test.sh</code>. <code>tests/make-release.test.sh</code> builds a release in a throw-away copy of the repository and installs hikari from it, through <code>iex</code> and through <code>bash -s</code> as <code>curl ... | bash</code> does. To test the move from sosc, both installer test files also run the real installer of sosc 0.3.0, taken from the <code>v0.3.0</code> tag with <code>git</code> (skipped in a copy without that tag), and then install and uninstall hikari over it.</p>
 <h2 id="translations">Translations<a class="headerlink" href="#translations" title="Permanent link">&para;</a></h2>
 <p>Every text hikari shows in mpv lives in <code>portable_config/script-modules/hikari-i18n.lua</code>, one entry per text with all 13 languages side by side (<code>en</code> is required, the others fall back to it). Scripts get them with <code>i18n.t('key', {name = value})</code>; placeholders are <code>{name}</code>. <code>tests/test_i18n.lua</code> checks that every text has every language (except the few title labels that use the English form on purpose), keeps the placeholders of the English text, and that button tooltips have no <code>,</code> or <code>?</code>. The module is loaded with the same few lines at the top of every script (single-file mpv scripts get no mpv folder in Lua's <code>package.path</code>); the tests check that all of them are identical.</p>
@@ -1226,6 +1248,33 @@ tools/make-release.sh v0.1.0
 <p>To try it before it becomes the Latest release, publish it first as a pre-release (a draft cannot be downloaded) and use the fixed address of its files, which works for any published release; then mark it Latest:</p>
 <div class="highlight"><pre><span></span><code>irm https://github.com/SCEPTICG/hikari-mpv/releases/download/v0.1.0/hikari.ps1 | iex
 </code></pre></div>
+<h2 id="preview-builds">Preview builds<a class="headerlink" href="#preview-builds" title="Permanent link">&para;</a></h2>
+<p>To try the <code>dev</code> branch on real machines before a release, there is a test channel: a GitHub <strong>pre-release</strong> under the moving tag <code>preview</code>, with the same four files as a release and the same SHA256 check. It is for testing only; it is not on the public install pages.</p>
+<div class="highlight"><pre><span></span><code>irm https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.ps1 | iex
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.sh | bash
+</code></pre></div>
+<p>The version written in the installers is <code>preview-</code> and the short hash of the commit (e.g. <code>preview-ffebb37</code>), so <code>hikari-installed.txt</code> tells which build is installed. The installers say it when they start: <code>Preview build (preview-ffebb37). To go back to the stable version:</code> and the usual install line. That version is not <code>X.Y.Z</code>, so <code>hikari-update.lua</code> does not look for updates on a preview install (as with a copy of the repository, <code>dev</code>). To go back, run the normal install line: the stable version installs over a preview (there is no version check), removes the hikari files the preview had and it does not, and keeps the palette, subtitle, upscaling and language choices.</p>
+<p>To publish a new preview build:</p>
+<ol>
+<li>
+<p>Merge the work into <code>dev</code> and check it out, with a clean work tree.</p>
+</li>
+<li>
+<p>Move the tag to that commit and build. The tag must point to the current commit, or the script refuses:</p>
+</li>
+</ol>
+<div class="highlight"><pre><span></span><code>git tag -f preview
+tools/make-release.sh preview
+</code></pre></div>
+<p>It checks and builds the same files as for a release, with <code>https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.zip</code> as the address of the zip.</p>
+<ol>
+<li>
+<p>Push the moved tag (<code>git push -f origin preview</code>) and wait until GitHub (through the mirror) has <code>preview</code> on the new commit.</p>
+</li>
+<li>
+<p>On GitHub, delete the previous <code>preview</code> release (its files would otherwise stay attached), then create it again <strong>from the existing tag</strong> <code>preview</code>, attach <code>dist/hikari.ps1</code>, <code>dist/hikari.sh</code>, <code>dist/hikari.zip</code> and <code>dist/SHA256SUMS</code> with those names, and publish it as a <strong>pre-release</strong>. Never mark it Latest: <code>releases/latest</code> must keep pointing at the stable version.</p>
+</li>
+</ol>
 
 
 

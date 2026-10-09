@@ -1276,12 +1276,10 @@
 </table>
 <p>Updating hikari replaces the <code>script-opts</code> files above with hikari's (your earlier <code>uosc.conf</code> and <code>thumbfast.conf</code> are kept in <code>hikari-originales</code> and put back on uninstall), so keep a copy of any change you make to them. Your own <code>mpv.conf</code> and <code>input.conf</code> lines are never changed: only the marked hikari block is.</p>
 <h2 id="example-audio-and-subtitle-languages">Example: audio and subtitle languages<a class="headerlink" href="#example-audio-and-subtitle-languages" title="Permanent link">&para;</a></h2>
-<p>hikari does not choose languages for you. A common recipe for anime with Spanish dubs (Spanish audio when there is one, otherwise Japanese with Spanish subtitles) goes in your own <code>mpv.conf</code>, before the hikari block:</p>
-<div class="highlight"><pre><span></span><code>alang=spa,es,es-ES,ja,jpn
-slang=spa,es,es-ES
-subs-with-matching-audio=no
+<p>hikari already picks audio and subtitle languages from its own <a href="../features/language/#audio-and-subtitles">language</a>: the dub in your language when there is one, otherwise Japanese with subtitles in your language. You only need your own lines for a different preference, and each line you write wins over hikari for that option. For example, to always play the Japanese audio and still get hikari's subtitle language:</p>
+<div class="highlight"><pre><span></span><code>alang=ja,jpn
 </code></pre></div>
-<p><code>alang</code> and <code>slang</code> list the preferred audio and subtitle languages in order; <code>subs-with-matching-audio=no</code> stops mpv from turning on subtitles in the same language as the audio. Change the codes to your languages.</p>
+<p><code>alang</code> and <code>slang</code> list the preferred audio and subtitle languages in order; <code>subs-with-matching-audio</code> says what to do when the audio is already in the subtitle language: <code>no</code> turns no subtitles on, <code>forced</code> only the forced ones (signs and song lyrics), <code>yes</code> (mpv's default) turns them on as usual. hikari uses <code>forced</code>. A <code>slang</code> line of yours also takes <code>subs-with-matching-audio</code> out of hikari's hands, so write both if you want a value other than <code>yes</code>. Put your lines before the hikari block. If you used the old recipe of this page (<code>alang=spa,es,es-ES,ja,jpn</code>, <code>slang=spa,es,es-ES</code>, <code>subs-with-matching-audio=no</code>), you can delete those lines and let hikari do the same, with the regional codes too, with the signs and songs of a Spanish dub kept, and telling the Spanish of Spain from the Latin American one when both tracks are tagged <code>es</code>.</p>
 
 
 

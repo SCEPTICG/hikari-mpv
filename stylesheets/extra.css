@@ -22,3 +22,13 @@
 .md-typeset .hk-tagline { font-size: 1.15rem; opacity: 0.9; }
 .md-typeset .grid.cards img { border-radius: 10px; }
 .md-typeset .md-button--primary { background-color: #5ad4e6; border-color: #5ad4e6; color: #0b0d12; }
+/* Secondary buttons take Material's primary colour, which is hikari's near-black:
+   invisible on the dark scheme. Cyan outline there, ink outline on the light one. */
+[data-md-color-scheme="slate"] .md-typeset .md-button:not(.md-button--primary) { color: #5ad4e6; border-color: #5ad4e6; }
+[data-md-color-scheme="default"] .md-typeset .md-button:not(.md-button--primary) { color: #0b0d12; border-color: #0b0d12; }
+.md-typeset .md-button:not(.md-button--primary):hover,
+.md-typeset .md-button:not(.md-button--primary):focus { background-color: #5ad4e6; border-color: #5ad4e6; color: #0b0d12; }
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus { background-color: #8ae4f0; border-color: #8ae4f0; color: #0b0d12; }
+/* Material greys out h1; the home title reads better in full ink on both schemes. */
+.md-typeset .hk-hero h1.hk-title { color: var(--md-default-fg-color); }
