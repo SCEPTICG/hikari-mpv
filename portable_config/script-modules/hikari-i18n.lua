@@ -716,8 +716,11 @@ M.STRINGS = STRINGS
 --   matches a plain `zh`/`chi` track as well as `zh` itself would.
 -- Chinese: hikari's zh-HK is Traditional (Hong Kong, Taiwan), zh-hans
 -- Simplified. Each one lists its own script and regions first, then plain
--- Chinese, then the other script last: a Chinese dub of either kind still
--- beats Japanese, and subtitles in the other script beat none.
+-- Chinese, then the other script last: a Chinese dub tagged with any code of
+-- the list (or a shorter tag, such as `zh`) beats Japanese whatever its
+-- script, and subtitles in the other script beat none. A longer tag loses to
+-- `ja`/`jpn` like an unlisted region: `zh-Hans-CN` or `zh-Hant-TW` has a
+-- subtag that no entry has, in both lists.
 M.MEDIA_LANGUAGES = {
 	en = {'en', 'eng', 'en-US', 'en-GB'},
 	es = {'es', 'spa', 'es-ES', 'es-419'},

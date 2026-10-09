@@ -42,6 +42,8 @@ end
 --   values:  option name -> value already in effect (what mpv.conf etc. left)
 --   cmdline: option name -> true when set on the command line
 --   conf:    the text of ~~/mpv.conf (none by default)
+--   etc_conf: the text of the mpv.conf that mp.find_config_file would find
+--            (/etc/mpv/mpv.conf when there is no ~~/mpv.conf)
 --   unknown: option name -> true when this mpv gives no option-info for it
 --   fail:    option name -> true when mp.set_property fails for it
 -- Options not in `values` hold mpv's defaults, as mpv 0.40 gives them natively.
@@ -59,7 +61,12 @@ local function load(setup)
 		if value == nil then value = default end
 		mock.props[name] = value
 	end
-	if setup.conf then mock.config_files['mpv.conf'] = conf_file(setup.conf) end
+	if setup.conf then
+		local path = conf_file(setup.conf)
+		mock.expand['~~/mpv.conf'] = path
+		mock.files[path] = {is_file = true, is_dir = false}
+	end
+	if setup.etc_conf then mock.config_files['mpv.conf'] = conf_file(setup.etc_conf) end
 	for name in pairs(setup.fail or {}) do mock.set_fails[name] = true end
 	HIKARI_MEDIA_LANGUAGE_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
@@ -145,7 +152,7 @@ test('recipe: English is the same recipe in English; an unknown code falls back 
 	local m = load()
 	eq(join(m.recipe('en').alang), 'en,eng,en-US,en-GB,ja,jpn', 'alang')
 	eq(join(m.recipe('en').slang), 'en,eng,en-US,en-GB', 'slang')
-	eq(m.recipe('en')[SWMA], 'no', 'swma')
+	eq(m.recipe('en')[SWMA], 'forced', 'swma')
 	eq(join(m.recipe('xx').slang), 'en,eng,en-US,en-GB', 'unknown')
 end)
 
@@ -176,8 +183,8 @@ test('start: nothing of yours: all three options get the recipe', function()
 	load({lang = 'es'})
 	eq(join(mock.props.alang), 'es,spa,es-ES,es-419,ja,jpn', 'alang')
 	eq(join(mock.props.slang), 'es,spa,es-ES,es-419', 'slang')
-	eq(mock.props[SWMA], false, 'subs-with-matching-audio (no, a flag natively)')
-	eq(sets_of(SWMA), 'no', 'set as mpv takes it')
+	eq(mock.props[SWMA], 'forced', 'subs-with-matching-audio')
+	eq(sets_of(SWMA), 'forced', 'set as mpv takes it')
 	eq(#mock.logs.warn, 0, 'warnings')
 end)
 
@@ -186,19 +193,57 @@ test('start: an alang of yours (any source) is kept, the other two set', functio
 	eq(join(mock.props.alang), 'ja', 'alang untouched')
 	eq(native_sets_of('alang'), 0, 'alang never set')
 	eq(join(mock.props.slang), 'es,spa,es-ES,es-419', 'slang')
-	eq(mock.props[SWMA], false, 'swma')
+	eq(mock.props[SWMA], 'forced', 'swma')
 end)
 
-test('start: subs-with-matching-audio=forced of yours is kept', function()
-	load({values = {[SWMA] = 'forced'}})
-	eq(mock.props[SWMA], 'forced', 'kept')
+test('start: subs-with-matching-audio of yours is kept, slang still set', function()
+	local m = load({values = {[SWMA] = false}})
+	eq(mock.props[SWMA], false, 'no kept')
 	eq(sets_of(SWMA), '', 'never set')
+	eq(m.managed.slang, true, 'slang managed')
+	eq(join(mock.props.slang), 'es,spa,es-ES,es-419', 'slang')
+end)
+
+test('start: a slang of yours takes subs-with-matching-audio with it', function()
+	local m = load({values = {slang = {'en'}}})
+	eq(m.managed[SWMA], false, 'swma not managed')
+	eq(mock.props[SWMA], true, 'mpv default kept')
+	eq(sets_of(SWMA), '', 'never set')
+	eq(join(mock.props.slang), 'en', 'slang kept')
+	eq(join(mock.props.alang), 'es,spa,es-ES,es-419,ja,jpn', 'alang still set')
+	local logged = table.concat(mock.logs.info, '\n')
+	assert(logged:find(SWMA .. ' left to you: slang is yours', 1, true), logged)
+end)
+
+test('start: slang= in mpv.conf (the default value) takes subs-with-matching-audio too', function()
+	local m = load({conf = 'slang=\n'})
+	eq(m.managed.slang, false, 'slang')
+	eq(m.managed[SWMA], false, 'swma')
+	eq(sets_of(SWMA), '', 'never set')
+	eq(m.managed.alang, true, 'alang')
+end)
+
+test('switch: slang yours: subs-with-matching-audio stays out after a switch too', function()
+	local m = load({lang = 'es', values = {slang = {'en'}}})
+	play(m, 1, false)
+	mock.set_script_opt('hikari-language', 'en')
+	eq(sets_of(SWMA), '', 'never set')
+	eq(mock.props[SWMA], true, 'mpv default kept')
+	eq(join(mock.props.alang), 'en,eng,en-US,en-GB,ja,jpn', 'alang follows')
+end)
+
+test('start: the value in the log has no control characters', function()
+	load({values = {alang = {'ja\n[fake] line\27'}}})
+	local logged = table.concat(mock.logs.info, '|')
+	assert(logged:find('already set (ja?[fake] line?)', 1, true), logged)
+	assert(not logged:find('%c'), 'control character in the log')
 end)
 
 test('start: the default value written on the command line is yours', function()
 	load({cmdline = {slang = true}})
 	eq(join(mock.props.slang), '', 'slang= on the command line kept')
 	eq(native_sets_of('slang'), 0, 'slang never set')
+	eq(sets_of(SWMA), '', 'swma goes with slang')
 	eq(join(mock.props.alang), 'es,spa,es-ES,es-419,ja,jpn', 'alang set')
 end)
 
@@ -214,6 +259,7 @@ test('start: an option this mpv does not report is left alone', function()
 	eq(m.managed.slang, false, 'slang')
 	eq(m.managed.alang, true, 'alang')
 	eq(native_sets_of('slang'), 0, 'slang never set')
+	eq(m.managed[SWMA], false, 'swma goes with slang')
 end)
 
 test('start: a failed set is a warning, not an error', function()
@@ -268,8 +314,27 @@ test('mpv.conf: no file, or not a string, finds nothing', function()
 	local m = load()
 	eq(next(m.conf_options(nil)), nil, 'nil')
 	eq(next(m.user_conf_options()), nil, 'no mpv.conf')
-	mock.config_files['mpv.conf'] = '/nonexistent/hikari/mpv.conf'
+	mock.expand['~~/mpv.conf'] = '/nonexistent/hikari/mpv.conf'
+	mock.files['/nonexistent/hikari/mpv.conf'] = {is_file = true}
 	eq(next(m.user_conf_options()), nil, 'unreadable')
+end)
+
+test('mpv.conf: only ~~/mpv.conf, never the one in /etc/mpv', function()
+	local m = load({etc_conf = 'subs-with-matching-audio=yes\n'})
+	eq(m.managed[SWMA], true, 'swma managed')
+	eq(mock.props[SWMA], 'forced', 'swma set')
+	eq(next(m.user_conf_options()), nil, 'nothing found')
+end)
+
+test('mpv.conf: a folder called mpv.conf is not read', function()
+	local m = load()
+	local dir = os.tmpname()
+	os.remove(dir)
+	assert(os.execute('mkdir ' .. dir))
+	mock.expand['~~/mpv.conf'] = dir
+	mock.files[dir] = {is_file = false, is_dir = true}
+	eq(next(m.user_conf_options()), nil, 'nothing found')
+	os.remove(dir)
 end)
 
 test('mpv.conf: the user\'s recipe of the docs keeps all three', function()

@@ -5,7 +5,9 @@
 -- its own, with this recipe for anime:
 --   alang=<language>,ja                 the dub in your language, else Japanese
 --   slang=<language>                    subtitles in your language...
---   subs-with-matching-audio=no         ...except when the audio already is
+--   subs-with-matching-audio=forced     ...except when the audio already is:
+--                                       then only forced subtitles (signs
+--                                       and songs), not the dialogue
 -- <language> is a list of codes per language (MEDIA_LANGUAGES in
 -- script-modules/hikari-i18n.lua, where the matching rules of mpv are
 -- explained). There is no option to turn it on or off: your own lines are.
@@ -14,19 +16,24 @@
 -- has no key binding and no menu.
 --
 -- Decisions:
--- - Your settings win, option by option. When you set `alang`, `slang` or
---   `subs-with-matching-audio` yourself, hikari leaves that option alone and
---   still sets the other two. An option counts as yours when, at the moment
---   this script starts:
+-- - Your settings win. `alang` is decided on its own: when you set it,
+--   hikari leaves it alone and still sets the subtitles. The subtitles go
+--   together, all or nothing: `subs-with-matching-audio` only makes sense
+--   with hikari's `slang`, so when you set `slang` hikari leaves both alone
+--   (even if you did not set `subs-with-matching-audio`), and when you set
+--   only `subs-with-matching-audio`, hikari still sets `slang`. An option
+--   counts as yours when, at the moment this script starts:
 --     1. mpv says it came from the command line
 --        (option-info/<name>/set-from-commandline), or
 --     2. its value is not mpv's default (option-info/<name>/default-value).
 --        This catches mpv.conf, the files it includes, /etc/mpv/mpv.conf,
 --        profiles applied at start (`profile=`), mpv.net's settings and any
 --        script that ran earlier: whatever set it, it was not hikari, or
---     3. ~~/mpv.conf has a line for it outside the hikari block and outside
---        any [profile] section: `alang=...`, `--slang = ... # comment`,
---        `alang-append=...`, `no-subs-with-matching-audio`... This is for
+--     3. ~~/mpv.conf (that file only, as expand-path gives it: never
+--        /etc/mpv/mpv.conf) has a line for it outside the hikari block and
+--        outside any [profile] section: `alang=...`,
+--        `--slang = ... # comment`, `alang-append=...`,
+--        `no-subs-with-matching-audio`... This is for
 --        lines that write mpv's default value (`subs-with-matching-audio=yes`,
 --        `slang=`), which 2 cannot tell apart from no line at all.
 --   Why not option-info alone: mpv 0.40 and 0.41 only mark options from the
@@ -59,6 +66,7 @@
 --   any case.
 
 local msg = require('mp.msg')
+local utils = require('mp.utils')
 
 -- Texts and languages of hikari: ~~/script-modules/hikari-i18n.lua. Single-file
 -- scripts get no mpv folder in package.path, so the folder is added for this
@@ -104,7 +112,7 @@ local function recipe(lang)
 	for _, code in ipairs(i18n.ORIGINAL_AUDIO) do alang[#alang + 1] = code end
 	local slang = {}
 	for _, code in ipairs(codes) do slang[#slang + 1] = code end
-	return {alang = alang, slang = slang, ['subs-with-matching-audio'] = 'no'}
+	return {alang = alang, slang = slang, ['subs-with-matching-audio'] = 'forced'}
 end
 
 -- One form for any value of the three options, to compare them: a string
@@ -156,10 +164,13 @@ local function conf_options(text)
 end
 
 -- The options ~~/mpv.conf sets (see conf_options); an empty set when there is
--- no mpv.conf or it cannot be read.
+-- no such file or it cannot be read. Only that file: not /etc/mpv/mpv.conf,
+-- which mp.find_config_file would fall back to (see the header).
 local function user_conf_options()
-	local path = mp.find_config_file('mpv.conf')
-	if not path then return {} end
+	local path = mp.command_native({'expand-path', '~~/mpv.conf'})
+	if type(path) ~= 'string' or path == '' then return {} end
+	local info = utils.file_info(path)
+	if not info or not info.is_file then return {} end
 	local file = io.open(path, 'rb')
 	if not file then return {} end
 	local text = file:read(MAX_CONF_BYTES)
@@ -177,7 +188,9 @@ local function set_by_user(name, in_conf)
 	local default = mp.get_property_native('option-info/' .. name .. '/default-value')
 	local current = mp.get_property_native(name)
 	if default == nil or current == nil then return true, 'its value cannot be read' end
-	if not same_value(current, default) then return true, 'already set (' .. value_text(current):sub(1, 80) .. ')' end
+	if not same_value(current, default) then
+		return true, 'already set (' .. (value_text(current):sub(1, 80):gsub('%c', '?')) .. ')'
+	end
 	if in_conf[name] then return true, 'set in mpv.conf' end
 	return false
 end
@@ -252,6 +265,10 @@ end
 local in_conf = user_conf_options()
 for _, name in ipairs(OPTIONS) do
 	local mine, why = set_by_user(name, in_conf)
+	-- All or nothing for the subtitles: see the header.
+	if not mine and name == 'subs-with-matching-audio' and not managed.slang then
+		mine, why = true, 'slang is yours, so the subtitles are'
+	end
 	managed[name] = not mine
 	if mine then msg.verbose(name .. ' left to you: ' .. why) end
 end
