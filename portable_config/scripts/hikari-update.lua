@@ -20,7 +20,8 @@
 -- - Installed version: the `hikari_version=X.Y.Z` line of ~~/hikari-installed.txt,
 --   the record both installers write (the last such line wins, as in the
 --   installers). No record, or a version that is not X.Y.Z (a copy of the
---   repository says `dev`): nothing is checked and nothing is shown.
+--   repository says `dev`, a preview build `preview-<commit>`): nothing is
+--   checked and nothing is shown.
 -- - Latest version: no GitHub API (60 requests an hour per address). curl asks
 --   for the headers of https://github.com/SCEPTICG/hikari-mpv/releases/latest
 --   without following redirects, and the version is the tag of the
@@ -200,7 +201,7 @@ local function parse_key_values(content)
 	return values
 end
 
--- The installed hikari version ("X.Y.Z"), nil without a record or for `dev`.
+-- The installed hikari version ("X.Y.Z"), nil without a record, for `dev` or a preview.
 local function installed_version()
 	local values = parse_key_values(read_small(expand(RECORD_PATH)))
 	return normalize(values.hikari_version)

@@ -49,6 +49,9 @@ hikari_defaults() {
     HIKARI_VERSION='dev'
     HIKARI_RELEASE_URL=''
     HIKARI_RELEASE_SHA256=''
+    # A preview build (version preview-<commit>, see tools/make-release.sh) says
+    # so when it starts, with this line to go back to the stable version.
+    HIKARI_STABLE_INSTALL='curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash'
 
     # uosc, thumbfast and Anime4K: fixed versions, verified by SHA256 (the same
     # ones as install/hikari.ps1).
@@ -176,6 +179,7 @@ hikari_text_en() {
     local s=''
     case $1 in
         title) s='hikari installer' ;;
+        preview_note) s='Preview build (%s). To go back to the stable version: %s' ;;
         menu) s='1) Install or update\n2) Uninstall\n0) Exit' ;;
         menu_prompt) s='Choose an option' ;;
         invalid) s='Invalid option.' ;;
@@ -336,6 +340,7 @@ hikari_text_es() {
     local s=''
     case $1 in
         title) s='Instalador de hikari' ;;
+        preview_note) s='Versión de prueba (%s). Para volver a la estable: %s' ;;
         menu) s='1) Instalar o actualizar\n2) Desinstalar\n0) Salir' ;;
         menu_prompt) s='Elige una opción' ;;
         invalid) s='Opción no válida.' ;;
@@ -3317,6 +3322,7 @@ main() {
     if [ "$OPT_YES" = 1 ] || [ "$HAVE_INPUT" != 1 ]; then NONINTERACTIVE=1; fi
 
     info "$(T title)"
+    case $HIKARI_VERSION in preview-*) warn "$(T preview_note "$HIKARI_VERSION" "$HIKARI_STABLE_INSTALL")" ;; esac
     [ "$HAVE_INPUT" = 1 ] || [ "$OPT_YES" = 1 ] || warn "$(T no_input)"
     local action=$OPT_ACTION
     if [ -z "$action" ]; then

@@ -111,6 +111,9 @@ $ErrorActionPreference = 'Stop'
 $script:HikariVersion = 'dev'
 $script:HikariReleaseUrl = ''
 $script:HikariReleaseSha256 = ''
+# A preview build (version preview-<commit>, see tools/make-release.sh) says so
+# when it starts, with this line to go back to the stable version.
+$script:HikariStableInstall = 'irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex'
 
 # uosc: fixed release, verified by SHA256 before it is extracted.
 $script:UoscVersion = '5.13.0'
@@ -299,6 +302,7 @@ $script:HikariDownloader = {
 
 $script:HikariStringsEn = @{
     title                 = 'hikari installer'
+    preview_note          = 'Preview build ({0}). To go back to the stable version: {1}'
     menu                  = "1) Install or update`n2) Uninstall`n0) Exit"
     menu_prompt           = 'Choose an option'
     invalid               = 'Invalid option.'
@@ -454,6 +458,7 @@ $script:HikariStringsEn = @{
 
 $script:HikariStringsEs = @{
     title                 = 'Instalador de hikari'
+    preview_note          = 'Versi\u00f3n de prueba ({0}). Para volver a la estable: {1}'
     menu                  = '1) Instalar o actualizar\n2) Desinstalar\n0) Salir'
     menu_prompt           = 'Elige una opci\u00f3n'
     invalid               = 'Opci\u00f3n no v\u00e1lida.'
@@ -4071,6 +4076,9 @@ function Invoke-HikariMain {
     }
 
     Write-HikariInfo (T 'title')
+    if ($script:HikariVersion.StartsWith('preview-', [System.StringComparison]::Ordinal)) {
+        Write-HikariWarn (T 'preview_note' @($script:HikariVersion, $script:HikariStableInstall))
+    }
     if (-not $Action) {
         if ($Yes) { Write-HikariError (T 'usage_yes_action'); return 2 }
         while (-not $Action) {
