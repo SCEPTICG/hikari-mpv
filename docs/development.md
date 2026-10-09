@@ -1,6 +1,6 @@
 # Development
 
-How to run the tests and how a hikari release is made. For what hikari is and how to install it, see the [README](index.md).
+How to run the tests and how a hikari release is made. For what hikari is and how to install it, see the [home page](index.md).
 
 ## Tests
 
