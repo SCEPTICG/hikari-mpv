@@ -8,7 +8,8 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    # Every branch but gh-pages (the built site of the old manual publishing).
+    branches-ignore: [gh-pages]
   pull_request:
   workflow_dispatch:
 

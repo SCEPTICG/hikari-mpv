@@ -26,7 +26,7 @@ Optional settings for the test scripts: `HIKARI_TEST_LUA` names the Lua 5.1 or L
 
 ## Continuous integration
 
-GitHub runs the tests on every push to any branch and on every pull request (`.github/workflows/ci.yml`), with read-only access and no secrets:
+GitHub runs the tests on every push to any branch (except `gh-pages`) and on every pull request (`.github/workflows/ci.yml`), with read-only access and no secrets:
 
 | Job | Where | What |
 | --- | --- | --- |
