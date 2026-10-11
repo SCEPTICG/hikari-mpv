@@ -3379,6 +3379,58 @@ Test-Case 'summary on a console: Ctrl+C half-way through a download takes the ba
     }
 }
 
+Test-Case 'summary on a console: the menus and their title go once answered, the notices stay' {
+    Reset-Fake
+    $d = New-TestDir 'summary-menus'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $script:FakeEnvBase = P @($d, 'machine')
+    Set-TestFile (P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    $net = P @($script:FakeEnvBase, 'Roaming', 'mpv.net')
+    function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    function Read-HikariLine { param([string]$Prompt) throw 'a number question was asked' }
+    $savedFancy = $script:HikariFancyProbe
+    $savedVersion = $script:HikariVersion
+    $preview = 'Preview build (preview-abc1234). To go back to the stable version: ' + $script:HikariStableInstall
+    try {
+        $script:HikariFancyProbe = { $true }
+        $script:HikariVersion = 'preview-abc1234'
+        # Install (Enter), the highlighted folder (Enter).
+        Use-FakeConsole @('Enter', 'Enter')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
+        Assert-Equal $script:SummaryCode 0 'exit code'
+        Assert-True (Test-Path -LiteralPath (P @($net, 'hikari-installed.txt'))) 'installed'
+        $lines = Get-SummaryLines $text
+        $want = @('', '  hikari preview-abc1234', '', ('  ' + $preview), '', ('  > mpv.net  ' + $net), '')
+        Assert-Equal ([string]::Join('|', @($lines[0..6]))) ([string]::Join('|', $want)) ('the top of the summary; screen: ' + [string]::Join('|', $lines))
+        Assert-True (-not $text.Contains('Install or update') -and -not $text.Contains('folders found')) ('nothing of the menus written; output: ' + $text)
+        Assert-True ($script:Frames[2].StartsWith('  Players and config folders found:' + "`n")) ('the title is part of the menu: ' + $script:Frames[2])
+        $empty = @($script:Frames | Where-Object { $_ -eq '' }).Count
+        Assert-Equal $empty 2 ('both menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
+        # Esc in the folders menu: only "Cancelled." after the notices.
+        Use-FakeConsole @('Enter', 'Escape')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
+        Assert-Equal $script:SummaryCode 0 'Esc: exit code'
+        $want = @('', '  hikari preview-abc1234', '', ('  ' + $preview), '  Cancelled.', '')
+        Assert-Equal ([string]::Join('|', (Get-SummaryLines $text))) ([string]::Join('|', $want)) 'Esc: the title, the notice and "Cancelled."'
+        Assert-Equal (Get-LastFrame) '' 'Esc: the menu taken off the screen'
+        # -Verbose: the title written above the menu, the choice left in its place.
+        Use-FakeConsole @('Enter', 'Enter')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { [void](Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $true) }
+        Assert-True ((Get-ScreenLines $text) -contains 'Players and config folders found:') ('-Verbose: the title stays; output: ' + $text)
+        Assert-True ($script:Frames[0] -ne '' -and (Get-LastFrame).StartsWith($Ptr + ' mpv.net (')) ('-Verbose: the choice stays: ' + (Get-LastFrame))
+    }
+    finally {
+        $script:HikariFancyProbe = $savedFancy
+        $script:HikariVersion = $savedVersion
+        Remove-Item Function:\New-HikariEnvironment
+        Remove-Item Function:\Read-HikariLine
+        Reset-FakeConsole
+    }
+}
+
 Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
     $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'

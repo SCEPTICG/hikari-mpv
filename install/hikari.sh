@@ -748,6 +748,7 @@ step_end() { # step_end ok|fail|quiet
     [ "$VERBOSE" != 1 ] && [ "$1" != quiet ] || return 0
     if [ "$1" = ok ]; then mark=$(paint 32 "$G_OK"); else mark=$(paint 31 "$G_FAIL"); fi
     printf '  %s %s\n' "$mark" "$label"
+    UI_BLANK=0
 }
 
 # A line of the summary, as it is (not in verbose mode).
@@ -755,6 +756,7 @@ ui_line() {
     [ "$VERBOSE" != 1 ] || return 0
     spin_hold
     printf '%s\n' "$1"
+    if [ -n "$1" ]; then UI_BLANK=0; else UI_BLANK=1; fi
     spin_release
 }
 
@@ -766,6 +768,7 @@ row_done() { # row_done <label> <ok|fail> [text]
     [ "$FANCY" != 1 ] || printf '\r\033[K'
     BAR_ACTIVE=0
     printf '  %-12s%s%s\n' "$1" "$mark" "${3:+ $3}"
+    UI_BLANK=0
 }
 
 # repeat <n> <text>
@@ -827,11 +830,17 @@ progress_reader() {
     done
 }
 
+# UI_BLANK: the last line written is blank (on the summary, a blank line goes
+# before the first folder only when something came after the title's).
 info() {
     spin_hold
     printf '%s\n' "$1"
+    if [ -n "$1" ]; then UI_BLANK=0; else UI_BLANK=1; fi
     spin_release
 }
+# A line the user should read in the summary, indented as the summary is; as
+# it is in verbose mode and without a terminal.
+say() { if [ "$FANCY" = 1 ]; then info "  $1"; else info "$1"; fi; }
 # Details: only in verbose mode.
 detail() { [ "$VERBOSE" != 1 ] || info "$1"; }
 detail_ok() { [ "$VERBOSE" != 1 ] || ok "$1"; }
@@ -840,11 +849,13 @@ notice() { if [ "$VERBOSE" = 1 ]; then info "$1"; else ui_line "  $1"; fi; }
 ok() {
     spin_hold
     printf '%s\n' "$(paint 32 "$1")"
+    UI_BLANK=0
     spin_release
 }
 warn() {
     spin_hold
     if [ "$VERBOSE" = 1 ]; then printf '%s\n' "$(paint 33 "$1")"; else printf '  %s\n' "$(paint 33 "$1")"; fi
+    UI_BLANK=0
     spin_release
 }
 error() {
@@ -852,6 +863,7 @@ error() {
     spin_hold
     [ "$VERBOSE" = 1 ] || pre='  '
     if [ "$COLOR" = 1 ] && [ -t 2 ]; then printf '%s\033[31m%s\033[0m\n' "$pre" "$1" >&2; else printf '%s%s\n' "$pre" "$1" >&2; fi
+    UI_BLANK=0
     spin_release
 }
 
@@ -903,6 +915,7 @@ io_setup() {
 # Reads a line into REPLY_LINE (fails at the end of the input).
 read_line() {
     REPLY_LINE=''
+    UI_BLANK=0
     printf '%s: ' "$1"
     if [ "$HAVE_INPUT" != 1 ]; then printf '\n'; return 1; fi
     if IFS= read -r REPLY_LINE <&3; then
@@ -1094,6 +1107,7 @@ list_frame() {
     cols=$(term_cols)
     FRAME_TEXT=()
     FRAME_COLOR=()
+    for head in ${M_HEADER[@]+"${M_HEADER[@]}"}; do frame_add "$(fit "  $head" $((cols - 1)))"; done
     i=0
     while [ "$i" -lt "$n" ]; do
         pointer='  '
@@ -1174,6 +1188,9 @@ menu_item() {
 # Sets M_CANCELLED (1/0), M_INDEX (entry Enter was pressed on, -1 for ticked
 # ones) and M_PICKED (indexes of the chosen entries that are not actions).
 # Returns 3, with nothing written, when the menu does not fit.
+# In the summary (FANCY=1) the header lines are part of the menu and all of it
+# goes once answered: the summary says the folders already. Otherwise the
+# header stays above it and the menu is replaced by a line with the choice.
 list_menu() {
     M_MULTI=$1
     shift
@@ -1182,8 +1199,10 @@ list_menu() {
     M_CANCELLED=0
     M_INDEX=-1
     M_PICKED=()
-    list_frame_fit || return 3
-    for i in ${1+"$@"}; do info "$i"; done
+    M_HEADER=()
+    [ "$FANCY" != 1 ] || M_HEADER=(${1+"$@"})
+    list_frame_fit || { M_HEADER=(); return 3; }
+    [ "$FANCY" = 1 ] || for i in ${1+"$@"}; do info "$i"; done
     DRAWN=0
     menu_enter
     while [ "$done" = 0 ]; do
@@ -1227,10 +1246,12 @@ list_menu() {
                 ;;
         esac
     done
-    # The menu is replaced by one line with the choice (nothing when cancelled).
+    # The menu is replaced by one line with the choice (nothing when cancelled
+    # or in the summary).
     FRAME_TEXT=()
     FRAME_COLOR=()
-    if [ "$M_CANCELLED" = 0 ]; then
+    M_HEADER=()
+    if [ "$M_CANCELLED" = 0 ] && [ "$FANCY" != 1 ]; then
         for i in ${M_PICKED[@]+"${M_PICKED[@]}"}; do summary="$summary${summary:+, }${M_SUMMARY[i]}"; done
         if [ "$M_INDEX" -ge 0 ]; then
             [ "${M_QUIT[M_INDEX]}" = 1 ] && summary=''
@@ -1251,7 +1272,7 @@ yesno_menu() {
     rows=$(term_rows)
     cols=$(term_cols)
     [ "$rows" -ge 3 ] || return 3
-    info "$question"
+    say "$question"
     DRAWN=0
     menu_enter
     while [ -z "$result" ]; do
@@ -2570,7 +2591,7 @@ anime4k_step() {
         [ "$choice" = no ] && install=0
         if [ -z "$choice" ]; then
             # Only when it is really asked (always in verbose mode).
-            if [ "$VERBOSE" = 1 ] || [ "$NONINTERACTIVE" != 1 ]; then info "$(T anime4k_intro)"; fi
+            if [ "$VERBOSE" = 1 ] || [ "$NONINTERACTIVE" != 1 ]; then say "$(T anime4k_intro)"; fi
             local def=yes
             [ "$prev" = declined ] && def=no
             confirm "$(T anime4k_confirm)" "$def" || install=0
@@ -4037,6 +4058,8 @@ main() {
     SPIN_HOLD=0
     BAR_ACTIVE=0
     STEP_LABEL=''
+    UI_BLANK=0
+    M_HEADER=()
     ui_setup
     SCRIPT_FILE=${BASH_SOURCE[0]:-}
     HIKARI_ERR=''
@@ -4088,7 +4111,7 @@ main() {
                     1) action=install ;;
                     2) action=uninstall ;;
                     3) show_versions; info '' ;;
-                    0) info "$(T cancelled)"; return 0 ;;
+                    0) say "$(T cancelled)"; return 0 ;;
                     *) warn "$(T invalid)" ;;
                 esac
             done
@@ -4098,7 +4121,7 @@ main() {
     if [ "$(id -u)" = 0 ]; then
         warn "$(T root_warn)"
         if [ "$NONINTERACTIVE" = 1 ]; then error "$(T root_refused)"; return 2; fi
-        confirm "$(T root_confirm)" no || { info "$(T cancelled)"; return 0; }
+        confirm "$(T root_confirm)" no || { say "$(T cancelled)"; return 0; }
     fi
 
     detail "$(T detecting)"
@@ -4114,20 +4137,22 @@ main() {
     rc=$?
     if [ "$rc" != 0 ]; then
         [ "$USAGE_ERROR" = 1 ] && return 2
-        info "$(T cancelled)"
+        say "$(T cancelled)"
         return 0
     fi
     check_targets "$action"
     if [ "$REFUSED" = 1 ] && [ "$NONINTERACTIVE" = 1 ]; then return 2; fi
     if [ "${#TARGETS[@]}" -eq 0 ]; then
         if [ "$NONINTERACTIVE" = 1 ]; then error "$(T usage_none)"; return 2; fi
-        info "$(T cancelled)"
+        say "$(T cancelled)"
         return 0
     fi
 
     STAMP=$(date +%Y%m%d-%H%M%S)
     local done_count=0 t many=0 first=1
     [ "${#TARGETS[@]}" -le 1 ] || many=1
+    # Warnings or questions after the title: a blank line before the folders.
+    [ "$FANCY" != 1 ] || [ "$UI_BLANK" = 1 ] || ui_line ''
     # One folder: its name above the downloads. Several: above each block.
     if [ "$many" = 0 ]; then ui_folder "${TARGETS[0]}"; ui_line ''; fi
     if [ "$action" = install ]; then

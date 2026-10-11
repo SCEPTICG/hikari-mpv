@@ -1775,6 +1775,43 @@ screen "$out" >"$tmp/fancy-ask-screen"
 check 'terminal with questions: warnings, question and steps on their own lines' \
     test -n "$(grep -F 'installed by hand' "$tmp/fancy-ask-screen")" -a -n "$(grep -x '  + Installing' "$tmp/fancy-ask-screen")" \
     -a -z "$(grep -E '[|/\\-] Installing\.\.\..+' "$tmp/fancy-ask-screen")"
+# Menus in the summary: once answered, the menu and its title go (the folder
+# block says what was chosen); the notices stay, indented, with a blank line
+# before the folder. A preview build on a Mac with IINA, chosen with Enter twice.
+h=$(newhome fancy-menus)
+cfg="$h/.config/mpv"
+copy="$tmp/build-preview/install/hikari.sh"
+HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r'
+copy=$dev_copy
+screen "$out" >"$tmp/fancy-menus-screen"
+check 'terminal, menus: installs' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
+cat >"$tmp/want-fancy-menus" <<'TXT'
+
+  hikari preview-abc1234
+
+  Preview build (preview-abc1234). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
+  IINA is installed: it has its own settings and is not touched. hikari is for mpv.
+
+  > mpv  ~/.config/mpv
+
+TXT
+head -n 8 "$tmp/fancy-menus-screen" >"$tmp/got-fancy-menus"
+check 'terminal, menus: nothing of the menus left above the summary' same "$tmp/want-fancy-menus" "$tmp/got-fancy-menus"
+same "$tmp/want-fancy-menus" "$tmp/got-fancy-menus" || diff "$tmp/want-fancy-menus" "$tmp/got-fancy-menus" | sed 's/^/     | /'
+check 'terminal, menus: no chosen entry, title or help left anywhere' \
+    test -z "$(grep -E 'Install or update|Config folders found|Enter|mpv \(' "$tmp/fancy-menus-screen")" -a -n "$(grep -x '  + Installing' "$tmp/fancy-menus-screen")"
+# Esc in the first menu, and in the folders menu: the menus go, "Cancelled." stays.
+LC_ALL=C pty_run "$(newhome fancy-esc)" '\x1b'
+screen "$out" >"$tmp/fancy-esc-screen"
+printf '\n  hikari dev\n\n  Cancelled.\n' >"$tmp/want-fancy-esc"
+check 'terminal, Esc in the first menu: only the title and "Cancelled."' test "$rc" = 0 -a "$(cat "$tmp/fancy-esc-screen")" = "$(cat "$tmp/want-fancy-esc")"
+LC_ALL=C pty_run "$(newhome fancy-esc2)" '\r' '\x1b'
+screen "$out" >"$tmp/fancy-esc-screen"
+check 'terminal, Esc in the folders menu: only the title and "Cancelled."' test "$rc" = 0 -a "$(cat "$tmp/fancy-esc-screen")" = "$(cat "$tmp/want-fancy-esc")"
+# --verbose keeps the menus' title and the line with the choice.
+LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r'
+check 'terminal, --verbose: the title of the folders and the chosen entries stay' \
+    test "$rc" = 0 -a -n "$(screen "$out" | grep -x 'Config folders found:')" -a -n "$(screen "$out" | grep -xE '[^ ]+ Install or update')"
 # No real terminal: nothing animated and no escape sequence, also on a terminal.
 for setting in NO_COLOR=1 PTY_TERM=dumb PTY_CI=true; do
     h=$(newhome "fancy-off-${setting%%=*}")
