@@ -65,5 +65,10 @@ body:
     id: output
     attributes:
       label: Installer output or mpv log
-      description: What the installer printed, or the relevant part of an mpv log (`mpv --log-file=mpv.log <file>`). Remove anything private first.
+      description: |
+        For an installer problem, run it again with `--verbose` (macOS and Linux) or `-Verbose` (Windows) and paste everything it prints: without it, the installer only shows a short summary. For a player problem, the relevant part of an mpv log (`mpv --log-file=mpv.log <file>`). Remove anything private first.
+
+        macOS and Linux: `curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --verbose`
+
+        Windows (PowerShell): `& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Verbose`
       render: text

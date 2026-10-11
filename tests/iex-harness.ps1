@@ -9,13 +9,16 @@
 # -Mode create  : & ([scriptblock]::Create(<text>)) with -Action/-Target,
 #                 -Yes:<YesValue> (true or false) and -Version (-ShowVersion
 #                 here), the documented way to pass options.
-# -Downloads    : JSON file with an object { url: local file }. Invoke-WebRequest
-#                 is replaced by a global function that serves those files (the
-#                 installer finds a function before the cmdlet) and logs the URLs.
-#                 It also changes [Net.ServicePointManager]::SecurityProtocol,
-#                 as a download on Windows PowerShell 5.1 may need (pwsh 7 never
-#                 touches it), so that the check that the installer puts it back
-#                 tests something; TlsTouched in the report says it happened.
+# -Downloads    : JSON file with an object { url: local file }. The installer's
+#                 downloader ($script:HikariDownloader, the one line that sets
+#                 it) is replaced in the text run by a global script block that
+#                 serves those files and logs the URLs; nothing else of the
+#                 installer changes. It also changes
+#                 [Net.ServicePointManager]::SecurityProtocol, as a download on
+#                 Windows PowerShell 5.1 may need (pwsh 7 never touches it), so
+#                 that the check that the installer puts it back tests
+#                 something; TlsTouched in the report says it happened.
+# -Detail       : with -Mode create, run with -Verbose.
 # -StrictLatest : the session runs with Set-StrictMode -Version Latest and
 #                 $ErrorActionPreference = 'Stop' before the installer starts.
 #
@@ -30,7 +33,8 @@ param(
     [string]$Target = '',
     [string]$YesValue = '',
     [switch]$StrictLatest,
-    [switch]$ShowVersion
+    [switch]$ShowVersion,
+    [switch]$Detail
 )
 
 # The parent test run loads the installer in test mode; this run must not.
@@ -44,18 +48,22 @@ if ($Downloads) {
 $global:__hLog = New-Object System.Collections.Generic.List[string]
 $global:__hTls = [System.Net.ServicePointManager]::SecurityProtocol
 $global:__hTlsTouched = $false
-function global:Invoke-WebRequest {
-    param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing)
-    $global:__hLog.Add($Uri)
+$global:__hDownloader = {
+    param([string]$Url, [string]$OutFile)
+    $global:__hLog.Add($Url)
     $__hOther = [System.Net.SecurityProtocolType]::Tls12
     if ($global:__hTls -eq $__hOther) { $__hOther = [System.Net.SecurityProtocolType]::Tls13 }
     [System.Net.ServicePointManager]::SecurityProtocol = $__hOther
     if ([System.Net.ServicePointManager]::SecurityProtocol -ne $global:__hTls) { $global:__hTlsTouched = $true }
-    if (-not $global:__hMap.ContainsKey($Uri)) { throw ('unexpected download ' + $Uri) }
-    Copy-Item -LiteralPath $global:__hMap[$Uri] -Destination $OutFile -Force
+    if (-not $global:__hMap.ContainsKey($Url)) { throw ('unexpected download ' + $Url) }
+    Copy-Item -LiteralPath $global:__hMap[$Url] -Destination $OutFile -Force
 }
 
 $__hCode = Get-Content -Raw -LiteralPath $Script
+# The downloader line, exactly once: anything else would download for real.
+$__hMarker = '$script:HikariDownloader = {'
+if (([regex]::Matches($__hCode, [regex]::Escape($__hMarker))).Count -ne 1) { throw 'iex-harness: the downloader line is not in the installer exactly once' }
+$__hCode = $__hCode.Replace($__hMarker, '$script:HikariDownloader = $global:__hDownloader; $script:HikariUnusedDownloader = {')
 $__hCtrlC = $null
 try { $__hCtrlC = [Console]::TreatControlCAsInput } catch { }
 
@@ -82,6 +90,7 @@ else {
     if ($Target) { $__hParams['Target'] = $Target }
     if ($YesValue) { $__hParams['Yes'] = [bool]::Parse($YesValue) }
     if ($ShowVersion) { $__hParams['Version'] = $true }
+    if ($Detail) { $__hParams['Verbose'] = $true }
     $__hOut = @(& ([scriptblock]::Create($__hCode)) @__hParams)
 }
 $__hExit = $global:LASTEXITCODE

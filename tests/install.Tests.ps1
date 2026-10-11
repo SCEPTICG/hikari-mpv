@@ -40,6 +40,12 @@ $script:HikariQuiet = $true
 # The tests that drive the old number questions run as if there were no
 # interactive console; the keyboard menu tests below switch it on themselves.
 $script:HikariConsoleProbe = { $false }
+# The details of every step (-Verbose) reach Write-HikariInfo, as many tests
+# check them; the summary has tests of its own, which switch this off. No
+# animations and ASCII glyphs unless a test asks for them.
+$script:HikariVerbose = $true
+$script:HikariFancyProbe = { $false }
+$script:HikariUnicodeProbe = { $false }
 
 $script:Passed = 0
 $script:Failed = 0
@@ -2327,23 +2333,30 @@ Test-Case 'Anime4K: installed with -Yes, update only reinstalls it when a shader
         Assert-True ($input.Contains('Ctrl+7  script-message-to hikari_upscale set-mode auto')) 'Ctrl+7'
         Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 1 'downloaded once'
 
-        # Update of the same version with every shader there: nothing is
-        # downloaded or copied (a new run, so nothing cached).
+        # Update of the same version with every shader there, unchanged:
+        # nothing is downloaded or copied (a new run, so nothing cached).
         $art2 = [pscustomobject]@{ UoscDir = $art.UoscDir; ThumbfastFile = $art.ThumbfastFile; TempDir = (New-TestDir 'a4k-e2e-run2'); Anime4KDir = '' }
-        Set-TestFile (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl')) 'changed'
+        $thinPath = P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl')
+        $thinTime = (Get-Item -LiteralPath $thinPath).LastWriteTimeUtc
+        Start-Sleep -Milliseconds 50
         Set-TestFile (P @($cfg, 'hikari-upscale.conf')) "# my choice`n"
         [void](Invoke-TestInstall $cand $art2 '20261006-100100')
         Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 1 'not downloaded again'
-        Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl'))) 'changed' 'not copied again'
+        Assert-Equal (Get-Item -LiteralPath $thinPath).LastWriteTimeUtc $thinTime 'not copied again'
         Assert-Equal (Get-TestText (P @($cfg, 'hikari-upscale.conf'))) "# my choice`n" 'choice kept on update'
         Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'input.conf'))), 'Ctrl\+1')).Count 1 'one Ctrl+1'
         Assert-Equal @((Read-HikariRecord $cfg).Files | Where-Object { $_ -like 'shaders/*' }).Count 16 'shaders still recorded'
-        # A required shader missing: downloaded and installed again.
+        Assert-Equal @((Read-HikariRecord $cfg).Sums | Where-Object { $_ -like 'shaders/*' }).Count 16 'their hashes still recorded'
+        # A shader changed: not the pinned Anime4K any more, downloaded and put back.
+        Set-TestFile $thinPath 'changed'
+        [void](Invoke-TestInstall $cand $art2 '20261006-100105')
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 2 'downloaded for the changed shader'
+        Assert-Equal (Get-TestText $thinPath) '// fake Anime4K_Thin_HQ.glsl' 'refreshed'
+        # A required shader missing: installed again (the same run reuses the download).
         Remove-Item -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_S.glsl'))
         [void](Invoke-TestInstall $cand $art2 '20261006-100110')
-        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 2 'downloaded for the missing shader'
+        Assert-Equal @($script:FakeLog | Where-Object { $_ -eq $script:Anime4KUrl }).Count 2 'cached in the same run'
         Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Restore_CNN_S.glsl'))) 'missing shader back'
-        Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Thin_HQ.glsl'))) '// fake Anime4K_Thin_HQ.glsl' 'refreshed'
         # Another version in the record: installed again too.
         $recPath = P @($cfg, 'hikari-installed.txt')
         Set-TestFile $recPath ((Get-TestText $recPath) -replace 'anime4k_version=4\.0\.1', 'anime4k_version=4.0.0')
@@ -3087,6 +3100,276 @@ Test-Case 'version: the keyboard menu has the entry, with arrows and with 3' {
 }
 
 # ---------------------------------------------------------------------------
+# The summary (no -Verbose), up to date, progress bars and spinners
+# ---------------------------------------------------------------------------
+
+# Runs $Body with Write-Host collecting what the installer writes (text only;
+# the colours asked for in $script:ShownColors) and returns the text.
+function Get-ShownText {
+    param([scriptblock]$Body)
+    $script:Shown = New-Object System.Text.StringBuilder
+    $script:ShownColors = New-Object System.Collections.Generic.List[string]
+    function Write-Host {
+        param([object]$Object = '', [switch]$NoNewline, $ForegroundColor = $null)
+        [void]$script:Shown.Append([string]$Object)
+        if (-not $NoNewline) { [void]$script:Shown.Append("`n") }
+        if ($ForegroundColor) { $script:ShownColors.Add([string]$ForegroundColor) }
+    }
+    $savedQuiet = $script:HikariQuiet
+    $savedVerbose = $script:HikariVerbose
+    $script:HikariQuiet = $false
+    try { & $Body }
+    finally {
+        $script:HikariQuiet = $savedQuiet
+        $script:HikariVerbose = $savedVerbose
+        # Back to what the other tests expect (no animations, ASCII).
+        Initialize-HikariUi
+    }
+    return $script:Shown.ToString()
+}
+
+# What a console shows once that text is drawn: a carriage return goes back to
+# the start of the line and the next characters write over it.
+function Get-ScreenLines {
+    param([string]$Text)
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in ($Text -split "`n")) {
+        $line = New-Object System.Text.StringBuilder
+        $col = 0
+        foreach ($c in $raw.ToCharArray()) {
+            if ($c -eq "`r") { $col = 0; continue }
+            if ($col -lt $line.Length) { $line[$col] = $c } else { [void]$line.Append($c) }
+            $col++
+        }
+        $lines.Add($line.ToString().TrimEnd())
+    }
+    return , $lines.ToArray()
+}
+
+# The lines of the summary that matter: without the administrator warning of
+# an elevated run (the Windows runners), which is not what is tested here.
+function Get-SummaryLines {
+    param([string]$Text)
+    return @(Get-ScreenLines $Text | Where-Object { $_ -notmatch 'administrator' })
+}
+
+$script:FakeLog = New-Object System.Collections.Generic.List[string]
+function Invoke-LoggedMain {
+    param([string]$Action, [string[]]$Target, [bool]$Detail = $false)
+    $script:FakeLog.Clear()
+    $savedDl = $script:HikariDownloader
+    $script:HikariDownloader = { param([string]$Url, [string]$OutFile) $script:FakeLog.Add($Url); & $savedDl $Url $OutFile }
+    try { return (Invoke-HikariMain -Action $Action -Target $Target -Yes $true -Detail $Detail) }
+    finally { $script:HikariDownloader = $savedDl }
+}
+
+Test-Case 'summary: a first install, an update with everything up to date, then changes' {
+    $d = New-TestDir 'summary'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = Get-HikariFullPath (P @($d, 'mpv'))
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @($cfg) }
+    Assert-Equal $script:SummaryCode 0 'exit code'
+    $want = @('', '  hikari dev', '', ('  > ' + $cfg), '', '  uosc        + downloaded', '  thumbfast   + downloaded', '',
+        '  Anime4K     + downloaded', '  + Installing', '', ('  + hikari dev installed in ' + $cfg), '    Restart the player to see the changes.', '', '')
+    Assert-Equal ([string]::Join('|', (Get-SummaryLines $text))) ([string]::Join('|', $want)) 'first install, line by line'
+    Assert-True (-not $text.Contains([string][char]27)) 'no escape sequence'
+    Assert-True (-not $text.Contains("`r")) 'no carriage return without a console'
+    Assert-Equal $script:ShownColors.Count 0 'no colour without a console'
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal @($rec.Sums | Where-Object { $_ -like 'scripts/uosc/*' }).Count 2 'hashes of the uosc files'
+    Assert-Equal @($rec.Sums | Where-Object { $_ -like 'fonts/uosc_*' }).Count 2 'and its fonts'
+    Assert-Equal @($rec.Sums | Where-Object { $_ -like 'shaders/*' }).Count 16 'and the shaders'
+    Assert-Equal $rec.Values['uosc_sha256'] $script:UoscSha256 'uosc zip'
+    Assert-Equal $rec.Values['anime4k_sha256'] $script:Anime4KSha256 'Anime4K zip'
+
+    # Everything exactly as pinned: nothing downloaded or copied again.
+    $uoscTime = (Get-Item -LiteralPath (P @($cfg, 'scripts', 'uosc', 'main.lua'))).LastWriteTimeUtc
+    $thumbTime = (Get-Item -LiteralPath (P @($cfg, 'scripts', 'thumbfast.lua'))).LastWriteTimeUtc
+    Start-Sleep -Milliseconds 50
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @($cfg) }
+    Assert-Equal $script:SummaryCode 0 'update: exit code'
+    Assert-Equal $script:FakeLog.Count 0 'update: nothing downloaded'
+    $lines = Get-SummaryLines $text
+    foreach ($row in @('  uosc        + up to date', '  thumbfast   + up to date', '  Anime4K     + up to date', '  + Backup', '  + Installing')) {
+        Assert-True ($lines -contains $row) ('update: ' + $row + '; output: ' + $text)
+    }
+    Assert-Equal (Get-Item -LiteralPath (P @($cfg, 'scripts', 'uosc', 'main.lua'))).LastWriteTimeUtc $uoscTime 'uosc not copied again'
+    Assert-Equal (Get-Item -LiteralPath (P @($cfg, 'scripts', 'thumbfast.lua'))).LastWriteTimeUtc $thumbTime 'thumbfast not copied again'
+    Assert-Equal @((Read-HikariRecord $cfg).Sums).Count 20 'the hashes stay in the record'
+
+    # A changed uosc file, a file of someone else in scripts\uosc, a changed
+    # font: uosc (and only uosc) comes again.
+    foreach ($change in @('lib', 'extra', 'font')) {
+        switch ($change) {
+            'lib' { Set-TestFile (P @($cfg, 'scripts', 'uosc', 'lib', 'utils.lua')) '-- changed' }
+            'extra' { Set-TestFile (P @($cfg, 'scripts', 'uosc', 'mine.lua')) '-- mine' }
+            'font' { Set-TestFile (P @($cfg, 'fonts', 'uosc_icons.otf')) 'other' }
+        }
+        $text = Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) }
+        Assert-Equal ([string]::Join(' ', $script:FakeLog)) $script:UoscUrl ($change + ': only uosc downloaded')
+        Assert-True ((Get-SummaryLines $text) -contains '  uosc        + downloaded') ($change + ': said so')
+        Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'uosc', 'lib', 'utils.lua'))) '-- fake uosc lib' ($change + ': uosc as pinned')
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'mine.lua')))) ($change + ': nothing else in scripts\uosc')
+        Assert-Equal (Get-TestText (P @($cfg, 'fonts', 'uosc_icons.otf'))) 'icons' ($change + ': font as pinned')
+    }
+    # thumbfast changed: only thumbfast.
+    Set-TestFile (P @($cfg, 'scripts', 'thumbfast.lua')) '-- mine'
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) })
+    Assert-Equal ([string]::Join(' ', $script:FakeLog)) $script:ThumbfastUrl 'thumbfast changed: only thumbfast downloaded'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'thumbfast.lua'))) '-- fake thumbfast' 'thumbfast as pinned'
+    # Another uosc version in the record, and a record of hikari 0.7.0 (no hashes).
+    $recPath = P @($cfg, 'hikari-installed.txt')
+    Set-TestFile $recPath ((Get-TestText $recPath) -replace 'uosc_version=5\.13\.0', 'uosc_version=5.12.0')
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) })
+    Assert-Equal ([string]::Join(' ', $script:FakeLog)) $script:UoscUrl 'another uosc version: downloaded'
+    Set-TestFile $recPath ((Get-TestText $recPath) -replace '(?m)^(sha256|uosc_sha256|anime4k_sha256)=.*\r?\n', '')
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) })
+    Assert-Equal ([string]::Join(' ', @($script:FakeLog | Sort-Object))) ([string]::Join(' ', @(@($script:Anime4KUrl, $script:UoscUrl) | Sort-Object))) `
+        'a record of hikari 0.7.0: uosc and Anime4K once more, thumbfast checked by its own hash'
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) })
+    Assert-Equal $script:FakeLog.Count 0 'then up to date again'
+    # A record that names the same uosc file twice cannot hide another one.
+    $text = Get-TestText $recPath
+    $main = [regex]::Match($text, '(?m)^sha256=scripts/uosc/main\.lua\|[0-9a-f]{64}').Value
+    Set-TestFile $recPath (($text -replace '(?m)^sha256=scripts/uosc/lib/utils\.lua\|[0-9a-f]{64}', $main))
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'lib', 'utils.lua')) '-- changed'
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg)) })
+    Assert-Equal ([string]::Join(' ', $script:FakeLog)) $script:UoscUrl 'a uosc file named twice: not up to date'
+
+    # Uninstall: the same kind of summary.
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'uninstall' -Target @($cfg) }
+    Assert-Equal $script:SummaryCode 0 'uninstall exit code'
+    $lines = Get-SummaryLines $text
+    Assert-True ($lines -contains '  + Removing' -and $lines -contains ('  + hikari removed from ' + $cfg)) ('uninstall summary; output: ' + $text)
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'uninstalled'
+}
+
+Test-Case 'summary: -Verbose gives every step, as before, and no summary rows' {
+    $d = New-TestDir 'summary-verbose'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = Get-HikariFullPath (P @($d, 'mpv'))
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @($cfg) -Detail $true }
+    Assert-Equal $script:SummaryCode 0 'exit code'
+    $lines = Get-ScreenLines $text
+    Assert-Equal $lines[0] 'hikari installer' 'the title as before'
+    foreach ($l in @(('Downloading ' + $script:UoscUrl + '...'), ('Installing hikari into ' + $cfg), 'uosc 5.13.0 installed.', 'thumbfast installed.',
+            'Done: 1 of 1 folders.')) {
+        Assert-True ($lines -contains $l) ($l + '; output: ' + $text)
+    }
+    Assert-Equal @($lines | Where-Object { $_ -match '^  (uosc|thumbfast|\+) ' }).Count 0 'no summary rows'
+    $text = Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($cfg) -Detail $true) }
+    Assert-True ($text.Contains('uosc 5.13.0 is already installed, unchanged: not downloaded or copied again.')) ('up to date, said why; output: ' + $text)
+    Assert-True ($text.Contains('thumbfast is already installed, unchanged')) 'thumbfast too'
+}
+
+Test-Case 'summary: two folders, one block each, uosc downloaded once, the total at the end' {
+    $d = New-TestDir 'summary-two'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $a = Get-HikariFullPath (P @($d, 'a'))
+    $b = Get-HikariFullPath (P @($d, 'b'))
+    [void](Get-ShownText { [void](Invoke-LoggedMain -Action 'install' -Target @($a)) })
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @($a, $b) }
+    Assert-Equal $script:SummaryCode 0 'exit code'
+    Assert-Equal ([string]::Join(' ', @($script:FakeLog | Sort-Object))) ([string]::Join(' ', @(@($script:UoscUrl, $script:ThumbfastUrl, $script:Anime4KUrl) | Sort-Object))) `
+        'once each, for the folder that needs them'
+    $lines = Get-SummaryLines $text
+    Assert-True ($lines -contains ('  > ' + $a) -and $lines -contains ('  > ' + $b)) ('a block each; output: ' + $text)
+    Assert-True ($lines -contains '  Done: 2 of 2 folders.') ('the total; output: ' + $text)
+}
+
+Test-Case 'summary: a failure shows the step failing, what failed, the backup and how to undo it' {
+    $d = New-TestDir 'summary-error'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = Get-HikariFullPath (P @($d, 'mpv'))
+    Set-TestFile (P @($cfg, 'mpv.conf')) "a=1`n# >>> hikari (managed block, do not edit) >>>`nosc=no`n"
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @($cfg) }
+    Assert-Equal $script:SummaryCode 1 'exit code'
+    $lines = Get-SummaryLines $text
+    Assert-True ($lines -contains '  x Installing') ('the step fails; output: ' + $text)
+    Assert-True ($text.Contains('incomplete or repeated hikari block') -and $text.Contains('Your previous config is in') -and
+        $text.Contains('To undo the changes, copy what is in that backup back into ' + $cfg + '.')) ('the whole message; output: ' + $text)
+    Assert-True (-not $text.Contains('installed in')) 'not said to be installed'
+    # A download that fails: its row fails, the error says which URL and why.
+    $script:FakeDownloads.Remove($script:ThumbfastUrl)
+    $text = Get-ShownText { $script:SummaryCode = Invoke-LoggedMain -Action 'install' -Target @((Get-HikariFullPath (P @($d, 'other')))) }
+    Assert-Equal $script:SummaryCode 1 'download failed: exit code'
+    Assert-True ((Get-SummaryLines $text) -contains '  thumbfast   x') ('the row fails; output: ' + $text)
+    Assert-True ($text.Contains('Error: unexpected download ' + $script:ThumbfastUrl)) ('the error; output: ' + $text)
+}
+
+Test-Case 'summary on a console: progress bars, a spinner that ends in a tick, colours, Unicode or ASCII' {
+    $d = New-TestDir 'summary-fancy'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = Get-HikariFullPath (P @($d, 'mpv'))
+    $savedFancy = $script:HikariFancyProbe
+    $savedUni = $script:HikariUnicodeProbe
+    $savedDl = $script:HikariDownloader
+    # A downloader that reports progress as the real one does.
+    $script:HikariDownloader = {
+        param([string]$Url, [string]$OutFile, [scriptblock]$Progress)
+        foreach ($p in @(25, 50)) { Start-Sleep -Milliseconds 120; if ($Progress) { & $Progress $p 100 } }
+        & $savedDl $Url $OutFile
+    }
+    try {
+        $script:HikariFancyProbe = { $true }
+        $script:HikariUnicodeProbe = { $true }
+        $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true -Detail $false }
+        Assert-Equal $script:SummaryCode 0 'exit code'
+        $ok = [string][char]0x2713
+        $bar = ([string][char]0x2501) * 20
+        $lines = Get-SummaryLines $text
+        foreach ($l in @(('  uosc        ' + $bar + '  100 %'), ('  thumbfast   ' + $bar + '  100 %'), ('  Anime4K     ' + $bar + '  100 %'),
+                ('  ' + $ok + ' Installing'), ('  ' + $ok + ' hikari dev installed in ' + $cfg), ('  ' + [char]0x203A + ' ' + $cfg))) {
+            Assert-True ($lines -contains $l) ($l + '; screen: ' + [string]::Join('|', $lines))
+        }
+        Assert-True ($text.Contains(' 25 %') -and $text.Contains(' 50 %')) 'the bars moved'
+        Assert-True ($text.Contains([string][char]0x280B + ' Installing' + [string][char]0x2026)) 'the spinner turned'
+        Assert-Equal @($lines | Where-Object { $_ -match ('[' + [char]0x280B + '-' + [char]0x28FF + ']') }).Count 0 'no spinner left on screen'
+        Assert-True ($script:ShownColors.Contains('Cyan') -and $script:ShownColors.Contains('Green')) 'colours'
+        # ASCII when the console cannot show those characters.
+        $script:HikariUnicodeProbe = { $false }
+        $text = Get-ShownText { [void](Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true -Detail $false) }
+        $lines = Get-SummaryLines $text
+        Assert-True ($lines -contains '  + Installing' -and $lines -contains '  uosc        + up to date') ('ASCII; screen: ' + [string]::Join('|', $lines))
+        Assert-Equal @($text.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count 0 'nothing but ASCII'
+    }
+    finally {
+        $script:HikariFancyProbe = $savedFancy
+        $script:HikariUnicodeProbe = $savedUni
+        $script:HikariDownloader = $savedDl
+    }
+}
+
+Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
+    $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
+    Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'
+    Assert-Equal (Get-HikariRedirectUri -From $from -Location '/x/y').AbsoluteUri 'https://github.com/x/y' 'relative'
+    Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://objects.githubusercontent.com/z').Host 'objects.githubusercontent.com' 'objects'
+    foreach ($bad in @('http://release-assets.githubusercontent.com/a', 'https://evil.example/a', 'https://githubusercontent.com.evil.example/a',
+            'https://evilgithubusercontent.com/a', 'https://githubusercontent.com/a', 'https://release-assets.githubusercontent.com:8443/a', 'ftp://github.com/a', '',
+            'https://a.b.githubusercontent.com/x', 'https://user@release-assets.githubusercontent.com/x')) {
+        Assert-Throws { Get-HikariRedirectUri -From $from -Location $bad } '*only HTTPS from GitHub*' ('refused: ' + $bad)
+    }
+    $bytes = New-Object byte[] 300000
+    (New-Object System.Random 7).NextBytes($bytes)
+    $in = New-Object System.IO.MemoryStream (, $bytes)
+    $out = New-Object System.IO.MemoryStream
+    $script:Seen = New-Object System.Collections.Generic.List[long]
+    Copy-HikariStream -In $in -Out $out -Total $bytes.Length -Progress { param([long]$Done, [long]$Total) $script:Seen.Add($Done) }
+    Assert-Equal ([Convert]::ToBase64String($out.ToArray())) ([Convert]::ToBase64String($bytes)) 'copied as it is'
+    Assert-Equal $script:Seen[$script:Seen.Count - 1] ([long]$bytes.Length) 'progress ends at the total'
+    $saved = $script:MaxDownloadBytes
+    try {
+        $script:MaxDownloadBytes = 1000
+        $in = New-Object System.IO.MemoryStream (, $bytes)
+        Assert-Throws { Copy-HikariStream -In $in -Out (New-Object System.IO.MemoryStream) -Total -1 -Url 'https://github.com/x' } '*Could not download https://github.com/x: larger than*' 'size limit'
+    }
+    finally { $script:MaxDownloadBytes = $saved }
+    Assert-True ($null -ne (Get-Command Invoke-HikariHttpDownload -ErrorAction SilentlyContinue)) 'the real downloader'
+    Assert-True ((Get-TestText $InstallScript) -notmatch 'Invoke-WebRequest\s+-Uri') 'Invoke-WebRequest is no longer used for downloads'
+}
+
+# ---------------------------------------------------------------------------
 # Run without a file: irm | iex, and [scriptblock]::Create for options. Each of
 # these starts a real pwsh and dot-sources tests/iex-harness.ps1 from -Command,
 # so the installer runs in the global scope of a fresh session, as at a prompt.
@@ -3140,7 +3423,7 @@ function New-TestRelease {
 function Invoke-IexHarness {
     param([string]$Script, [hashtable]$Downloads = @{}, [string]$Mode = 'iex', [string[]]$Stdin = @(),
         [string]$Action = '', [string]$Target = '', [string]$YesValue = '', [switch]$StrictLatest, [string]$TempDir = '',
-        [switch]$ShowVersion)
+        [switch]$ShowVersion, [switch]$Detail)
     $id = [guid]::NewGuid().ToString('N')
     $report = P @($TestRoot, ('harness-' + $id + '.json'))
     $dl = P @($TestRoot, ('harness-' + $id + '-downloads.json'))
@@ -3152,6 +3435,7 @@ function Invoke-IexHarness {
     if ($YesValue) { $cmd += ' -YesValue ' + $YesValue }
     if ($StrictLatest) { $cmd += ' -StrictLatest' }
     if ($ShowVersion) { $cmd += ' -ShowVersion' }
+    if ($Detail) { $cmd += ' -Detail' }
     # Windows PowerShell 5.1 turns a native command's stderr under 2>&1 into an
     # error that 'Stop' would throw; the exit code and the text are checked instead.
     $ErrorActionPreference = 'Continue'
@@ -3230,6 +3514,11 @@ Test-Case 'release through iex: its zip comes from the downloader, is checked an
     Assert-AdminWarning $run
     Assert-True $run.Report.TlsTouched ('the downloader changed SecurityProtocol, so putting it back was tested; downloads: ' + [string]::Join(' ', @($run.Report.Downloads)) + '; output: ' + $run.Text)
     Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) ([string]::Join(' ', @($TestReleaseUrl, $script:UoscUrl, $script:ThumbfastUrl, $script:Anime4KUrl))) 'downloads, release zip first, Anime4K when the folder needs it'
+    Assert-True (-not $run.Text.Contains([string][char]27) -and -not $run.Text.Contains("`r")) ('redirected output: no escape sequence or carriage return; output: ' + $run.Text)
+    foreach ($row in @('  hikari      ', '  uosc        ', '  thumbfast   ', '  Anime4K     ')) {
+        Assert-True ($run.Text.Contains($row)) ('summary row ' + $row.Trim() + '; output: ' + $run.Text)
+    }
+    Assert-True (-not $run.Text.Contains('Downloading ')) 'no detail without -Verbose'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'shaders', 'Anime4K_Clamp_Highlights.glsl'))) 'Anime4K installed (default answer)'
     foreach ($f in @(Get-ChildItem -LiteralPath (P @($RepoRoot, 'portable_config', 'scripts')) -File)) {
         Assert-Equal (Get-TestText (P @($cfg, 'scripts', $f.Name))) (Get-TestText $f.FullName) $f.Name
@@ -3238,6 +3527,14 @@ Test-Case 'release through iex: its zip comes from the downloader, is checked an
     $rec = Read-HikariRecord $cfg
     Assert-Equal $rec.Values['hikari_version'] '9.9.9' 'record version'
     Assert-Equal @(Get-HikariTempLeftovers $tmp).Count 0 'temp folder removed'
+
+    # -Verbose through [scriptblock]::Create: the detail of every step, and
+    # none of the cmdlets' own VERBOSE lines.
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'install' -Target $cfg -YesValue 'true' -TempDir $tmp -Detail
+    Assert-SessionClean $run 0
+    Assert-True ($run.Text.Contains('Installing hikari into ' + $cfg) -and $run.Text.Contains('uosc 5.13.0 is already installed, unchanged')) ('-Verbose; output: ' + $run.Text)
+    Assert-True (-not ($run.Text -match '(?m)^VERBOSE:')) ('no VERBOSE lines; output: ' + $run.Text)
+    Assert-Equal ([string]::Join(' ', @($run.Report.Downloads))) $TestReleaseUrl 'up to date: only the release zip'
 
     # Options through [scriptblock]::Create: uninstall without questions.
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -Action 'uninstall' -Target $cfg -YesValue 'true' -TempDir $tmp
@@ -3254,9 +3551,10 @@ Test-Case 'preview build through iex: says so right after the title, in both lan
     $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('0')
     Assert-SessionClean $run 0
     $lines = @($run.Text -split "`n")
-    $at = [array]::IndexOf($lines, 'hikari installer')
+    $at = [array]::IndexOf($lines, '  hikari preview-abc1234')
     Assert-True ($at -ge 0) ('title; output: ' + $run.Text)
-    Assert-Equal $lines[$at + 1] $note 'notice right after the title'
+    Assert-Equal $lines[$at + 1] '' 'a blank line under the title'
+    Assert-Equal $lines[$at + 2] ('  ' + $note) 'notice right after the title'
     $saved = $env:HIKARI_LANG
     try {
         $env:HIKARI_LANG = 'es'

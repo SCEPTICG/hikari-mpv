@@ -78,4 +78,4 @@ Run the install line again and choose *Uninstall* (on macOS and Linux you can ad
 
 ## Where do I report a problem?
 
-Open an issue on [GitHub](https://github.com/SCEPTICG/hikari-mpv/issues), with the line `--version` / `-Version` prints for your player (see [Which version of hikari do I have?](#which-version-of-hikari-do-i-have)), your system, your player and, if you can, what the installer printed.
+Open an issue on [GitHub](https://github.com/SCEPTICG/hikari-mpv/issues), with the line `--version` / `-Version` prints for your player (see [Which version of hikari do I have?](#which-version-of-hikari-do-i-have)), your system, your player and, if you can, what the installer prints when you run it again with `--verbose` (macOS and Linux: `bash -s -- --verbose`) or `-Verbose` (Windows, as in [Options](install/windows.md#options)): every step on its own line, not just the short summary.

@@ -111,6 +111,7 @@ hikari_fetch() {
         "$UOSC_URL") f=$FAKE/uosc.zip ;;
         "$THUMBFAST_URL") f=$FAKE/thumbfast.lua ;;
         "$ANIME4K_URL") f=$FAKE/anime4k.zip ;;
+        https://release-assets.githubusercontent.com/uosc.zip) f=$FAKE/uosc.zip ;;
     esac
     if [ "${FETCH_PROGRESS:-0}" = 1 ]; then
         if [ -n "${HIKARI_TEST_NOSIZE:-}" ]; then
@@ -126,6 +127,11 @@ hikari_fetch() {
     fi
     [ -n "$f" ] && [ -f "$f" ] && cp "$f" "$2" || return 1
     [ "${FETCH_PROGRESS:-0}" != 1 ] || printf '\r######################## 100.0%%\n' >&2
+}
+# No redirect, unless a test asks for one (HIKARI_TEST_REDIRECT="from to").
+hikari_redirect_of() {
+    printf '%s\n' "$1" >>"$FAKE/redirects.log"
+    [ -z "${HIKARI_TEST_REDIRECT:-}" ] || [ "$1" != "${HIKARI_TEST_REDIRECT%% *}" ] || printf '%s' "${HIKARI_TEST_REDIRECT#* }"
 }
 hikari_uname() { printf '%s' "${HIKARI_TEST_OS:-Darwin}"; }
 hikari_apple_languages() { [ -z "${HIKARI_TEST_APPLE_LANGS:-}" ] || printf '%b\n' "$HIKARI_TEST_APPLE_LANGS"; }
@@ -986,6 +992,28 @@ check 'failed uosc download: exit 1, nothing done' test "$rc" = 1 -a -e "$cfg/sc
 HIKARI_TEST_FAIL_URL='https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip' run "$h" --yes --anime4k yes
 check 'failed Anime4K download: the rest is installed (exit 0), state failed' test "$rc" = 0 -a "$(rec "$cfg" anime4k)" = failed
 check 'failed Anime4K download: no shader moved, no line turned off' test ! -e "$cfg/shaders-desactivados" -a "$(grep -c '^# hikari:' "$cfg/mpv.conf")" = 0 -a "$(cat "$cfg/shaders/Anime4K_Clamp_Highlights.glsl")" = '// mine Anime4K_Clamp_Highlights.glsl'
+
+# Redirects: followed one by one, only to HTTPS on GitHub.
+h=$(newhome redirect)
+: >"$fake/downloads.log"
+HIKARI_TEST_REDIRECT='https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip https://release-assets.githubusercontent.com/uosc.zip' \
+    run "$h" --yes --anime4k no
+check 'redirect to release-assets.githubusercontent.com: followed, checked, installed' \
+    test "$rc" = 0 -a -n "$(grep -x 'https://release-assets.githubusercontent.com/uosc.zip' "$fake/downloads.log")" -a -f "$h/.config/mpv/scripts/uosc/main.lua"
+for target in 'https://evil.example/uosc.zip' 'http://release-assets.githubusercontent.com/uosc.zip' \
+    'https://a.b.githubusercontent.com/uosc.zip' 'https://release-assets.githubusercontent.com:8443/uosc.zip' \
+    'https://user@release-assets.githubusercontent.com/uosc.zip'; do
+    h=$(newhome "redirect-bad-$(printf '%s' "$target" | cksum | cut -d' ' -f1)")
+    : >"$fake/downloads.log"
+    HIKARI_TEST_REDIRECT="https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip $target" run "$h" --yes --anime4k no
+    check "redirect to $target: refused, nothing fetched from it, nothing installed" \
+        test "$rc" = 1 -a -z "$(grep -vE '^https://(github.com|raw.githubusercontent.com)/' "$fake/downloads.log")" \
+        -a -n "$(grep -F "Refusing to download $target: only HTTPS from GitHub is allowed." "$out")" -a ! -e "$h/.config/mpv/scripts"
+done
+redirect_ok_of() { "$under" -c '. "$1"; hikari_defaults; redirect_ok "$2" && printf yes || printf no' _ "$lib" "$1"; }
+check 'redirect_ok: GitHub hosts over HTTPS only' \
+    test "$(redirect_ok_of https://github.com/x)$(redirect_ok_of https://raw.githubusercontent.com/x)$(redirect_ok_of 'https://Release-Assets.GitHubUserContent.com/x?a=b')$(redirect_ok_of https://githubusercontent.com/x)$(redirect_ok_of https://evilgithubusercontent.com/x)$(redirect_ok_of https://githubusercontent.com.evil.example/x)$(redirect_ok_of 'https://x.githubusercontent.com@evil.example/')" \
+    = yesyesyesnononono
 
 # --- conflicts, malformed block, backups ----------------------------------------
 

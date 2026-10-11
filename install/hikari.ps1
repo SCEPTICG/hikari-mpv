@@ -56,6 +56,14 @@
     folder found (and in -Target folders) and this installer's, then leave
     without changing anything (exit code 0). Wins over -Action.
 
+.PARAMETER Verbose
+    Every step on a line of its own, without animations: what to paste in a
+    bug report. Without it, on a console the installer shows a short summary
+    with a progress bar for each download and a spinner while it backs up and
+    installs; with its output redirected (or NO_COLOR, CI, TERM=dumb) the same
+    summary comes as plain lines, with no animation. Errors, warnings and
+    questions always show.
+
 .PARAMETER HikariAnime4K
     Use it as -Anime4K (alias). yes or no: answers the Anime4K questions
     (install it; take over an Anime4K installed by hand) instead of asking.
@@ -70,6 +78,8 @@
 # creates its variables in the caller's session, so they get names nobody else
 # uses and are removed again at the end (see the finally below). The aliases
 # keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K, -Version.
+# -Verbose is PowerShell's own common parameter (CmdletBinding): it is read
+# from $VerbosePreference and passed on as -Detail.
 [CmdletBinding()]
 param(
     [Alias('Action')]
@@ -101,12 +111,15 @@ param(
     [switch]$Yes,
     [switch]$NoMenu,
     [string]$Anime4K = '',
-    [switch]$ShowVersion
+    [switch]$ShowVersion,
+    [switch]$Detail
 )
 
-# Both are local to this script block: the caller's session keeps its own.
+# All three are local to this script block: the caller's session keeps its own.
+# -Verbose would otherwise make every cmdlet below print its own lines.
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
+$VerbosePreference = 'SilentlyContinue'
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -185,8 +198,16 @@ $script:BackupKeep = 3
 # -Anime4K: '' (ask; -Yes takes the default answers), 'yes' or 'no'.
 $script:HikariAnime4KChoice = ''
 
-# Downloads are only allowed over HTTPS from these hosts.
+# Downloads are only allowed over HTTPS from these hosts. Redirects (GitHub
+# serves release files from release-assets.githubusercontent.com) may only go
+# to HTTPS on these hosts or on a host right under githubusercontent.com
+# ($script:RedirectHostPattern, as redirect_ok in hikari.sh), at most
+# $script:MaxRedirects times. A download larger than $script:MaxDownloadBytes
+# is cut and refused.
 $script:AllowedHosts = @('github.com', 'raw.githubusercontent.com')
+$script:RedirectHostPattern = '\A[a-z0-9-]+\.githubusercontent\.com\z'
+$script:MaxRedirects = 5
+$script:MaxDownloadBytes = 200MB
 
 $script:BlockBegin = '# >>> hikari (managed block, do not edit) >>>'
 $script:BlockEnd = '# <<< hikari <<<'
@@ -278,6 +299,8 @@ $script:UoscLegacy = @('uosc.lua', 'uosc_shared')
 # Folder of this file; empty when run through iex or [scriptblock]::Create.
 $script:HikariScriptRoot = $PSScriptRoot
 $script:HikariQuiet = $false
+# -Verbose: every step on a line of its own, as before (see Initialize-HikariUi).
+$script:HikariVerbose = $false
 $script:NonInteractive = $false
 # Set when running as administrator: deleting or moving then refuses paths that
 # go through a link (junction or symbolic link) inside the config folder.
@@ -296,17 +319,11 @@ $script:HikariUiCultureProbe = {
     return [string]$name
 }
 
-# Download function, replaceable in tests: param($Url, $OutFile).
+# Download function, replaceable in tests: param($Url, $OutFile, $Progress),
+# $Progress being called with the bytes read and the total (-1 when unknown).
 $script:HikariDownloader = {
-    param([string]$Url, [string]$OutFile)
-    $oldProgress = $ProgressPreference
-    try {
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
-    }
-    finally {
-        $ProgressPreference = $oldProgress
-    }
+    param([string]$Url, [string]$OutFile, [scriptblock]$Progress)
+    Invoke-HikariHttpDownload -Url $Url -OutFile $OutFile -Progress $Progress
 }
 
 # ---------------------------------------------------------------------------
@@ -387,6 +404,7 @@ $script:HikariStringsEn = @{
     install_ok            = 'hikari installed in {0}.'
     target_failed         = '{0}: {1}'
     restore_hint          = 'Your previous config is in {0}.'
+    restore_how           = 'To undo the changes, copy what is in that backup back into {0}.'
     summary               = 'Done: {0} of {1} folders.'
     restart               = 'Restart the player to see the changes.'
     uninstalling_from     = 'Removing hikari from {0}'
@@ -478,6 +496,19 @@ $script:HikariStringsEn = @{
     sosc_done             = 'sosc removed: hikari takes its place. Uninstalling hikari puts everything back as it was before sosc.'
     sosc_old_backups      = 'There are {0} old sosc backups ({1}-respaldo-sosc-*). They are not deleted: delete them yourself when you no longer need them.'
     sosc_link_left        = 'Left as it is: {0} is a link (junction or symbolic link), nothing is written or moved through it.'
+    download_failed       = 'Could not download {0}: {1}'
+    download_redirects    = 'too many redirects'
+    download_too_big      = 'larger than {0} MB'
+    download_status       = 'the server answered {0}'
+    uosc_uptodate         = 'uosc {0} is already installed, unchanged: not downloaded or copied again.'
+    thumbfast_uptodate    = 'thumbfast is already installed, unchanged: not downloaded or copied again.'
+    ui_uptodate           = 'up to date'
+    ui_downloaded         = 'downloaded'
+    ui_backup             = 'Backup'
+    ui_installing         = 'Installing'
+    ui_removing           = 'Removing'
+    ui_installed          = 'hikari {0} installed in {1}'
+    ui_removed            = 'hikari removed from {0}'
 }
 
 $script:HikariStringsEs = @{
@@ -554,6 +585,7 @@ $script:HikariStringsEs = @{
     install_ok            = 'hikari instalado en {0}.'
     target_failed         = '{0}: {1}'
     restore_hint          = 'Tu configuraci\u00f3n anterior est\u00e1 en {0}.'
+    restore_how           = 'Para deshacer los cambios, copia lo que hay en esa copia de seguridad de vuelta a {0}.'
     summary               = 'Hecho: {0} de {1} carpetas.'
     restart               = 'Reinicia el reproductor para ver los cambios.'
     uninstalling_from     = 'Quitando hikari de {0}'
@@ -645,6 +677,19 @@ $script:HikariStringsEs = @{
     sosc_done             = 'sosc quitado: hikari ocupa su lugar. Al desinstalar hikari todo vuelve a como estaba antes de sosc.'
     sosc_old_backups      = 'Hay {0} copias de seguridad antiguas de sosc ({1}-respaldo-sosc-*). No se borran: b\u00f3rralas t\u00fa cuando ya no te hagan falta.'
     sosc_link_left        = 'Se deja como est\u00e1: {0} es un enlace (uni\u00f3n o enlace simb\u00f3lico), no se escribe ni se mueve nada a trav\u00e9s de \u00e9l.'
+    download_failed       = 'No se ha podido descargar {0}: {1}'
+    download_redirects    = 'demasiadas redirecciones'
+    download_too_big      = 'ocupa m\u00e1s de {0} MB'
+    download_status       = 'el servidor ha respondido {0}'
+    uosc_uptodate         = 'uosc {0} ya est\u00e1 instalado y sin cambios: no se vuelve a descargar ni a copiar.'
+    thumbfast_uptodate    = 'thumbfast ya est\u00e1 instalado y sin cambios: no se vuelve a descargar ni a copiar.'
+    ui_uptodate           = 'ya est\u00e1 al d\u00eda'
+    ui_downloaded         = 'descargado'
+    ui_backup             = 'Copia de seguridad'
+    ui_installing         = 'Instalando'
+    ui_removing           = 'Quitando'
+    ui_installed          = 'hikari {0} instalado en {1}'
+    ui_removed            = 'hikari quitado de {0}'
 }
 
 function Get-HikariLanguage {
@@ -689,25 +734,255 @@ Set-HikariLanguage (Get-HikariLanguage)
 # Output and input (replaceable in tests)
 # ---------------------------------------------------------------------------
 
+# Three ways to show what happens:
+# - verbose (-Verbose): every step on a line of its own, as the installer has
+#   always done, without animations: what to paste in a bug report;
+# - fancy ($script:HikariFancy): on a real console, a short summary, with a
+#   progress bar for each download and a spinner for each long step that ends
+#   in a tick;
+# - plain: the same short summary as plain lines, one per step, with no
+#   animation and no colour (output redirected, no console, NO_COLOR, CI,
+#   TERM=dumb, a console narrower than 50 columns).
+# Errors, warnings, questions and menus show in all three. Nothing here needs
+# VT sequences: the animations only use a carriage return and the console's
+# own colours, so they also work where VT cannot be turned on.
+$script:HikariFancy = $false
+$script:HikariColor = $false
+$script:HikariUnicode = $false
+# Replaceable in tests: can this console show colours and animations?
+$script:HikariFancyProbe = { Test-HikariFancyConsole }
+# Replaceable in tests: is the console's output encoding UTF-8 (or a console
+# that draws any character, Windows Terminal)?
+$script:HikariUnicodeProbe = { Test-HikariUnicodeConsole }
+# The step in progress (its spinner) and the progress bar being drawn.
+$script:HikariStep = ''
+$script:HikariSpinShown = $false
+$script:HikariSpinHold = 0
+$script:HikariSpinIndex = 0
+$script:HikariSpinTicks = [long]0
+$script:HikariBarLabel = ''
+$script:HikariBarStep = 0
+$script:HikariBarTicks = [long]0
+# ASCII until Initialize-HikariUi has looked at the console.
+$script:GlyphOk = '+'
+$script:GlyphFail = 'x'
+$script:GlyphBar = '#'
+$script:GlyphBarEmpty = '-'
+$script:GlyphArrow = '>'
+$script:GlyphDots = '...'
+$script:SpinFrames = @('|', '/', '-', '\')
+
+function Test-HikariFancyConsole {
+    try {
+        if ($Host.Name -ne 'ConsoleHost') { return $false }
+        if ([Console]::IsOutputRedirected) { return $false }
+        if (-not [Environment]::UserInteractive) { return $false }
+        if ($env:NO_COLOR -or $env:CI -or $env:TERM -eq 'dumb') { return $false }
+        if ([Console]::WindowWidth -lt 50) { return $false }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-HikariUnicodeConsole {
+    try {
+        if ([Console]::OutputEncoding.CodePage -eq 65001) { return $true }
+        # Windows Terminal draws any character whatever the code page, but
+        # only on screen: redirected output keeps the code page's characters.
+        if ($env:WT_SESSION -and -not [Console]::IsOutputRedirected) { return $true }
+    }
+    catch { }
+    return $false
+}
+
+# Decides how to show things, once per run (see the top of this section).
+# The glyphs are built from their code points: this file stays ASCII.
+function Initialize-HikariUi {
+    $script:HikariFancy = $false
+    $script:HikariColor = $false
+    if (-not $script:HikariQuiet -and [bool](& $script:HikariFancyProbe)) {
+        $script:HikariColor = $true
+        $script:HikariFancy = (-not $script:HikariVerbose)
+    }
+    $script:HikariUnicode = [bool](& $script:HikariUnicodeProbe)
+    if ($script:HikariUnicode) {
+        $script:GlyphOk = [string][char]0x2713
+        $script:GlyphFail = [string][char]0x2717
+        $script:GlyphBar = [string][char]0x2501
+        $script:GlyphBarEmpty = [string][char]0x2501
+        $script:GlyphArrow = [string][char]0x203A
+        $script:GlyphDots = [string][char]0x2026
+        $script:SpinFrames = @(0x280B, 0x2819, 0x2839, 0x2838, 0x283C, 0x2834, 0x2826, 0x2827, 0x2807, 0x280F | ForEach-Object { [string][char]$_ })
+    }
+    else {
+        $script:GlyphOk = '+'
+        $script:GlyphFail = 'x'
+        $script:GlyphBar = '#'
+        $script:GlyphBarEmpty = '-'
+        $script:GlyphArrow = '>'
+        $script:GlyphDots = '...'
+        $script:SpinFrames = @('|', '/', '-', '\')
+    }
+}
+
+# Writes pieces of one line: @(text, colour, text, colour...). Colours only
+# where they are allowed; '' is the console's own.
+function Write-HikariPieces {
+    param([object[]]$Pieces, [switch]$NoNewline)
+    for ($i = 0; $i -lt $Pieces.Count; $i += 2) {
+        $text = [string]$Pieces[$i]
+        $color = [string]$Pieces[$i + 1]
+        if ($text -eq '') { continue }
+        if ($color -and $script:HikariColor) { Write-Host $text -NoNewline -ForegroundColor $color }
+        else { Write-Host $text -NoNewline }
+    }
+    if (-not $NoNewline) { Write-Host '' }
+}
+
+# The spinner of the step in progress: drawn again (next frame) at most every
+# 80 ms, from the places that do the work (copies, deletions, writes). It is
+# taken off the screen before anything else is written, and drawn again after.
+function Show-HikariSpinner {
+    param([switch]$Now)
+    if (-not $script:HikariFancy -or $script:HikariQuiet -or -not $script:HikariStep -or $script:HikariSpinHold -gt 0) { return }
+    $ticks = [DateTime]::UtcNow.Ticks
+    if (-not $Now -and $script:HikariSpinShown -and ($ticks - $script:HikariSpinTicks) -lt 800000) { return }
+    $script:HikariSpinTicks = $ticks
+    $frame = $script:SpinFrames[$script:HikariSpinIndex % $script:SpinFrames.Count]
+    $script:HikariSpinIndex++
+    Write-HikariPieces -NoNewline @("`r  ", '', $frame, 'Cyan', (' ' + $script:HikariStep + $script:GlyphDots + "`r"), '')
+    $script:HikariSpinShown = $true
+}
+
+function Hide-HikariSpinner {
+    if (-not $script:HikariSpinShown) { return }
+    Write-Host ("`r" + (' ' * ($script:HikariStep.Length + $script:GlyphDots.Length + 4)) + "`r") -NoNewline
+    $script:HikariSpinShown = $false
+}
+
+# Anything written while a step runs: the spinner gets out of the way.
+function Enter-HikariOutput { $script:HikariSpinHold++; Hide-HikariSpinner }
+function Exit-HikariOutput {
+    if ($script:HikariSpinHold -gt 0) { $script:HikariSpinHold-- }
+    Show-HikariSpinner -Now
+}
+
+# A step of the summary: a spinner while it runs (console only), then "OK
+# label" or "X label". Nothing in verbose mode, which says it all already.
+function Start-HikariStep {
+    param([string]$Label)
+    $script:HikariStep = $Label
+    Show-HikariSpinner -Now
+}
+
+function Stop-HikariStep {
+    param([ValidateSet('ok', 'fail', 'quiet')][string]$Result)
+    $label = $script:HikariStep
+    Hide-HikariSpinner
+    $script:HikariStep = ''
+    if ($script:HikariVerbose -or $script:HikariQuiet -or $Result -eq 'quiet' -or -not $label) { return }
+    if ($Result -eq 'ok') { Write-HikariPieces @('  ', '', $script:GlyphOk, 'Green', (' ' + $label), '') }
+    else { Write-HikariPieces @('  ', '', $script:GlyphFail, 'Red', (' ' + $label), '') }
+}
+
+# A line of the summary (not in verbose mode): text and colour pieces.
+function Write-HikariUi {
+    param([object[]]$Pieces = @())
+    if ($script:HikariVerbose -or $script:HikariQuiet) { return }
+    Enter-HikariOutput
+    try { Write-HikariPieces $Pieces } finally { Exit-HikariOutput }
+}
+
+# A download row of the summary: "  uosc        OK up to date".
+function Write-HikariRow {
+    param([string]$Label, [bool]$Ok, [string]$Text = '')
+    if ($script:HikariVerbose -or $script:HikariQuiet) { return }
+    $mark = $script:GlyphFail
+    $color = 'Red'
+    if ($Ok) { $mark = $script:GlyphOk; $color = 'Green' }
+    if ($Text) { $Text = ' ' + $Text }
+    # On a console, over what the progress bar left on the line.
+    if ($script:HikariFancy) { Write-Host ("`r" + (' ' * 45) + "`r") -NoNewline }
+    Write-HikariPieces @(('  ' + $Label.PadRight(12)), '', $mark, $color, $Text, '')
+}
+
+# The progress bar of a download (fancy mode only), at most every 100 ms
+# unless -Now: the bytes read of the total, or a block going back and forth
+# when the total is not known (-1).
+function Show-HikariBar {
+    param([long]$Done, [long]$Total, [switch]$Now)
+    if (-not $script:HikariFancy -or $script:HikariQuiet -or -not $script:HikariBarLabel) { return }
+    $ticks = [DateTime]::UtcNow.Ticks
+    if (-not $Now -and ($ticks - $script:HikariBarTicks) -lt 1000000) { return }
+    $script:HikariBarTicks = $ticks
+    $width = 20
+    $start = "`r  " + $script:HikariBarLabel.PadRight(12)
+    if ($Total -gt 0) {
+        $pct = [int][Math]::Min(100, [Math]::Floor($Done * 100.0 / $Total))
+        $fill = [int][Math]::Floor($pct * $width / 100)
+        Write-HikariPieces -NoNewline @($start, '', ($script:GlyphBar * $fill), 'Cyan', ($script:GlyphBarEmpty * ($width - $fill)), 'DarkGray',
+            ('  ' + ('{0,3} %' -f $pct)), '')
+    }
+    else {
+        $script:HikariBarStep++
+        $span = 2 * ($width - 4)
+        $at = $script:HikariBarStep % $span
+        if ($at -ge $width - 4) { $at = $span - $at }
+        Write-HikariPieces -NoNewline @($start, '', ($script:GlyphBarEmpty * $at), 'DarkGray', ($script:GlyphBar * 4), 'Cyan',
+            ($script:GlyphBarEmpty * ($width - 4 - $at)), 'DarkGray', '      ', '')
+    }
+}
+
 function Write-HikariInfo {
     param([string]$Message)
-    if (-not $script:HikariQuiet) { Write-Host $Message }
+    if ($script:HikariQuiet) { return }
+    Enter-HikariOutput
+    try { Write-Host $Message } finally { Exit-HikariOutput }
 }
 
 function Write-HikariOk {
     param([string]$Message)
-    if (-not $script:HikariQuiet) { Write-Host $Message -ForegroundColor Green }
+    if ($script:HikariQuiet) { return }
+    Enter-HikariOutput
+    try { Write-HikariPieces @($Message, 'Green') } finally { Exit-HikariOutput }
+}
+
+# Details: only in verbose mode.
+function Write-HikariDetail {
+    param([string]$Message)
+    if ($script:HikariVerbose) { Write-HikariInfo $Message }
+}
+
+function Write-HikariDetailOk {
+    param([string]$Message)
+    if ($script:HikariVerbose) { Write-HikariOk $Message }
+}
+
+# Something the user should know, shown in every mode (indented in the summary).
+function Write-HikariNotice {
+    param([string]$Message)
+    if ($script:HikariVerbose) { Write-HikariInfo $Message } else { Write-HikariUi @(('  ' + $Message), '') }
 }
 
 function Write-HikariWarn {
     param([string]$Message)
     $script:HikariWarnings.Add($Message)
-    if (-not $script:HikariQuiet) { Write-Host $Message -ForegroundColor Yellow }
+    if ($script:HikariQuiet) { return }
+    $indent = '  '
+    if ($script:HikariVerbose) { $indent = '' }
+    Enter-HikariOutput
+    try { Write-HikariPieces @(($indent + $Message), 'Yellow') } finally { Exit-HikariOutput }
 }
 
 function Write-HikariError {
     param([string]$Message)
-    if (-not $script:HikariQuiet) { Write-Host $Message -ForegroundColor Red }
+    if ($script:HikariQuiet) { return }
+    $indent = '  '
+    if ($script:HikariVerbose) { $indent = '' }
+    Enter-HikariOutput
+    try { Write-HikariPieces @(($indent + $Message), 'Red') } finally { Exit-HikariOutput }
 }
 
 function Read-HikariLine {
@@ -715,9 +990,17 @@ function Read-HikariLine {
     return (Read-Host -Prompt $Prompt)
 }
 
+# The spinner of the step in progress stays off the screen while it asks.
 function Confirm-Hikari {
     param([string]$Question, [bool]$Default)
     if ($script:NonInteractive) { return $Default }
+    Enter-HikariOutput
+    try { return (Confirm-HikariAsk -Question $Question -Default $Default) }
+    finally { Exit-HikariOutput }
+}
+
+function Confirm-HikariAsk {
+    param([string]$Question, [bool]$Default)
     $r = Invoke-HikariMenuOrNumbers { Read-HikariYesNoMenu -Question $Question -Default $Default }
     if (-not (Test-HikariUseNumbers $r)) { return [bool]$r }
     $suffix = T 'yes_no_default_no'
@@ -1310,6 +1593,7 @@ function Assert-HikariNoLink {
 # as links: their target is never followed.
 function Remove-HikariItem {
     param([string]$Path, [string]$Root)
+    Show-HikariSpinner
     Assert-HikariInside -Path $Path -Root $Root
     Assert-HikariNoLink -Path $Path -Root $Root
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -1340,6 +1624,7 @@ function Copy-HikariTree {
         New-Item -ItemType Directory -Path $To -Force | Out-Null
     }
     foreach ($child in @(Get-ChildItem -LiteralPath $From -Force)) {
+        Show-HikariSpinner
         if (Test-HikariLink $child) { Write-HikariWarn (T 'link_skipped' @($child.FullName)); continue }
         $dest = Join-HikariPath $To $child.Name
         if ($child.PSIsContainer) {
@@ -1358,6 +1643,7 @@ function Get-HikariTreeSize {
     if (-not $Item.PSIsContainer) { return [long]$Item.Length }
     $total = [long]0
     foreach ($child in @(Get-ChildItem -LiteralPath $Item.FullName -Force -ErrorAction SilentlyContinue)) {
+        Show-HikariSpinner
         $total += (Get-HikariTreeSize $child)
     }
     return $total
@@ -1392,6 +1678,7 @@ function New-HikariDirectory {
 # every byte to one character and back, so nothing of the user's file is lost.
 function Read-HikariText {
     param([string]$Path)
+    Show-HikariSpinner
     $bytes = [System.IO.File]::ReadAllBytes($Path)
     $bom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
     $offset = 0
@@ -1411,6 +1698,7 @@ function Read-HikariText {
 # Writes text without BOM unless $Bom is set (only to keep a BOM the file already had).
 function Write-HikariText {
     param([string]$Path, [string]$Text, [string]$Encoding = 'utf8', [bool]$Bom = $false)
+    Show-HikariSpinner
     if ($Encoding -eq 'latin1') {
         $enc = [System.Text.Encoding]::GetEncoding(28591)
         $body = $enc.GetBytes($Text)
@@ -1674,7 +1962,7 @@ function Resolve-HikariManualTarget {
         Write-HikariWarn (T 'exe_folder' @($full, $name))
         $portableDir = Join-HikariPath $full 'portable_config'
         if ((Test-Path -LiteralPath $portableDir -PathType Container) -and -not ($kind -eq 'mpv' -and $Env.MpvHome)) {
-            Write-HikariInfo (T 'exe_portable' @($portableDir))
+            Write-HikariNotice (T 'exe_portable' @($portableDir))
             return (Resolve-HikariManualTarget -Env $Env -Path $portableDir -Candidates $Candidates)
         }
         $user = Get-HikariUserConfigDir -Env $Env -Kind $kind
@@ -1971,20 +2259,20 @@ function Update-HikariManagedFile {
         # The block is taken out of wherever it is and added again at the end.
         $without = Remove-HikariBlockText -Text $file.Text -Name $name
         $block = Get-HikariMpvConfBlock $without
-        if ($block.NeedsDefault) { Write-HikariInfo (T 'default_section' @($name)) }
+        if ($block.NeedsDefault) { Write-HikariDetail (T 'default_section' @($name)) }
         $newText = Set-HikariBlockText -Text $without -BlockLines $block.Lines -Name $name -Eol (Get-HikariEol $file.Text)
     }
     else {
         # input.conf: the block stays where it is (order does not matter there).
         $block = Get-HikariInputBlock -Text $file.Text -Extra $ExtraBindings
         foreach ($t in $block.Taken) { Write-HikariWarn (T 'key_taken' @($t.Key, $t.Existing, $t.Command)) }
-        foreach ($s in $block.Same) { Write-HikariInfo (T 'key_same' @($s.Key, $s.Command)) }
+        foreach ($s in $block.Same) { Write-HikariDetail (T 'key_same' @($s.Key, $s.Command)) }
         $newText = Set-HikariBlockText -Text $file.Text -BlockLines $block.Lines -Name $name
     }
     if (-not $existed -or $newText -ne $file.Text) {
         Write-HikariText -Path $Path -Text $newText -Encoding $file.Encoding -Bom $file.Bom
     }
-    Write-HikariInfo (T 'block_updated' @($name))
+    Write-HikariDetail (T 'block_updated' @($name))
     return $existed
 }
 
@@ -2060,6 +2348,7 @@ function Read-HikariRecord {
     $moved = New-Object System.Collections.Generic.List[string]
     $commented = New-Object System.Collections.Generic.List[string]
     $commentedMpv = New-Object System.Collections.Generic.List[string]
+    $sums = New-Object System.Collections.Generic.List[string]
     foreach ($line in ((Read-HikariText $path).Text -split "`r?`n")) {
         if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
         $idx = $line.IndexOf('=')
@@ -2091,15 +2380,21 @@ function Read-HikariRecord {
             }
             elseif (-not $NoWarn) { Write-HikariWarn (T 'record_bad' @($line)) }
         }
+        elseif ($key -eq 'sha256') {
+            # The hash of a file hikari installed (uosc, Anime4K): only used to
+            # tell whether it is still exactly as pinned.
+            if (Test-HikariSumEntry $value) { $sums.Add($value) }
+            elseif (-not $NoWarn) { Write-HikariWarn (T 'record_bad' @($line)) }
+        }
         else { $values[$key] = $value }
     }
     return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray(); Moved = $moved.ToArray()
-        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray() }
+        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray(); Sums = $sums.ToArray() }
 }
 
 function Write-HikariRecord {
     param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled,
-        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @())
+        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @(), [string[]]$Sums = @())
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('# Written by the hikari installer (install/hikari.ps1). Used to update and uninstall; do not edit.' + $eol)
@@ -2110,6 +2405,7 @@ function Write-HikariRecord {
     foreach ($c in $Commented) { [void]$sb.Append('a4k_commented=' + $c + $eol) }
     foreach ($c in $CommentedMpv) { [void]$sb.Append('a4k_commented_mpv=' + $c + $eol) }
     foreach ($f in $Files) { [void]$sb.Append('file=' + $f + $eol) }
+    foreach ($h in $Sums) { [void]$sb.Append('sha256=' + $h + $eol) }
     Write-HikariText -Path (Join-HikariPath $ConfigDir $script:RecordName) -Text $sb.ToString()
 }
 
@@ -2193,20 +2489,149 @@ function Get-HikariFileSha256 {
     return ([System.BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
 }
 
-# Downloads $Url to $OutFile and checks its SHA256. On mismatch the file is
-# deleted and an error is thrown, so nothing unverified is ever used.
+# Where a redirect from $From to $Location leads, as an absolute URI; throws
+# unless it is HTTPS on GitHub: github.com, raw.githubusercontent.com or a
+# host right under githubusercontent.com (release-assets..., objects...), on
+# the usual port and with no user name.
+function Get-HikariRedirectUri {
+    param([System.Uri]$From, [string]$Location)
+    $to = $null
+    if ([string]::IsNullOrEmpty($Location) -or -not [System.Uri]::TryCreate($From, $Location, [ref]$to)) {
+        throw (T 'url_bad' @([string]$Location))
+    }
+    $hostName = $to.Host.ToLowerInvariant()
+    $ok = $to.Scheme -eq 'https' -and $to.IsDefaultPort -and -not $to.UserInfo -and
+        ($script:AllowedHosts -contains $hostName -or $hostName -cmatch $script:RedirectHostPattern)
+    if (-not $ok) { throw (T 'url_bad' @($to.AbsoluteUri)) }
+    return $to
+}
+
+# Copies a response into a file, telling $Progress (bytes read, total) at
+# most every 100 ms and at the end. Refuses (throws) more than
+# $script:MaxDownloadBytes.
+function Copy-HikariStream {
+    param($In, $Out, [long]$Total, [scriptblock]$Progress, [string]$Url = '')
+    $buffer = New-Object byte[] 65536
+    $done = [long]0
+    $last = [long]0
+    while ($true) {
+        $n = $In.Read($buffer, 0, $buffer.Length)
+        if ($n -le 0) { break }
+        $done += $n
+        if ($done -gt $script:MaxDownloadBytes) { throw (T 'download_failed' @($Url, (T 'download_too_big' @([long]($script:MaxDownloadBytes / 1MB))))) }
+        $Out.Write($buffer, 0, $n)
+        if ($null -ne $Progress) {
+            $ticks = [DateTime]::UtcNow.Ticks
+            if ($ticks - $last -ge 1000000) { $last = $ticks; & $Progress $done $Total }
+        }
+    }
+    if ($null -ne $Progress) { & $Progress $done $Total }
+}
+
+# The real download: HttpWebRequest, the same in Windows PowerShell 5.1 and
+# PowerShell 7, read in blocks so that progress can be shown (Invoke-WebRequest
+# is very slow on 5.1 with its own progress bar). Redirects are followed here,
+# one by one, each checked by Get-HikariRedirectUri; the TLS versions are the
+# ones Invoke-HikariMain allows (TLS 1.2 switched on for 5.1). The file is
+# only used after its SHA256 is checked (Invoke-HikariVerifiedDownload).
+function Invoke-HikariHttpDownload {
+    param([string]$Url, [string]$OutFile, [scriptblock]$Progress)
+    Assert-HikariDownloadUrl $Url
+    $uri = New-Object System.Uri($Url)
+    for ($hop = 0; $hop -le $script:MaxRedirects; $hop++) {
+        $request = [System.Net.HttpWebRequest]([System.Net.WebRequest]::Create($uri))
+        $request.AllowAutoRedirect = $false
+        $request.Method = 'GET'
+        $request.Timeout = 30000
+        $request.ReadWriteTimeout = 30000
+        $request.UserAgent = 'hikari-installer'
+        $response = $null
+        try { $response = [System.Net.HttpWebResponse]$request.GetResponse() }
+        catch {
+            $web = Get-HikariInnerException $_.Exception
+            if ($web -is [System.Net.WebException] -and $null -ne $web.Response) { try { $web.Response.Close() } catch { } }
+            throw (T 'download_failed' @($Url, $web.Message))
+        }
+        try {
+            $code = [int]$response.StatusCode
+            if ($code -ge 300 -and $code -lt 400) {
+                $uri = Get-HikariRedirectUri -From $uri -Location ([string]$response.Headers['Location'])
+                continue
+            }
+            if ($code -ne 200) { throw (T 'download_failed' @($Url, (T 'download_status' @($code)))) }
+            $in = $response.GetResponseStream()
+            $out = [System.IO.File]::Create($OutFile)
+            try { Copy-HikariStream -In $in -Out $out -Total $response.ContentLength -Progress $Progress -Url $Url }
+            catch {
+                # A connection cut or a timeout half-way; the messages of this
+                # file (thrown as text: no inner exception) pass as they are.
+                $e = $_.Exception
+                if ($e -is [System.Management.Automation.RuntimeException] -and $null -eq $e.InnerException) { throw }
+                throw (T 'download_failed' @($Url, (Get-HikariInnerException $e).Message))
+            }
+            finally { $out.Dispose(); $in.Dispose() }
+            return
+        }
+        finally { $response.Close() }
+    }
+    throw (T 'download_failed' @($Url, (T 'download_redirects')))
+}
+
+# The exception behind PowerShell's "Exception calling ..." wrappers.
+function Get-HikariInnerException {
+    param([System.Exception]$Exception)
+    $e = $Exception
+    while ($null -ne $e.InnerException -and $e -is [System.Management.Automation.RuntimeException]) { $e = $e.InnerException }
+    return $e
+}
+
+# Downloads $Url to $OutFile and checks its SHA256. On mismatch, or when the
+# download fails half-way, the file is deleted and an error is thrown, so
+# nothing unverified is ever used. $Label: the row of the summary (hikari,
+# uosc...), with its progress bar on a console.
 function Invoke-HikariVerifiedDownload {
-    param([string]$Url, [string]$Sha256, [string]$OutFile)
+    param([string]$Url, [string]$Sha256, [string]$OutFile, [string]$Label = '')
     Assert-HikariDownloadUrl $Url
     if ([string]::IsNullOrEmpty($Sha256)) { throw (T 'hash_bad' @($Url, '?', '?')) }
-    Write-HikariInfo (T 'downloading' @($Url))
-    # Anything the downloader prints must not end up in the caller's return value.
-    & $script:HikariDownloader $Url $OutFile | Out-Null
-    if (-not (Test-Path -LiteralPath $OutFile -PathType Leaf)) { throw (T 'hash_bad' @($Url, $Sha256, '-')) }
-    $actual = Get-HikariFileSha256 $OutFile
-    if ($actual -ne $Sha256.ToLowerInvariant()) {
-        [System.IO.File]::Delete($OutFile)
-        throw (T 'hash_bad' @($Url, $Sha256.ToLowerInvariant(), $actual))
+    Write-HikariDetail (T 'downloading' @($Url))
+    $progress = $null
+    if ($Label -and $script:HikariFancy) {
+        Enter-HikariOutput
+        $script:HikariBarLabel = $Label
+        $script:HikariBarStep = 0
+        $progress = { param([long]$Done, [long]$Total) Show-HikariBar -Done $Done -Total $Total }
+        Show-HikariBar -Done 0 -Total 1 -Now
+    }
+    try {
+        try {
+            # Anything the downloader prints must not end up in the caller's return value.
+            & $script:HikariDownloader $Url $OutFile $progress | Out-Null
+        }
+        catch {
+            if (Test-Path -LiteralPath $OutFile -PathType Leaf) { [System.IO.File]::Delete($OutFile) }
+            throw
+        }
+        if (-not (Test-Path -LiteralPath $OutFile -PathType Leaf)) { throw (T 'hash_bad' @($Url, $Sha256, '-')) }
+        $actual = Get-HikariFileSha256 $OutFile
+        if ($actual -ne $Sha256.ToLowerInvariant()) {
+            [System.IO.File]::Delete($OutFile)
+            throw (T 'hash_bad' @($Url, $Sha256.ToLowerInvariant(), $actual))
+        }
+        if ($Label -and $script:HikariFancy) {
+            Show-HikariBar -Done 1 -Total 1 -Now
+            if (-not $script:HikariQuiet) { Write-Host '' }
+        }
+        elseif ($Label) { Write-HikariRow -Label $Label -Ok $true -Text (T 'ui_downloaded') }
+    }
+    catch {
+        if ($Label) { Write-HikariRow -Label $Label -Ok $false }
+        throw
+    }
+    finally {
+        if ($Label -and $script:HikariFancy) {
+            $script:HikariBarLabel = ''
+            Exit-HikariOutput
+        }
     }
 }
 
@@ -2250,7 +2675,7 @@ function Get-HikariReleaseSource {
     param([string]$TempDir)
     if ([string]::IsNullOrEmpty($script:HikariReleaseUrl)) { throw (T 'release_unpublished') }
     $zip = Join-HikariPath $TempDir 'hikari.zip'
-    Invoke-HikariVerifiedDownload -Url $script:HikariReleaseUrl -Sha256 $script:HikariReleaseSha256 -OutFile $zip
+    Invoke-HikariVerifiedDownload -Url $script:HikariReleaseUrl -Sha256 $script:HikariReleaseSha256 -OutFile $zip -Label 'hikari'
     $dest = Join-HikariPath $TempDir 'hikari'
     Expand-HikariZip -Zip $zip -Destination $dest
     foreach ($dir in @($dest) + @(Get-ChildItem -LiteralPath $dest -Directory -Force | ForEach-Object { $_.FullName })) {
@@ -2262,20 +2687,135 @@ function Get-HikariReleaseSource {
     throw (T 'source_missing' @($dest))
 }
 
-# Downloads and verifies uosc and thumbfast once for every target.
+# Downloads and verifies uosc and thumbfast once for every target, unless no
+# folder needs them ($NeedUosc, $NeedThumbfast: see Get-HikariDownloadPlan).
+# UoscSums: "path|sha256" of each uosc file that Install-HikariUosc copies.
 function Get-HikariArtifacts {
-    param([string]$TempDir)
-    $zip = Join-HikariPath $TempDir 'uosc.zip'
-    Invoke-HikariVerifiedDownload -Url $script:UoscUrl -Sha256 $script:UoscSha256 -OutFile $zip
-    $uoscDir = Join-HikariPath $TempDir 'uosc'
-    Expand-HikariZip -Zip $zip -Destination $uoscDir
-    if (-not (Test-Path -LiteralPath (Join-HikariPath $uoscDir @('scripts', 'uosc', 'main.lua')) -PathType Leaf)) {
-        throw (T 'source_missing' @($script:UoscUrl))
+    param([string]$TempDir, [bool]$NeedUosc = $true, [bool]$NeedThumbfast = $true)
+    $uoscDir = ''
+    $sums = @()
+    if ($NeedUosc) {
+        $zip = Join-HikariPath $TempDir 'uosc.zip'
+        Invoke-HikariVerifiedDownload -Url $script:UoscUrl -Sha256 $script:UoscSha256 -OutFile $zip -Label 'uosc'
+        $uoscDir = Join-HikariPath $TempDir 'uosc'
+        Expand-HikariZip -Zip $zip -Destination $uoscDir
+        if (-not (Test-Path -LiteralPath (Join-HikariPath $uoscDir @('scripts', 'uosc', 'main.lua')) -PathType Leaf)) {
+            throw (T 'source_missing' @($script:UoscUrl))
+        }
+        $sums = @(Get-HikariUoscManifest $uoscDir)
     }
-    $thumb = Join-HikariPath $TempDir 'thumbfast.lua'
-    Invoke-HikariVerifiedDownload -Url $script:ThumbfastUrl -Sha256 $script:ThumbfastSha256 -OutFile $thumb
+    else { Write-HikariRow -Label 'uosc' -Ok $true -Text (T 'ui_uptodate') }
+    $thumb = ''
+    if ($NeedThumbfast) {
+        $thumb = Join-HikariPath $TempDir 'thumbfast.lua'
+        Invoke-HikariVerifiedDownload -Url $script:ThumbfastUrl -Sha256 $script:ThumbfastSha256 -OutFile $thumb -Label 'thumbfast'
+    }
+    else { Write-HikariRow -Label 'thumbfast' -Ok $true -Text (T 'ui_uptodate') }
     # Anime4K is only downloaded when a folder needs it (Get-HikariAnime4KSource).
-    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb; TempDir = $TempDir; Anime4KDir = '' }
+    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb; TempDir = $TempDir; Anime4KDir = ''; UoscSums = $sums }
+}
+
+# "path|sha256" (path as in the config folder, '/'-separated) of every file of
+# the extracted uosc that Install-HikariUosc copies: scripts/uosc/... and its
+# fonts. Empty when a name is odd: such a uosc is then never up to date.
+function Get-HikariUoscManifest {
+    param([string]$UoscDir)
+    $out = New-Object System.Collections.Generic.List[string]
+    $files = Get-HikariTreeFiles (Join-HikariPath $UoscDir @('scripts', 'uosc'))
+    if ($null -eq $files) { return @() }
+    foreach ($f in $files) {
+        $rel = 'scripts/uosc/' + (Get-HikariRelativePath -Path $f -Root (Join-HikariPath $UoscDir @('scripts', 'uosc')))
+        if (-not (Test-HikariRecordPath $rel)) { return @() }
+        $out.Add($rel + '|' + (Get-HikariFileSha256 $f))
+    }
+    foreach ($font in $script:UoscFonts) {
+        $p = Join-HikariPath $UoscDir @('fonts', $font)
+        if (Test-Path -LiteralPath $p -PathType Leaf) { $out.Add('fonts/' + $font + '|' + (Get-HikariFileSha256 $p)) }
+    }
+    return $out.ToArray()
+}
+
+# Every file under $Dir (full paths, sorted), without following anything:
+# $null when there is a link (junction or symbolic link) anywhere in it.
+function Get-HikariTreeFiles {
+    param([string]$Dir)
+    $out = New-Object System.Collections.Generic.List[string]
+    $pending = New-Object System.Collections.Generic.Stack[string]
+    $pending.Push($Dir)
+    while ($pending.Count -gt 0) {
+        foreach ($child in @(Get-ChildItem -LiteralPath $pending.Pop() -Force)) {
+            if (Test-HikariLink $child) { return $null }
+            if ($child.PSIsContainer) { $pending.Push($child.FullName) } else { $out.Add($child.FullName) }
+        }
+    }
+    $list = $out.ToArray()
+    [Array]::Sort($list, [System.StringComparer]::Ordinal)
+    return , $list
+}
+
+# "path|sha256" with a clean record path and 64 lower-case hex digits.
+function Test-HikariSumEntry {
+    param([string]$Entry)
+    $pair = $Entry -split '\|'
+    return ($pair.Count -eq 2 -and (Test-HikariRecordPath $pair[0]) -and $pair[1] -cmatch '\A[0-9a-f]{64}\z')
+}
+
+# Do the files of these "path|sha256" entries exist in $ConfigDir, as files
+# and not links, with these hashes? $false for an empty list or a path named
+# twice.
+function Test-HikariSums {
+    param([string]$ConfigDir, [string[]]$Entries)
+    if (@($Entries).Count -eq 0) { return $false }
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($e in $Entries) {
+        $pair = $e -split '\|'
+        if (-not $seen.Add($pair[0])) { return $false }
+        $p = Join-HikariPath $ConfigDir ($pair[0] -split '/')
+        $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        if ($null -eq $item -or $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
+        if ((Get-HikariFileSha256 $p) -cne $pair[1]) { return $false }
+    }
+    return $true
+}
+
+# The entries of $Sums for uosc's files (scripts/uosc/... and its fonts).
+function Select-HikariUoscSums {
+    param([string[]]$Sums)
+    $fonts = @($script:UoscFonts | ForEach-Object { 'fonts/' + $_ })
+    return @($Sums | Where-Object { $p = ($_ -split '\|')[0]; $p.StartsWith('scripts/uosc/') -or $fonts -contains $p })
+}
+
+# Is the uosc of the folder exactly the pinned one, as hikari installed it?
+# Its record says this version and this zip and lists the hash of every file
+# it copied: all of them there, unchanged, not links, and nothing else in
+# scripts\uosc (no link either); no uosc 4 leftovers. Any doubt: no (it is
+# installed again).
+function Test-HikariUoscUpToDate {
+    param([string]$ConfigDir, $Record)
+    if ($null -eq $Record) { return $false }
+    if ([string]$Record.Values['uosc_version'] -ne $script:UoscVersion) { return $false }
+    if ([string]$Record.Values['uosc_sha256'] -cne $script:UoscSha256.ToLowerInvariant()) { return $false }
+    foreach ($legacy in $script:UoscLegacy) {
+        if (Test-Path -LiteralPath (Join-HikariPath $ConfigDir @('scripts', $legacy))) { return $false }
+    }
+    $dir = Join-HikariPath $ConfigDir @('scripts', 'uosc')
+    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
+    $entries = @(Select-HikariUoscSums @($Record.Sums))
+    $inside = @($entries | Where-Object { $_.StartsWith('scripts/uosc/') })
+    if ($inside.Count -eq 0) { return $false }
+    $files = Get-HikariTreeFiles $dir
+    if ($null -eq $files -or @($files).Count -ne $inside.Count) { return $false }
+    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+}
+
+# Is the thumbfast of the folder the pinned file, byte for byte?
+function Test-HikariThumbfastUpToDate {
+    param([string]$ConfigDir)
+    $p = Join-HikariPath $ConfigDir @('scripts', 'thumbfast.lua')
+    $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item -or $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
+    return ((Get-HikariFileSha256 $p) -ceq $script:ThumbfastSha256.ToLowerInvariant())
 }
 
 # ---------------------------------------------------------------------------
@@ -2402,7 +2942,7 @@ function Initialize-HikariUpscaleConf {
     param([string]$ConfigDir, [bool]$Announce, [string]$Mode = 'off', [bool]$Overwrite = $false)
     $path = Join-HikariPath $ConfigDir $script:UpscaleConf
     if (-not $Overwrite -and (Test-Path -LiteralPath $path -PathType Leaf)) {
-        Write-HikariInfo (T 'kept_user_file' @($script:UpscaleConf))
+        Write-HikariDetail (T 'kept_user_file' @($script:UpscaleConf))
         return
     }
     $gpu = Get-HikariGpuTier -Names @(& $script:HikariGpuProbe)
@@ -2410,7 +2950,7 @@ function Initialize-HikariUpscaleConf {
     if ($Announce) {
         $name = $gpu.Name
         if (-not $name) { $name = T 'gpu_unknown' }
-        Write-HikariInfo (T 'gpu_line' @($name, (T ('quality_' + $gpu.Quality))))
+        Write-HikariDetail (T 'gpu_line' @($name, (T ('quality_' + $gpu.Quality))))
     }
 }
 
@@ -2503,13 +3043,13 @@ function Initialize-HikariLanguageConf {
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         $text = (Read-HikariText $path).Text
         if ($text -cmatch '(?m)^script-opts-append=hikari-language=') {
-            Write-HikariInfo (T 'kept_user_file' @($script:LanguageConf))
+            Write-HikariDetail (T 'kept_user_file' @($script:LanguageConf))
             return
         }
     }
     $code = Get-HikariMpvLanguage
     Write-HikariText -Path $path -Text (Get-HikariLanguageConfText -Code $code)
-    Write-HikariInfo (T 'language_set' @($code))
+    Write-HikariDetail (T 'language_set' @($code))
 }
 
 # AnimeJaNai brings its own AI upscaling (and uses Ctrl+1..9 for it).
@@ -2578,7 +3118,7 @@ function Get-HikariAnime4KSource {
         $temp = $Artifacts.PSObject.Properties['TempDir']
         if ($null -eq $temp -or -not $temp.Value) { throw (T 'source_missing' @($script:Anime4KUrl)) }
         $zip = Join-HikariPath $temp.Value 'anime4k.zip'
-        Invoke-HikariVerifiedDownload -Url $script:Anime4KUrl -Sha256 $script:Anime4KSha256 -OutFile $zip
+        Invoke-HikariVerifiedDownload -Url $script:Anime4KUrl -Sha256 $script:Anime4KSha256 -OutFile $zip -Label 'Anime4K'
         $dest = Join-HikariPath $temp.Value 'anime4k'
         Expand-HikariAnime4K -Zip $zip -Destination $dest
     }
@@ -2590,23 +3130,54 @@ function Get-HikariAnime4KSource {
     return $dest
 }
 
-# True when hikari's Anime4K of this version is in place: the record says this
-# version and every shader hikari-upscale.lua needs is there, recorded as hikari's.
+# True when hikari's Anime4K is exactly the pinned one: the record says this
+# version and this zip ($ZipSha), every shader hikari-upscale.lua needs is
+# recorded as hikari's ($Own), and every shader of hikari's is there, not a
+# link, with the hash the record has for it ($Sums).
 function Test-HikariAnime4KComplete {
-    param([string]$ConfigDir, [string[]]$Own, [string]$Version)
+    param([string]$ConfigDir, [string[]]$Own, [string]$Version, [string]$ZipSha = '', [string[]]$Sums = @())
     if ($Version -ne $script:Anime4KVersion) { return $false }
+    if ($ZipSha -cne $script:Anime4KSha256.ToLowerInvariant()) { return $false }
     foreach ($name in $script:Anime4KRequired) {
         $rel = $script:ShadersDir + '/' + $name
         if (@($Own) -cnotcontains $rel) { return $false }
         if (-not (Test-Path -LiteralPath (Join-HikariPath $ConfigDir @($script:ShadersDir, $name)) -PathType Leaf)) { return $false }
     }
-    return $true
+    $entries = @(Select-HikariSumsFor -Sums $Sums -Paths $Own)
+    if ($entries.Count -ne @($Own).Count) { return $false }
+    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+}
+
+# The entries of $Sums ("path|sha256") for these paths, one each at most.
+function Select-HikariSumsFor {
+    param([string[]]$Sums, [string[]]$Paths)
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($p in $Paths) {
+        $e = @($Sums | Where-Object { ($_ -split '\|')[0] -ceq $p })
+        if ($e.Count -eq 1) { $out.Add($e[0]) }
+    }
+    return $out.ToArray()
+}
+
+# Before anything is downloaded: does every folder have hikari's Anime4K
+# exactly as pinned, so the summary can say so? The same rules as the
+# up-to-date branch of Invoke-HikariAnime4KStep.
+function Test-HikariAnime4KUpToDate {
+    param($Candidate, [string]$ConfigDir, $Record)
+    if ($null -eq $Record -or $script:HikariAnime4KChoice -eq 'no') { return $false }
+    if (Test-HikariAnimeJaNai -Candidate $Candidate -ConfigDir $ConfigDir) { return $false }
+    if ([string]$Record.Values['anime4k'] -ne 'hikari') { return $false }
+    $own = @($Record.Files | Where-Object { Test-HikariOwnShaderPath $_ })
+    if ($own.Count -eq 0 -or @(Find-HikariManualAnime4K -ConfigDir $ConfigDir -Own $own).Count -gt 0) { return $false }
+    return (Test-HikariAnime4KComplete -ConfigDir $ConfigDir -Own $own -Version ([string]$Record.Values['anime4k_version']) `
+            -ZipSha ([string]$Record.Values['anime4k_sha256']) -Sums @($Record.Sums))
 }
 
 # Copies the extracted shaders into <config>/shaders. Returns their record
 # paths; the ones not yet recorded ($Own) are added to the record first.
 function Install-HikariAnime4KFiles {
     param([string]$ConfigDir, [string]$SourceDir, [string[]]$Own = @())
+    Show-HikariSpinner
     $dir = Join-HikariPath $ConfigDir $script:ShadersDir
     New-HikariDirectory $dir
     $sources = @(Get-ChildItem -LiteralPath $SourceDir -File -Force | Where-Object { $_.Name -cmatch $script:Anime4KPattern } | Sort-Object Name)
@@ -2640,7 +3211,7 @@ function Move-HikariShaderAside {
     $destRel = Get-HikariRelativePath -Path $dest -Root $ConfigDir
     if ($Record) { Add-HikariRecordEntries -ConfigDir $ConfigDir -Entries @('a4k_moved=' + $destRel + '|' + $rel) }
     Move-Item -LiteralPath $Path -Destination $dest
-    Write-HikariInfo (T 'moved' @($rel, $destRel))
+    Write-HikariDetail (T 'moved' @($rel, $destRel))
     return ($destRel + '|' + $rel)
 }
 
@@ -2759,23 +3330,25 @@ function Find-HikariCommentedConfLines {
 # ("moved|original" of the hand-installed ones set aside), Commented and
 # CommentedMpv (input.conf and mpv.conf lines turned off), Version and Fresh
 # (hikari installed Anime4K in this run and it was not hikari's before: a new
-# install, or one installed by hand taken over).
+# install, or one installed by hand taken over), ZipSha and Sums (the zip and
+# the hashes of Files, for the record).
 # Anime4K is downloaded and checked before anything in the folder is moved or
 # changed, and every change is added to the record before it is made.
 function Invoke-HikariAnime4KStep {
     param($Candidate, [string]$ConfigDir, $Artifacts, [string]$Stamp,
         [hashtable]$OldValues, [string[]]$OldFiles = @(), [string[]]$OldMoved = @(), [string[]]$OldCommented = @(),
-        [string[]]$OldCommentedMpv = @())
+        [string[]]$OldCommentedMpv = @(), [string[]]$OldSums = @())
     $choice = $script:HikariAnime4KChoice
     $prevState = ''
     if ($OldValues.ContainsKey('anime4k')) { $prevState = [string]$OldValues['anime4k'] }
     $own = @($OldFiles | Where-Object { Test-HikariOwnShaderPath $_ })
     $result = [pscustomobject]@{ State = ''; Files = $own; Moved = @($OldMoved); Commented = @($OldCommented)
-        CommentedMpv = @($OldCommentedMpv); Version = ''; Fresh = $false }
+        CommentedMpv = @($OldCommentedMpv); Version = ''; Fresh = $false; ZipSha = ''; Sums = @(Select-HikariSumsFor -Sums $OldSums -Paths $own) }
     if ($OldValues.ContainsKey('anime4k_version')) { $result.Version = [string]$OldValues['anime4k_version'] }
+    if ($OldValues.ContainsKey('anime4k_sha256')) { $result.ZipSha = [string]$OldValues['anime4k_sha256'] }
 
     if (Test-HikariAnimeJaNai -Candidate $Candidate -ConfigDir $ConfigDir) {
-        Write-HikariInfo (T 'anime4k_animejanai')
+        Write-HikariNotice (T 'anime4k_animejanai')
         $result.State = 'animejanai'
         return $result
     }
@@ -2800,12 +3373,12 @@ function Invoke-HikariAnime4KStep {
     elseif ($prevState -eq 'hikari' -and $own.Count -gt 0) {
         $update = $true
         if ($choice -eq 'no') {
-            Write-HikariInfo (T 'anime4k_kept')
+            Write-HikariDetail (T 'anime4k_kept')
             $result.State = 'hikari'
             return $result
         }
-        if (Test-HikariAnime4KComplete -ConfigDir $ConfigDir -Own $own -Version $result.Version) {
-            Write-HikariInfo (T 'anime4k_uptodate' @($script:Anime4KVersion))
+        if (Test-HikariAnime4KComplete -ConfigDir $ConfigDir -Own $own -Version $result.Version -ZipSha $result.ZipSha -Sums $OldSums) {
+            Write-HikariDetail (T 'anime4k_uptodate' @($script:Anime4KVersion))
             $result.State = 'hikari'
             return $result
         }
@@ -2813,11 +3386,12 @@ function Invoke-HikariAnime4KStep {
     else {
         $install = ($choice -eq 'yes')
         if ($choice -eq '') {
-            Write-HikariInfo (T 'anime4k_intro')
+            # Only when it is really asked (always in verbose mode).
+            if ($script:HikariVerbose -or -not $script:NonInteractive) { Write-HikariInfo (T 'anime4k_intro') }
             $install = Confirm-Hikari -Question (T 'anime4k_confirm') -Default ($prevState -ne 'declined')
         }
         if (-not $install) {
-            Write-HikariInfo (T 'anime4k_declined')
+            Write-HikariDetail (T 'anime4k_declined')
             $result.State = 'declined'
             return $result
         }
@@ -2850,7 +3424,7 @@ function Invoke-HikariAnime4KStep {
                 if ($comment) {
                     $result.Commented = @(Set-HikariLinesOffRecorded -Path $inputPath -ConfigDir $ConfigDir -Lines $keys `
                             -Key 'a4k_commented' -Previous $result.Commented)
-                    Write-HikariInfo (T 'anime4k_commented' @($keys.Count))
+                    Write-HikariDetail (T 'anime4k_commented' @($keys.Count))
                 }
             }
         }
@@ -2870,7 +3444,7 @@ function Invoke-HikariAnime4KStep {
             if ($comment) {
                 $result.CommentedMpv = @(Set-HikariLinesOffRecorded -Path $mpvPath -ConfigDir $ConfigDir -Lines $confLines `
                         -Key 'a4k_commented_mpv' -Previous $result.CommentedMpv)
-                Write-HikariInfo (T 'anime4k_conf_commented' @($confLines.Count))
+                Write-HikariDetail (T 'anime4k_conf_commented' @($confLines.Count))
             }
         }
     }
@@ -2882,10 +3456,12 @@ function Invoke-HikariAnime4KStep {
         $p = Join-HikariPath $ConfigDir ($f -split '/')
         if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-HikariItem -Path $p -Root $ConfigDir }
     }
-    Write-HikariOk (T 'anime4k_done' @($script:Anime4KVersion, $files.Count, $script:ShadersDir))
+    Write-HikariDetailOk (T 'anime4k_done' @($script:Anime4KVersion, $files.Count, $script:ShadersDir))
     $result.State = 'hikari'
     $result.Files = $files
     $result.Version = $script:Anime4KVersion
+    $result.ZipSha = $script:Anime4KSha256.ToLowerInvariant()
+    $result.Sums = @($files | ForEach-Object { $_ + '|' + (Get-HikariFileSha256 (Join-HikariPath $src (($_ -split '/')[-1]))) })
     $result.Fresh = (-not $update)
     return $result
 }
@@ -2997,7 +3573,7 @@ function Update-HikariSoscFile {
 function Invoke-HikariSoscMigration {
     param([string]$ConfigDir)
     if (-not (Test-HikariSoscPresent $ConfigDir)) { return }
-    Write-HikariInfo (T 'sosc_found')
+    Write-HikariNotice (T 'sosc_found')
     # A broken block stops everything before any change.
     foreach ($name in @('mpv.conf', 'input.conf')) {
         $p = Join-HikariPath $ConfigDir $name
@@ -3025,7 +3601,7 @@ function Invoke-HikariSoscMigration {
         elseif (-not (Test-Path -LiteralPath $to)) {
             $file = Read-HikariText $from
             Write-HikariText -Path $to -Text (ConvertFrom-HikariSoscText $file.Text) -Encoding $file.Encoding -Bom $file.Bom
-            Write-HikariInfo (T 'sosc_choice_moved' @(('sosc-' + $n + '.conf'), ('hikari-' + $n + '.conf')))
+            Write-HikariDetail (T 'sosc_choice_moved' @(('sosc-' + $n + '.conf'), ('hikari-' + $n + '.conf')))
         }
         Remove-HikariItem -Path $from -Root $ConfigDir
     }
@@ -3077,7 +3653,7 @@ function Invoke-HikariSoscMigration {
         $p = Join-HikariPath $ConfigDir $name
         if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-HikariItem -Path $p -Root $ConfigDir }
     }
-    Write-HikariOk (T 'sosc_done')
+    if ($script:HikariVerbose) { Write-HikariOk (T 'sosc_done') } else { Write-HikariNotice (T 'sosc_done') }
 
     $full = Get-HikariFullPath $ConfigDir
     $parent = Split-Path -Path $full -Parent
@@ -3091,7 +3667,7 @@ function Invoke-HikariSoscMigration {
         }
         catch { }
     }
-    if ($count -gt 0) { Write-HikariInfo (T 'sosc_old_backups' @($count, $full)) }
+    if ($count -gt 0) { Write-HikariNotice (T 'sosc_old_backups' @($count, $full)) }
 }
 
 # ---------------------------------------------------------------------------
@@ -3123,7 +3699,7 @@ function New-HikariBackup {
     while (Test-Path -LiteralPath $backup) { $backup = $base + '-' + $n; $n++ }
     $bytes = [long]0
     foreach ($item in $items) { $bytes += (Get-HikariTreeSize $item) }
-    Write-HikariInfo (T 'backup_size' @([math]::Round($bytes / 1MB, 1)))
+    Write-HikariDetail (T 'backup_size' @([math]::Round($bytes / 1MB, 1)))
     New-HikariDirectory $backup
     try {
         foreach ($item in $items) {
@@ -3175,7 +3751,7 @@ function Remove-HikariOldBackups {
         try {
             Assert-HikariInside -Path $old -Root $parent
             Remove-HikariItem -Path $old -Root $parent
-            Write-HikariInfo (T 'backup_pruned' @($old))
+            Write-HikariDetail (T 'backup_pruned' @($old))
         }
         catch {
             Write-HikariWarn (T 'backup_prune_failed' @($old, $_.Exception.Message))
@@ -3292,7 +3868,7 @@ function Move-HikariToDisabled {
     Assert-HikariNoLink -Path $dest -Root $ConfigDir
     Move-Item -LiteralPath $Path -Destination $dest
     $destRel = Get-HikariRelativePath -Path $dest -Root $ConfigDir
-    Write-HikariInfo (T 'moved' @($rel, $destRel))
+    Write-HikariDetail (T 'moved' @($rel, $destRel))
     return ($destRel + '|' + $rel)
 }
 
@@ -3334,8 +3910,8 @@ function Install-HikariTarget {
     )
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $config = Get-HikariFullPath $Candidate.ConfigDir
-    Write-HikariInfo ''
-    Write-HikariInfo (T 'installing_to' @($config))
+    Write-HikariDetail ''
+    Write-HikariDetail (T 'installing_to' @($config))
 
     # a. Backup (only when there is something to back up). The one made when
     # hikari was never installed here (no record, no earlier backup marked as
@@ -3345,10 +3921,8 @@ function Install-HikariTarget {
         # A record of sosc counts too: its first backup, from before sosc, is the original.
         $hadRecord = (Test-Path -LiteralPath (Join-HikariPath $config $script:RecordName)) -or
             (Test-Path -LiteralPath (Join-HikariPath $config $script:SoscRecordName))
-        try { $backup = New-HikariBackup -ConfigDir $config -Stamp $Stamp }
-        catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
+        $backup = New-HikariBackupStep $config $Stamp
         if ($backup) {
-            Write-HikariInfo (T 'backup_done' @($backup))
             if (-not $hadRecord -and @(Find-HikariOriginalBackups $config | Where-Object { -not (Test-HikariSamePath $_ $backup) }).Count -eq 0) {
                 try { Write-HikariText -Path (Join-HikariPath $backup $script:BackupOriginalMark) -Text ((T 'backup_original_note') + "`r`n") }
                 catch { Write-HikariWarn $_.Exception.Message }
@@ -3359,9 +3933,16 @@ function Install-HikariTarget {
         New-HikariDirectory $config
     }
 
+    Start-HikariStep (T 'ui_installing')
     try {
         Invoke-HikariSoscMigration $config
         $old = Read-HikariRecord $config
+        # Checked before anything in the folder changes: uosc and thumbfast
+        # exactly as pinned are not copied again.
+        $uoscUpToDate = Test-HikariUoscUpToDate -ConfigDir $config -Record $old
+        $thumbUpToDate = Test-HikariThumbfastUpToDate $config
+        $oldSums = @()
+        if ($null -ne $old) { $oldSums = @($old.Sums) }
         $oldValues = @{}
         $oldDisabled = @()
         $oldFiles = @()
@@ -3437,18 +4018,37 @@ function Install-HikariTarget {
         }
 
         # c. uosc.
-        foreach ($m in (Install-HikariUosc -ConfigDir $config -UoscDir $Artifacts.UoscDir -Stamp $Stamp)) { $disabled.Add($m) }
-        Write-HikariOk (T 'uosc_done' @($script:UoscVersion))
+        $uoscSums = @()
+        $uoscZipSha = $script:UoscSha256.ToLowerInvariant()
+        if ($uoscUpToDate) {
+            Write-HikariDetail (T 'uosc_uptodate' @($script:UoscVersion))
+            $uoscSums = @(Select-HikariUoscSums $oldSums)
+        }
+        else {
+            $uoscDir = Get-HikariArtifactValue $Artifacts 'UoscDir'
+            if (-not $uoscDir) { throw (T 'source_missing' @($script:UoscUrl)) }
+            foreach ($m in (Install-HikariUosc -ConfigDir $config -UoscDir $uoscDir -Stamp $Stamp)) { $disabled.Add($m) }
+            $uoscSums = @(Get-HikariArtifactValue $Artifacts 'UoscSums')
+            Write-HikariDetailOk (T 'uosc_done' @($script:UoscVersion))
+        }
 
         # d. thumbfast.
-        New-HikariDirectory $scripts
-        Copy-Item -LiteralPath $Artifacts.ThumbfastFile -Destination (Join-HikariPath $scripts 'thumbfast.lua') -Force
-        Write-HikariOk (T 'thumbfast_done')
+        if ($thumbUpToDate) {
+            Write-HikariDetail (T 'thumbfast_uptodate')
+        }
+        else {
+            $thumbFile = Get-HikariArtifactValue $Artifacts 'ThumbfastFile'
+            if (-not $thumbFile) { throw (T 'source_missing' @($script:ThumbfastUrl)) }
+            New-HikariDirectory $scripts
+            Copy-Item -LiteralPath $thumbFile -Destination (Join-HikariPath $scripts 'thumbfast.lua') -Force
+            Write-HikariDetailOk (T 'thumbfast_done')
+        }
 
         # e. hikari files.
         $installed = New-Object System.Collections.Generic.List[string]
         $srcScripts = Join-HikariPath $Source.ConfigDir 'scripts'
         foreach ($f in @(Get-ChildItem -LiteralPath $srcScripts -File -Filter 'hikari-*.lua' -Force)) {
+            Show-HikariSpinner
             Copy-Item -LiteralPath $f.FullName -Destination (Join-HikariPath $scripts $f.Name) -Force
             $installed.Add('scripts/' + $f.Name)
         }
@@ -3477,7 +4077,7 @@ function Install-HikariTarget {
             if ($name -eq $script:UpscaleConf -or $name -eq $script:LanguageConf) { continue }
             $dest = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $dest -PathType Leaf) {
-                Write-HikariInfo (T 'kept_user_file' @($name))
+                Write-HikariDetail (T 'kept_user_file' @($name))
             }
             else {
                 Copy-Item -LiteralPath (Join-HikariPath $Source.ConfigDir $name) -Destination $dest
@@ -3491,15 +4091,16 @@ function Install-HikariTarget {
             $p = Join-HikariPath $config ($oldFile -split '/')
             if (Test-Path -LiteralPath $p -PathType Leaf) {
                 Remove-HikariItem -Path $p -Root $config
-                Write-HikariInfo (T 'removed_stale' @($oldFile))
+                Write-HikariDetail (T 'removed_stale' @($oldFile))
             }
         }
-        Write-HikariOk (T 'hikari_files_done' @($installed.Count))
+        Write-HikariDetailOk (T 'hikari_files_done' @($installed.Count))
 
         # e2. Anime4K, and the upscale choice file (with the quality for this
         # graphics card when it is new).
         $a4k = Invoke-HikariAnime4KStep -Candidate $Candidate -ConfigDir $config -Artifacts $Artifacts -Stamp $Stamp `
-            -OldValues $oldValues -OldFiles $oldFiles -OldMoved $oldMoved -OldCommented $oldCommented -OldCommentedMpv $oldCommentedMpv
+            -OldValues $oldValues -OldFiles $oldFiles -OldMoved $oldMoved -OldCommented $oldCommented -OldCommentedMpv $oldCommentedMpv `
+            -OldSums $oldSums
         # Anime4K installed by hikari starts in "Automatico" the first time; on
         # updates the mode the user chose is kept.
         $upscaleMode = 'off'
@@ -3513,7 +4114,7 @@ function Install-HikariTarget {
         if (($Candidate.Kind -eq 'mpv.net' -or $Candidate.Kind -eq 'AnimeJaNai') -and $Candidate.Exe) {
             Set-HikariConfOption -Path (Join-HikariPath $opts 'thumbfast.conf') -Key 'mpv_path' -Value $Candidate.Exe `
                 -Comment 'Added by the hikari installer: mpv.net does not always tell thumbfast where it is.'
-            Write-HikariInfo (T 'mpvpath_set' @($Candidate.Exe))
+            Write-HikariDetail (T 'mpvpath_set' @($Candidate.Exe))
         }
 
         # f. Managed blocks.
@@ -3527,6 +4128,7 @@ function Install-HikariTarget {
         $values['hikari_version'] = $Source.Version
         $values['hikari_commit'] = $Source.Commit
         $values['uosc_version'] = $script:UoscVersion
+        $values['uosc_sha256'] = $uoscZipSha
         $values['thumbfast_commit'] = $script:ThumbfastCommit
         $values['installed_at'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
         $values['player'] = $Candidate.Kind
@@ -3542,19 +4144,75 @@ function Install-HikariTarget {
         $values['shaders_preexisting'] = ConvertTo-HikariYesNo $shadersBefore
         $values['anime4k'] = $a4k.State
         $values['anime4k_version'] = $a4k.Version
+        $values['anime4k_sha256'] = $a4k.ZipSha
         $values['first_backup'] = $firstBackup
         $values['last_backup'] = $backup
         $allFiles = @($installed.ToArray()) + @($a4k.Files)
         Write-HikariRecord -ConfigDir $config -Values $values -Files $allFiles -Disabled $disabled.ToArray() -Moved @($a4k.Moved) `
-            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray()
+            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray() -Sums (@($uoscSums) + @($a4k.Sums))
     }
     catch {
-        $message = $_.Exception.Message
-        if ($backup) { $message += ' ' + (T 'restore_hint' @($backup)) }
-        throw $message
+        Stop-HikariStep 'fail'
+        throw (Get-HikariRestoreMessage -Message $_.Exception.Message -Backup $backup -ConfigDir $config)
     }
-    Write-HikariOk (T 'install_ok' @($config))
+    Stop-HikariStep 'ok'
+    Write-HikariDetailOk (T 'install_ok' @($config))
+    Write-HikariUi
+    Write-HikariUi @('  ', '', $script:GlyphOk, 'Green', (' ' + (T 'ui_installed' @($Source.Version, (Get-HikariFolderLabel $Candidate)))), '')
     return $backup
+}
+
+# A property of the artifacts (built by Get-HikariArtifacts, or by hand in
+# tests), or '' when it is not there.
+function Get-HikariArtifactValue {
+    param($Artifacts, [string]$Name)
+    $p = $Artifacts.PSObject.Properties[$Name]
+    if ($null -eq $p -or $null -eq $p.Value) { return '' }
+    return $p.Value
+}
+
+# Backs up the folder as the "Backup" step of the summary; '' when there is
+# nothing to copy. Throws, saying nothing was changed, when it cannot.
+function New-HikariBackupStep {
+    param([string]$ConfigDir, [string]$Stamp)
+    Start-HikariStep (T 'ui_backup')
+    try { $backup = New-HikariBackup -ConfigDir $ConfigDir -Stamp $Stamp }
+    catch {
+        Stop-HikariStep 'fail'
+        throw (T 'backup_failed' @($ConfigDir, $_.Exception.Message))
+    }
+    if ($backup) {
+        Stop-HikariStep 'ok'
+        Write-HikariDetail (T 'backup_done' @($backup))
+    }
+    else { Stop-HikariStep 'quiet' }
+    return $backup
+}
+
+# An error once the folder has been changed: where the backup is, and how to
+# go back to it.
+function Get-HikariRestoreMessage {
+    param([string]$Message, [string]$Backup, [string]$ConfigDir)
+    if ($Backup) { $Message += ' ' + (T 'restore_hint' @($Backup)) + ' ' + (T 'restore_how' @($ConfigDir)) }
+    return $Message
+}
+
+# The name of a folder in the summary: its player, or the folder itself.
+function Get-HikariFolderLabel {
+    param($Candidate)
+    if ($Candidate.Kind -eq 'folder') { return [string]$Candidate.ConfigDir }
+    return (Get-HikariKindLabel $Candidate.Kind)
+}
+
+# "  > AnimeJaNai  C:\...\portable_config", above the steps of a folder.
+function Write-HikariFolderHeader {
+    param($Candidate)
+    if ($Candidate.Kind -eq 'folder') {
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + $Candidate.ConfigDir), '')
+    }
+    else {
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + (Get-HikariKindLabel $Candidate.Kind) + '  '), '', $Candidate.ConfigDir, 'DarkGray')
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -3582,7 +4240,7 @@ function Restore-HikariPairs {
         Assert-HikariNoLink -Path $to -Root $ConfigDir
         New-HikariDirectory (Split-Path -Path $to -Parent)
         Move-Item -LiteralPath $from -Destination $to
-        Write-HikariInfo (T 'moved' @($pair[0], $pair[1]))
+        Write-HikariDetail (T 'moved' @($pair[0], $pair[1]))
     }
 }
 
@@ -3590,12 +4248,11 @@ function Uninstall-HikariTarget {
     param([Parameter(Mandatory = $true)]$Candidate, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $config = Get-HikariFullPath $Candidate.ConfigDir
-    Write-HikariInfo ''
-    Write-HikariInfo (T 'uninstalling_from' @($config))
-    try { $backup = New-HikariBackup -ConfigDir $config -Stamp $Stamp }
-    catch { throw (T 'backup_failed' @($config, $_.Exception.Message)) }
-    if ($backup) { Write-HikariInfo (T 'backup_done' @($backup)) }
+    Write-HikariDetail ''
+    Write-HikariDetail (T 'uninstalling_from' @($config))
+    $backup = New-HikariBackupStep $config $Stamp
 
+    Start-HikariStep (T 'ui_removing')
     try {
         Invoke-HikariSoscMigration $config
         $record = Read-HikariRecord $config
@@ -3647,7 +4304,7 @@ function Uninstall-HikariTarget {
             $orig = Join-HikariPath $originals $c
             if ($before -eq $true -and (Test-Path -LiteralPath $orig -PathType Leaf)) {
                 Copy-Item -LiteralPath $orig -Destination $p -Force
-                Write-HikariInfo (T 'conf_restored' @(('script-opts/' + $c)))
+                Write-HikariDetail (T 'conf_restored' @(('script-opts/' + $c)))
             }
             elseif ($before -eq $false) {
                 Remove-HikariItem -Path $p -Root $config
@@ -3655,10 +4312,10 @@ function Uninstall-HikariTarget {
             elseif ($before -eq $true) {
                 $firstBackup = ''
                 if ($values.ContainsKey('first_backup')) { $firstBackup = [string]$values['first_backup'] }
-                Write-HikariInfo (T 'conf_left' @(('script-opts/' + $c), $firstBackup))
+                Write-HikariNotice (T 'conf_left' @(('script-opts/' + $c), $firstBackup))
             }
             elseif (Test-Path -LiteralPath $p -PathType Leaf) {
-                Write-HikariInfo (T 'conf_unknown' @(('script-opts/' + $c)))
+                Write-HikariNotice (T 'conf_unknown' @(('script-opts/' + $c)))
             }
         }
 
@@ -3715,7 +4372,7 @@ function Uninstall-HikariTarget {
                 if (@(Find-HikariConflicts $config).Count -eq 0) {
                     if (Confirm-Hikari -Question (T 'ask_comment_osc') -Default (-not $script:NonInteractive)) {
                         Set-HikariLinesCommented -Path $mpvConf -Lines $oscOff
-                        foreach ($l in $oscOff) { Write-HikariInfo (T 'osc_commented' @($l.Content.Trim())) }
+                        foreach ($l in $oscOff) { Write-HikariDetail (T 'osc_commented' @($l.Content.Trim())) }
                     }
                     else { Write-HikariWarn (T 'osc_left') }
                 }
@@ -3736,7 +4393,7 @@ function Uninstall-HikariTarget {
                 $map = @{}
                 foreach ($l in $off) { $map[[int]$l.Index] = $l.Content }
                 Update-HikariLines -Path $inputConf -Map $map
-                Write-HikariInfo (T 'uncommented' @($off.Count))
+                Write-HikariDetail (T 'uncommented' @($off.Count))
             }
         }
         # And its glsl-shaders lines in mpv.conf, with the same checks: only
@@ -3747,7 +4404,7 @@ function Uninstall-HikariTarget {
                 $map = @{}
                 foreach ($l in $off) { $map[[int]$l.Index] = $l.Content }
                 Update-HikariLines -Path $mpvConf -Map $map
-                Write-HikariInfo (T 'uncommented_conf' @($off.Count))
+                Write-HikariDetail (T 'uncommented_conf' @($off.Count))
             }
         }
 
@@ -3792,11 +4449,13 @@ function Uninstall-HikariTarget {
         }
     }
     catch {
-        $message = $_.Exception.Message
-        if ($backup) { $message += ' ' + (T 'restore_hint' @($backup)) }
-        throw $message
+        Stop-HikariStep 'fail'
+        throw (Get-HikariRestoreMessage -Message $_.Exception.Message -Backup $backup -ConfigDir $config)
     }
-    Write-HikariOk (T 'uninstall_ok' @($config))
+    Stop-HikariStep 'ok'
+    Write-HikariDetailOk (T 'uninstall_ok' @($config))
+    Write-HikariUi
+    Write-HikariUi @('  ', '', $script:GlyphOk, 'Green', (' ' + (T 'ui_removed' @((Get-HikariFolderLabel $Candidate)))), '')
     return $backup
 }
 
@@ -4025,7 +4684,7 @@ function Invoke-HikariNoPlayerMenu {
 # Returns Ok (false: wrong usage with -Yes) and the targets (empty: cancelled).
 function Select-HikariTargets {
     param([hashtable]$Env, [string]$Mode, [string[]]$Paths)
-    Write-HikariInfo (T 'detecting')
+    Write-HikariDetail (T 'detecting')
     $all = @(Find-HikariPlayers -Env $Env)
     $chosen = New-Object System.Collections.Generic.List[object]
 
@@ -4193,8 +4852,30 @@ function Show-HikariVersions {
     }
 }
 
+# What the downloads must bring, decided before anything is downloaded or
+# touched: NeedUosc and NeedThumbfast (some folder lacks them exactly as
+# pinned) and Anime4KUpToDate (every folder has hikari's Anime4K exactly as
+# pinned: the summary says so; Anime4K itself is only downloaded when a
+# folder needs it, see Get-HikariAnime4KSource).
+function Get-HikariDownloadPlan {
+    param([object[]]$Targets)
+    $plan = [pscustomobject]@{ NeedUosc = $false; NeedThumbfast = $false; Anime4KUpToDate = (@($Targets).Count -gt 0) }
+    foreach ($t in $Targets) {
+        $config = Get-HikariFullPath $t.ConfigDir
+        $record = $null
+        if (Test-Path -LiteralPath $config -PathType Container) { $record = Read-HikariRecord $config -NoWarn }
+        if (-not (Test-HikariUoscUpToDate -ConfigDir $config -Record $record)) { $plan.NeedUosc = $true }
+        if (-not (Test-HikariThumbfastUpToDate $config)) { $plan.NeedThumbfast = $true }
+        if (-not (Test-HikariAnime4KUpToDate -Candidate $t -ConfigDir $config -Record $record)) { $plan.Anime4KUpToDate = $false }
+    }
+    return $plan
+}
+
 function Invoke-HikariMain {
-    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '', [bool]$ShowVersion = $false)
+    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '', [bool]$ShowVersion = $false,
+        [bool]$Detail = $script:HikariVerbose)
+    $script:HikariVerbose = $Detail
+    Initialize-HikariUi
     $script:NonInteractive = $Yes
     $script:HikariAnime4KChoice = $Anime4K
     # Keyboard menus only on a real interactive console; numbers otherwise.
@@ -4214,7 +4895,12 @@ function Invoke-HikariMain {
         try { [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12 } catch { }
     }
 
-    Write-HikariInfo (T 'title')
+    if ($script:HikariVerbose) { Write-HikariInfo (T 'title') }
+    else {
+        Write-HikariUi
+        Write-HikariUi @('  ', '', 'hikari', 'Cyan', (' ' + $script:HikariVersion), '')
+        Write-HikariUi
+    }
     if ($script:HikariVersion.StartsWith('preview-', [System.StringComparison]::Ordinal)) {
         Write-HikariWarn (T 'preview_note' @($script:HikariVersion, $script:HikariStableInstall))
     }
@@ -4252,19 +4938,32 @@ function Invoke-HikariMain {
     $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
     $ok = 0
     $temp = $null
+    $many = (@($targets).Count -gt 1)
+    # One folder: its name above the downloads. Several: above each block.
+    if (-not $many) { Write-HikariFolderHeader $targets[0]; Write-HikariUi }
     try {
         if ($Action -eq 'install') {
             $temp = New-HikariTempDir
             try {
                 $source = Get-HikariSource -TempDir $temp
-                $artifacts = Get-HikariArtifacts -TempDir $temp
+                # Only what some folder lacks is downloaded.
+                $plan = Get-HikariDownloadPlan -Targets $targets
+                $artifacts = Get-HikariArtifacts -TempDir $temp -NeedUosc $plan.NeedUosc -NeedThumbfast $plan.NeedThumbfast
+                if ($plan.Anime4KUpToDate) { Write-HikariRow -Label 'Anime4K' -Ok $true -Text (T 'ui_uptodate') }
+                Write-HikariUi
             }
             catch {
                 Write-HikariError (T 'error_generic' @($_.Exception.Message))
                 return 1
             }
         }
+        $first = $true
         foreach ($t in $targets) {
+            if ($many) {
+                if (-not $first) { Write-HikariUi }
+                Write-HikariFolderHeader $t
+            }
+            $first = $false
             try {
                 if ($Action -eq 'install') {
                     [void](Install-HikariTarget -Candidate $t -Source $source -Artifacts $artifacts -Stamp $stamp)
@@ -4280,13 +4979,27 @@ function Invoke-HikariMain {
         }
     }
     finally {
+        # Also after Ctrl+C: no spinner left on the line.
+        Hide-HikariSpinner
+        $script:HikariStep = ''
+        $script:HikariSpinHold = 0
+        $script:HikariBarLabel = ''
         if ($temp -and (Test-Path -LiteralPath $temp)) {
             Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
-    Write-HikariInfo ''
-    Write-HikariInfo (T 'summary' @($ok, @($targets).Count))
-    if ($ok -gt 0) { Write-HikariInfo (T 'restart') }
+    if ($script:HikariVerbose) {
+        Write-HikariInfo ''
+        Write-HikariInfo (T 'summary' @($ok, @($targets).Count))
+        if ($ok -gt 0) { Write-HikariInfo (T 'restart') }
+    }
+    elseif ($many) {
+        Write-HikariUi
+        Write-HikariUi @(('  ' + (T 'summary' @($ok, @($targets).Count))), '')
+        if ($ok -gt 0) { Write-HikariUi @(('  ' + (T 'restart')), '') }
+    }
+    elseif ($ok -eq 1) { Write-HikariUi @(('    ' + (T 'restart')), '') }
+    Write-HikariUi
     if ($ok -lt @($targets).Count) { return 1 }
     return 0
 }
@@ -4300,7 +5013,7 @@ $savedTls = $null
 try { $savedTls = [System.Net.ServicePointManager]::SecurityProtocol } catch { }
 try {
     $code = Invoke-HikariMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu) -Anime4K $Anime4K `
-        -ShowVersion ([bool]$ShowVersion)
+        -ShowVersion ([bool]$ShowVersion) -Detail ([bool]$Detail)
 }
 finally {
     if ($null -ne $savedTls) { try { [System.Net.ServicePointManager]::SecurityProtocol = $savedTls } catch { } }
@@ -4310,7 +5023,8 @@ finally {
 # exit: through iex, exit would close the user's PowerShell window.
 if ({ }.File) { exit $code }
 $global:LASTEXITCODE = $code
-} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K -ShowVersion:$HikariShowVersion
+} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K -ShowVersion:$HikariShowVersion `
+    -Detail:($VerbosePreference -eq 'Continue')
 }
 catch {
     # An unexpected error that got this far. Same rule as above: exit only when

@@ -713,7 +713,8 @@ spin_loop() {
     while kill -0 "$$" 2>/dev/null; do
         printf '\r  \033[36m%s\033[0m %s' "${SPIN_FRAMES[i]}" "$STEP_LABEL$G_DOTS"
         i=$(((i + 1) % n))
-        sleep 0.08
+        # A sleep without fractions of a second waits a whole one instead.
+        sleep 0.08 2>/dev/null || sleep 1
     done
 }
 spin_stop() {
@@ -1859,15 +1860,57 @@ add_record_entries() {
 # Sources and downloads
 # ---------------------------------------------------------------------------
 
-# Replaceable in tests: downloads $1 to $2. Only HTTPS (redirects too), TLS
-# 1.2 or newer. With FETCH_PROGRESS=1 curl draws its progress bar on stderr
-# (read by progress_reader); otherwise it only says what failed.
+# Replaceable in tests: downloads $1 to $2. Only HTTPS, TLS 1.2 or newer, and
+# no redirect (resolve_url has followed them already), at most 200 MB. With
+# FETCH_PROGRESS=1 curl draws its progress bar on stderr (read by
+# progress_reader); otherwise it only says what failed.
 hikari_fetch() {
     if [ "${FETCH_PROGRESS:-0}" = 1 ]; then
-        curl -fL --progress-bar --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 5 --retry 2 -o "$2" "$1"
+        curl -fL --progress-bar --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 -o "$2" "$1"
     else
-        curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 5 --retry 2 -o "$2" "$1"
+        curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 -o "$2" "$1"
     fi
+}
+
+# Replaceable in tests: where $1 redirects to ('' when it does not), asked
+# with a request for its first byte only, without following it.
+hikari_redirect_of() {
+    curl -sS --proto '=https' --tlsv1.2 --max-redirs 0 --retry 2 -r 0-0 -o /dev/null -w '%{redirect_url}' "$1"
+}
+
+# May a download be redirected to $1? Only to HTTPS on GitHub: github.com,
+# raw.githubusercontent.com or a host under githubusercontent.com (GitHub
+# serves release files from release-assets.githubusercontent.com), with no
+# port or user name in the address.
+redirect_ok() {
+    local rest host
+    case $1 in https://*) ;; *) return 1 ;; esac
+    rest=${1#https://}
+    host=${rest%%[/?#]*}
+    case $host in '' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-]*) return 1 ;; esac
+    host=$(lower "$host")
+    case $host in
+        github.com | raw.githubusercontent.com) return 0 ;;
+        *.*.githubusercontent.com) return 1 ;;
+        ?*.githubusercontent.com) return 0 ;;
+    esac
+    return 1
+}
+
+# FINAL_URL: where $1 leads once its redirects (at most 5) are followed, each
+# checked by redirect_ok. Fails, with HIKARI_ERR set, on a redirect elsewhere.
+resolve_url() {
+    local url=$1 next n=0
+    while :; do
+        if ! next=$(hikari_redirect_of "$url"); then HIKARI_ERR=$(T download_failed "$1"); return 1; fi
+        if [ -z "$next" ]; then FINAL_URL=$url; return 0; fi
+        # What a server sent is never shown with its control characters.
+        next=$(printf '%s' "$next" | LC_ALL=C tr -d '[:cntrl:]' | cut -c1-500)
+        if ! redirect_ok "$next"; then HIKARI_ERR=$(T url_bad "$next"); return 1; fi
+        n=$((n + 1))
+        if [ "$n" -gt 5 ]; then HIKARI_ERR=$(T download_failed "$1"); return 1; fi
+        url=$next
+    done
 }
 
 # hikari_fetch with a progress bar for row $3 on a terminal. What curl says
@@ -1902,7 +1945,11 @@ verified_download() {
     if [ -z "$sha" ]; then HIKARI_ERR=$(T hash_bad "$url" '?' '?'); return 1; fi
     detail "$(T downloading "$url")"
     rm -f "$out"
-    if ! fetch_file "$url" "$out" "$label" || [ ! -f "$out" ]; then
+    if ! resolve_url "$url"; then
+        [ -z "$label" ] || row_done "$label" fail
+        return 1
+    fi
+    if ! fetch_file "$FINAL_URL" "$out" "$label" || [ ! -f "$out" ]; then
         rm -f "$out"
         HIKARI_ERR=$(T download_failed "$url")$FETCH_NOTE
         [ -z "$label" ] || row_done "$label" fail

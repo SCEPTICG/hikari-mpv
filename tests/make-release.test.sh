@@ -227,6 +227,8 @@ hikari_fetch() {
         *) return 22 ;;
     esac
 }
+# No redirect: nothing reaches the network.
+hikari_redirect_of() { :; }
 hikari_uname() { printf Darwin; }
 hikari_cpu_brand() { printf 'Apple M5'; }
 hikari_find_mpv() { printf /opt/homebrew/bin/mpv; }
