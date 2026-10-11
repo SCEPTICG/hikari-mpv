@@ -1014,6 +1014,8 @@ function Write-HikariError {
 function Read-HikariLine {
     param([string]$Prompt)
     $script:HikariLastBlank = $false
+    # In the summary the question is indented as the rest of it.
+    if ($script:HikariFancy) { $Prompt = '  ' + $Prompt }
     return (Read-Host -Prompt $Prompt)
 }
 
@@ -1415,25 +1417,27 @@ function New-HikariListFrame {
 # the ticked entries or, with none ticked, the highlighted one; Enter on an
 # action entry chooses it (together with what is ticked).
 # Single choice: a digit chooses the entry with that Hotkey (not when disabled).
-# $Header: lines written above the menu, only once it is sure the menu fits.
-# In the summary (fancy mode) they are part of the menu instead, and all of it
-# goes once answered: the summary says the folders already. Otherwise the
-# header stays and the menu is replaced by a line with the choice.
+# $Header and $Title: lines written above the menu, only once it is sure the
+# menu fits. $Header always stays on the screen (something to keep, such as a
+# link). $Title, in the summary (fancy mode), is part of the menu instead and
+# goes with it once answered: the summary says the folders already. Otherwise
+# the title stays too and the menu is replaced by a line with the choice.
 # Returns Cancelled, Index (entry Enter was pressed on; -1 for ticked ones) and
 # Checked (indexes of the chosen entries that are not actions).
 function Invoke-HikariListMenu {
-    param([object[]]$Items, [switch]$Multi, [int]$Start = 0, [string[]]$Header = @())
+    param([object[]]$Items, [switch]$Multi, [int]$Start = 0, [string[]]$Header = @(), [string[]]$Title = @())
     $n = $Items.Count
     $checked = New-Object 'bool[]' $n
     $cur = Get-HikariNextItem -Items $Items -From ($Start - 1) -Step 1
     $result = $null
     $drawn = 0
     $inFrame = @()
-    if ($script:HikariFancy) { $inFrame = @($Header) }
+    if ($script:HikariFancy) { $inFrame = @($Title) }
     # Too tall even when compact: this throws before anything is written, so
     # the numbered question that replaces it starts on a clean screen.
     [void](Get-HikariListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi) -Header $inFrame)
-    if (-not $script:HikariFancy) { foreach ($h in $Header) { Write-HikariInfo $h } }
+    foreach ($h in $Header) { Write-HikariSay $h }
+    if (-not $script:HikariFancy) { foreach ($h in $Title) { Write-HikariInfo $h } }
     $console = & $script:HikariConsoleEnter
     try {
         & $script:HikariKeyFlush
@@ -4573,7 +4577,7 @@ function Read-HikariTargetChoice {
         $otherIndex = $items.Count
         $items.Add((New-HikariMenuItem -Label ((Get-HikariPlainLabel (T 'opt_other')) + $script:GlyphEllipsis) -Action $true))
         $items.Add((New-HikariMenuItem -Label (Get-HikariPlainLabel (T 'opt_quit')) -Action $true -Quit $true))
-        $m = Invoke-HikariListMenu -Items $items.ToArray() -Multi -Header $header
+        $m = Invoke-HikariListMenu -Items $items.ToArray() -Multi -Title $header
         $sel = [pscustomobject]@{ Indexes = @(); Other = $false; Quit = $false }
         if ($m.Cancelled -or ($m.Index -ge 0 -and $items[$m.Index].Quit)) { $sel.Quit = $true; return $sel }
         $sel.Indexes = @($m.Checked)

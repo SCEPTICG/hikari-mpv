@@ -3431,6 +3431,47 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
     }
 }
 
+Test-Case 'summary on a console: with no player, the link to get mpv stays once the menu goes' {
+    $link = 'Ways to get mpv: https://mpv.io/installation/'
+    $script:ReadPrompts = New-Object System.Collections.Generic.List[string]
+    function Read-Host { param([string]$Prompt) $script:ReadPrompts.Add($Prompt); return '' }
+    try {
+        foreach ($keys in @(@('Escape'), @('Ctrl+C'), @('UpArrow', 'Enter'))) {
+            Use-FakeConsole $keys
+            $text = Get-ShownText {
+                $script:HikariFancy = $true
+                $script:NoPlayerAnswer = Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x'
+            }
+            Assert-Equal $script:NoPlayerAnswer '0' ('exit with ' + [string]::Join(' ', $keys))
+            Assert-True ((Get-ScreenLines $text) -contains ('  ' + $link)) ('the link stays, indented (' + [string]::Join(' ', $keys) + '); output: ' + $text)
+            Assert-True (-not $script:Frames[0].Contains('mpv.io')) ('the link is not part of the menu: ' + $script:Frames[0])
+            Assert-Equal (Get-LastFrame) '' 'the menu taken off the screen'
+        }
+        # A narrow window does not cut it: it is not drawn by the menu.
+        Use-FakeConsole @('Escape')
+        $script:HikariMenuWidth = 50
+        $text = Get-ShownText { $script:HikariFancy = $true; [void](Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') }
+        Assert-True ((Get-ScreenLines $text) -contains ('  ' + $link)) ('50 columns: the whole link; output: ' + $text)
+        # -Verbose (no summary): the link stays as it was, without the indent.
+        Use-FakeConsole @('Escape')
+        $text = Get-ShownText { $script:HikariFancy = $false; [void](Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') }
+        Assert-True ((Get-ScreenLines $text) -contains $link) ('-Verbose: the link; output: ' + $text)
+        # Typed answers in the summary (a folder, a yes/no in numbers) are indented as it is.
+        $script:HikariFancy = $true
+        [void](Read-HikariLine 'Folder')
+        $script:HikariMenu = $false
+        [void](Confirm-HikariAsk -Question 'Go on?' -Default $true)
+        $script:HikariFancy = $false
+        [void](Read-HikariLine 'Folder')
+        Assert-Equal ([string]::Join('|', $script:ReadPrompts)) ('  Folder|  Go on? [Y/n] |Folder') 'prompts'
+    }
+    finally {
+        $script:HikariFancy = $false
+        Remove-Item Function:\Read-Host
+        Reset-FakeConsole
+    }
+}
+
 Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
     $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'

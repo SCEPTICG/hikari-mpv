@@ -1808,6 +1808,26 @@ check 'terminal, Esc in the first menu: only the title and "Cancelled."' test "$
 LC_ALL=C pty_run "$(newhome fancy-esc2)" '\r' '\x1b'
 screen "$out" >"$tmp/fancy-esc-screen"
 check 'terminal, Esc in the folders menu: only the title and "Cancelled."' test "$rc" = 0 -a "$(cat "$tmp/fancy-esc-screen")" = "$(cat "$tmp/want-fancy-esc")"
+# A folder from MPV_HOME with control characters: shown without them in the
+# menu and in the summary (used as it is).
+h=$(newhome fancy-ctl)
+esc=$(printf '\033')
+ctl_dir="$h/cu${esc}[31mstom"
+mkdir -p "$ctl_dir"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r'
+check 'terminal, MPV_HOME with an escape sequence: installs into it' test "$rc" = 0 -a -f "$ctl_dir/hikari-installed.txt"
+check 'terminal, MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mstom"
+# shellcheck disable=SC2088 # a ~ as shown, not to expand.
+check 'terminal, MPV_HOME with an escape sequence: shown without it' has "$out" '~/cu[31mstom'
+# Typed answers in the summary are indented as it is: the folder of "Other
+# folder..." and a yes/no asked in writing.
+sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
+    "$repo/install/hikari.sh" >"$tmp/ask-funcs.sh"
+ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
+    NONINTERACTIVE=0; MENU=0; HAVE_INPUT=1; FANCY=1; exec 3</dev/null
+    read_line Folder; confirm_ask "Go on?" yes; FANCY=0; read_line Folder; printf "|"' _ "$tmp/ask-funcs.sh")
+check 'terminal, typed answers: indented in the summary only' \
+    test "$ask_out" = "$(printf '  Folder: \n  Go on? [Y/n] \nFolder: \n|')"
 # --verbose keeps the menus' title and the line with the choice.
 LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r'
 check 'terminal, --verbose: the title of the folders and the chosen entries stay' \

@@ -868,9 +868,11 @@ error() {
 }
 
 # The home folder as ~ (paths in the summary).
+# Only to be shown: without control characters (see clean_text), as the folder
+# can come from $MPV_HOME, $XDG_CONFIG_HOME or be typed.
 short_path() {
     # shellcheck disable=SC2088 # a ~ to read, not to expand.
-    case $1 in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac
+    case $1 in "$HOME"/*) clean_text "~/${1#"$HOME"/}" ;; *) clean_text "$1" ;; esac
 }
 # The name of a candidate in the summary: its player, or its folder.
 folder_label() {
@@ -916,7 +918,8 @@ io_setup() {
 read_line() {
     REPLY_LINE=''
     UI_BLANK=0
-    printf '%s: ' "$1"
+    # In the summary the question is indented as the rest of it.
+    if [ "$FANCY" = 1 ]; then printf '  %s: ' "$1"; else printf '%s: ' "$1"; fi
     if [ "$HAVE_INPUT" != 1 ]; then printf '\n'; return 1; fi
     if IFS= read -r REPLY_LINE <&3; then
         [ -t 3 ] || printf '%s\n' "$REPLY_LINE"
@@ -960,8 +963,10 @@ confirm_ask() {
     fi
     local suffix
     if [ "$default" = yes ]; then suffix=$(T yes_no_default_yes); else suffix=$(T yes_no_default_no); fi
+    local pre=''
+    [ "$FANCY" != 1 ] || pre='  '
     while :; do
-        printf '%s' "$question$suffix"
+        printf '%s%s' "$pre" "$question$suffix"
         REPLY_LINE=''
         if ! IFS= read -r REPLY_LINE <&3 && [ -z "$REPLY_LINE" ]; then
             printf '\n'
@@ -3824,7 +3829,7 @@ choose_targets() {
     fi
     [ "${#LIST[@]}" -gt 0 ] || [ "$mode" != uninstall ] || warn "$(T nothing_to_uninstall)"
     if [ "$MENU" = 1 ]; then
-        local header='' other idx tags label
+        local header='' other idx tags label dir
         if [ "${#LIST[@]}" -gt 0 ]; then
             if [ "$mode" = uninstall ]; then header=$(T found_header_uninst); else header=$(T found_header); fi
         fi
@@ -3832,7 +3837,9 @@ choose_targets() {
         for idx in ${LIST[@]+"${LIST[@]}"}; do
             label=$(kind_label "${C_KIND[idx]}")
             tags=$(candidate_tags "$idx")
-            menu_item "$label${tags:+  $tags}" "${C_DIR[idx]}" 0 0 "$label ($(fit_middle "${C_DIR[idx]}" 40))"
+            # Only shown: without control characters (see clean_text).
+            dir=$(clean_text "${C_DIR[idx]}")
+            menu_item "$label${tags:+  $tags}" "$dir" 0 0 "$label ($(fit_middle "$dir" 40))"
         done
         other=${#M_LABEL[@]}
         local ol ql
