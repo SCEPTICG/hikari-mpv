@@ -60,8 +60,9 @@
 --   any work, so hostile names cost linear time.
 -- - For hikari-skip's AniSkip lookup, the series, season and episode of a
 --   release name with one plain episode (`Show - 05`, `Show S2 - 05`,
---   `Show.S02E05`), and whether it looks like anime (a [group] in front, the
---   `- 05` marker or an anime-only service such as CR in the tail), go to
+--   `Show.S02E05`), and whether it looks like anime (a [Group] in front, an
+--   anime-only service such as CR, or the `- 05` marker with a resolution,
+--   source or CRC; see looks_like_anime), go to
 --   user-data/hikari_title/release on start-file, with the path they are for
 --   (`{}` for anything else and after end-file). This does not depend on the
 --   options below: they are about the title on screen.
@@ -498,15 +499,54 @@ end
 -- Services and words that only anime releases carry.
 local ANIME_WORDS = {}
 word_set(ANIME_WORDS, [[cr crunchyroll adn hidive funi funimation b-global bilibili]])
+-- Sources that only releases carry (not `web` or `dvd` alone: ordinary words).
+local SOURCE_WORDS = {}
+word_set(SOURCE_WORDS, [[bd bdrip bluray blu-ray bdremux web-dl webdl webrip web-rip hdtv dvdrip]])
 
--- Does the release look like anime? A [group] in front (fansub style), the
--- `Show - 05` marker, or an anime-only service in the tail.
-local function looks_like_anime(tokens, marker)
-	if marker.dash or tokens[1].group == '[' then return true end
+-- A fansub [Group] in front: a [...] first token with a letter in it
+-- (`[2024]` or `[01]` are not groups).
+local function front_group(tokens)
+	local t = tokens[1]
+	return t ~= nil and t.group == '[' and t.text:sub(2, -2):find('%a') ~= nil
+end
+
+-- Does a word of the name, inside brackets or not, pass `test`? Words split
+-- at spaces, dots, underscores, commas and `+` (`1080p.CR.WEB-DL` is three).
+local function any_word(tokens, test)
 	for _, t in ipairs(tokens) do
-		if not t.group and ANIME_WORDS[t.text:lower()] then return true end
+		local text = t.group and t.text:sub(2, -2) or t.text
+		for word in text:gmatch('[^%s%._,%+]+') do
+			if test(word:lower()) then return true end
+		end
 	end
 	return false
+end
+
+local function anime_service(word) return ANIME_WORDS[word] == true end
+
+-- A resolution (`1080p`, `720p`, `2160p`, `1080i`) or a source (`BD`, `WEB-DL`...).
+local function resolution_or_source(word)
+	return word:match('^%d%d%d%d?[pi]$') ~= nil or SOURCE_WORDS[word] == true
+end
+
+-- A CRC: `[ABCD1234]`, eight hex digits with a letter (`[20240115]` is a date).
+local function has_crc(tokens)
+	for _, t in ipairs(tokens) do
+		local inner = t.group == '[' and t.text:sub(2, -2)
+		if inner and inner:match('^%x%x%x%x%x%x%x%x$') and inner:find('%a') then return true end
+	end
+	return false
+end
+
+-- Does the release look like anime? An episode marker (the caller has one)
+-- and a second sign, so that a home video called `Holiday - 01.mp4` or a
+-- series such as `The Office - 05.mkv` is never sent anywhere: a [Group] in
+-- front, an anime service anywhere, or the `Show - 05` marker together with
+-- a resolution, a source or a CRC. A western `Show.S01E05.1080p.WEB-DL` has
+-- neither the group, the service nor the `- 05` marker: not anime.
+local function looks_like_anime(tokens, marker)
+	if front_group(tokens) or any_word(tokens, anime_service) then return true end
+	return marker.dash == true and (has_crc(tokens) or any_word(tokens, resolution_or_source))
 end
 
 -- What hikari-skip can look up on AniSkip for a marker: one plain episode of
