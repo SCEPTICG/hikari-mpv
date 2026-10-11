@@ -763,6 +763,8 @@ $script:HikariSpinTicks = [long]0
 $script:HikariBarLabel = ''
 $script:HikariBarStep = 0
 $script:HikariBarTicks = [long]0
+# A bar is on its line, not yet ended by a row or a new line.
+$script:HikariBarOpen = $false
 # ASCII until Initialize-HikariUi has looked at the console.
 $script:GlyphOk = '+'
 $script:GlyphFail = 'x'
@@ -905,6 +907,7 @@ function Write-HikariRow {
     if ($Text) { $Text = ' ' + $Text }
     # On a console, over what the progress bar left on the line.
     if ($script:HikariFancy) { Write-Host ("`r" + (' ' * 45) + "`r") -NoNewline }
+    $script:HikariBarOpen = $false
     Write-HikariPieces @(('  ' + $Label.PadRight(12)), '', $mark, $color, $Text, '')
 }
 
@@ -933,6 +936,14 @@ function Show-HikariBar {
         Write-HikariPieces -NoNewline @($start, '', ($script:GlyphBarEmpty * $at), 'DarkGray', ($script:GlyphBar * 4), 'Cyan',
             ($script:GlyphBarEmpty * ($width - 4 - $at)), 'DarkGray', '      ', '')
     }
+    $script:HikariBarOpen = $true
+}
+
+# Takes a bar cut short (Ctrl+C) off its line.
+function Clear-HikariBar {
+    if (-not $script:HikariBarOpen) { return }
+    $script:HikariBarOpen = $false
+    Write-Host ("`r" + (' ' * 50) + "`r") -NoNewline
 }
 
 function Write-HikariInfo {
@@ -2489,6 +2500,15 @@ function Get-HikariFileSha256 {
     return ([System.BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
 }
 
+# $Text without control characters (C0, DEL and C1: \p{Cc}), cut to $Max
+# characters with "..." when longer: what a server sent, ready to be shown.
+function Get-HikariCleanText {
+    param([string]$Text, [int]$Max = 200)
+    $t = [regex]::Replace([string]$Text, '\p{Cc}', '')
+    if ($Max -gt 0 -and $t.Length -gt $Max) { $t = $t.Substring(0, $Max) + '...' }
+    return $t
+}
+
 # Where a redirect from $From to $Location leads, as an absolute URI; throws
 # unless it is HTTPS on GitHub: github.com, raw.githubusercontent.com or a
 # host right under githubusercontent.com (release-assets..., objects...), on
@@ -2497,12 +2517,12 @@ function Get-HikariRedirectUri {
     param([System.Uri]$From, [string]$Location)
     $to = $null
     if ([string]::IsNullOrEmpty($Location) -or -not [System.Uri]::TryCreate($From, $Location, [ref]$to)) {
-        throw (T 'url_bad' @([string]$Location))
+        throw (T 'url_bad' @((Get-HikariCleanText $Location)))
     }
     $hostName = $to.Host.ToLowerInvariant()
     $ok = $to.Scheme -eq 'https' -and $to.IsDefaultPort -and -not $to.UserInfo -and
         ($script:AllowedHosts -contains $hostName -or $hostName -cmatch $script:RedirectHostPattern)
-    if (-not $ok) { throw (T 'url_bad' @($to.AbsoluteUri)) }
+    if (-not $ok) { throw (T 'url_bad' @((Get-HikariCleanText $to.AbsoluteUri))) }
     return $to
 }
 
@@ -2550,7 +2570,7 @@ function Invoke-HikariHttpDownload {
         catch {
             $web = Get-HikariInnerException $_.Exception
             if ($web -is [System.Net.WebException] -and $null -ne $web.Response) { try { $web.Response.Close() } catch { } }
-            throw (T 'download_failed' @($Url, $web.Message))
+            throw (T 'download_failed' @($Url, (Get-HikariCleanText $web.Message 300)))
         }
         try {
             $code = [int]$response.StatusCode
@@ -2567,7 +2587,7 @@ function Invoke-HikariHttpDownload {
                 # file (thrown as text: no inner exception) pass as they are.
                 $e = $_.Exception
                 if ($e -is [System.Management.Automation.RuntimeException] -and $null -eq $e.InnerException) { throw }
-                throw (T 'download_failed' @($Url, (Get-HikariInnerException $e).Message))
+                throw (T 'download_failed' @($Url, (Get-HikariCleanText (Get-HikariInnerException $e).Message 300)))
             }
             finally { $out.Dispose(); $in.Dispose() }
             return
@@ -2620,15 +2640,18 @@ function Invoke-HikariVerifiedDownload {
         if ($Label -and $script:HikariFancy) {
             Show-HikariBar -Done 1 -Total 1 -Now
             if (-not $script:HikariQuiet) { Write-Host '' }
+            $script:HikariBarOpen = $false
         }
         elseif ($Label) { Write-HikariRow -Label $Label -Ok $true -Text (T 'ui_downloaded') }
     }
     catch {
-        if ($Label) { Write-HikariRow -Label $Label -Ok $false }
+        # Ctrl+C: no failed row, only the bar taken away (below).
+        if ($Label -and $_.Exception -isnot [System.Management.Automation.PipelineStoppedException]) { Write-HikariRow -Label $Label -Ok $false }
         throw
     }
     finally {
         if ($Label -and $script:HikariFancy) {
+            Clear-HikariBar
             $script:HikariBarLabel = ''
             Exit-HikariOutput
         }
@@ -4979,7 +5002,8 @@ function Invoke-HikariMain {
         }
     }
     finally {
-        # Also after Ctrl+C: no spinner left on the line.
+        # Also after Ctrl+C: no spinner or bar left on the line.
+        Clear-HikariBar
         Hide-HikariSpinner
         $script:HikariStep = ''
         $script:HikariSpinHold = 0

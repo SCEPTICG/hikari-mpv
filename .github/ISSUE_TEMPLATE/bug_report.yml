@@ -66,7 +66,7 @@ body:
     attributes:
       label: Installer output or mpv log
       description: |
-        For an installer problem, run it again with `--verbose` (macOS and Linux) or `-Verbose` (Windows) and paste everything it prints: without it, the installer only shows a short summary. For a player problem, the relevant part of an mpv log (`mpv --log-file=mpv.log <file>`). Remove anything private first.
+        For an installer problem, run it again with `--verbose` (macOS and Linux) or `-Verbose` (Windows) and paste everything it prints: without it, the installer only shows a short summary. That output lists the paths of your mpv folders and backups, which usually include your user name (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`): replace it with something like `<user>` if you prefer. For a player problem, the relevant part of an mpv log (`mpv --log-file=mpv.log <file>`). Remove anything private first.
 
         macOS and Linux: `curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --verbose`
 

@@ -3340,6 +3340,42 @@ Test-Case 'summary on a console: progress bars, a spinner that ends in a tick, c
     }
 }
 
+Test-Case 'summary on a console: Ctrl+C half-way through a download takes the bar off its line' {
+    $d = New-TestDir 'summary-ctrlc'
+    $savedFancy = $script:HikariFancyProbe
+    $savedDl = $script:HikariDownloader
+    # What Ctrl+C does to a download: the pipeline stops half-way.
+    $script:HikariDownloader = {
+        param([string]$Url, [string]$OutFile, [scriptblock]$Progress)
+        Start-Sleep -Milliseconds 150
+        if ($Progress) { & $Progress 25 100 }
+        throw (New-Object System.Management.Automation.PipelineStoppedException)
+    }
+    try {
+        $script:HikariFancyProbe = { $true }
+        $text = Get-ShownText {
+            $script:HikariVerbose = $false
+            Initialize-HikariUi
+            # Run as a pipeline of its own, so that stopping it does not stop the tests.
+            $script:CtrlCArgs = @{ Url = $script:ThumbfastUrl; Sha256 = ('0' * 64); OutFile = (P @($d, 'thumbfast.lua')); Label = 'thumbfast' }
+            $ps = [powershell]::Create([System.Management.Automation.RunspaceMode]::CurrentRunspace)
+            try {
+                [void]$ps.AddScript('$a = $script:CtrlCArgs; Invoke-HikariVerifiedDownload @a')
+                try { [void]$ps.Invoke() } catch { }
+            }
+            finally { $ps.Dispose() }
+        }
+        Assert-True ($text.Contains(' 25 %')) ('the bar was drawn; output: ' + $text)
+        Assert-True ($text.EndsWith("`r" + (' ' * 50) + "`r")) ('then taken away; output: ' + $text)
+        Assert-Equal @(Get-SummaryLines $text | Where-Object { $_.Trim() }).Count 0 ('nothing left on screen: ' + [string]::Join('|', @(Get-SummaryLines $text)))
+        Assert-True (-not $script:HikariBarOpen) 'no bar open'
+    }
+    finally {
+        $script:HikariFancyProbe = $savedFancy
+        $script:HikariDownloader = $savedDl
+    }
+}
+
 Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
     $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'
@@ -3350,6 +3386,18 @@ Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit 
             'https://a.b.githubusercontent.com/x', 'https://user@release-assets.githubusercontent.com/x')) {
         Assert-Throws { Get-HikariRedirectUri -From $from -Location $bad } '*only HTTPS from GitHub*' ('refused: ' + $bad)
     }
+    # GitHub's signed addresses (~900 characters) are used whole.
+    $long = 'https://release-assets.githubusercontent.com/uosc.zip?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-10-11T12%3A00%3A00Z&skoid=96c2d410&sig=' + ('AbCdEfGhIjKlMnOp' * 60) + '%3D'
+    Assert-True ($long.Length -gt 900) 'a long address'
+    Assert-Equal (Get-HikariRedirectUri -From $from -Location $long).AbsoluteUri $long 'a signed address of ~1000 characters, whole'
+    # What a server sent is shown without control characters (C0, DEL, C1) and cut short.
+    $evil = 'https://evil.example/' + [char]0x9B + '31m' + [char]27 + '[0m' + [char]0x7F + ('x' * 500)
+    $msg = ''
+    try { [void](Get-HikariRedirectUri -From $from -Location $evil) } catch { $msg = $_.Exception.Message }
+    Assert-True ($msg -like 'Refusing to download https://evil.example/*only HTTPS from GitHub*') ('refused; message: ' + $msg)
+    Assert-Equal @($msg.ToCharArray() | Where-Object { [char]::IsControl($_) }).Count 0 'no control character in the message'
+    Assert-True ($msg.Length -lt 300) ('cut short: ' + $msg.Length)
+    Assert-Equal (Get-HikariCleanText ('a' + [char]7 + 'b' + [char]0x85 + 'c' + [char]10 + 'd') 0) 'abcd' 'C0 and C1 taken out'
     $bytes = New-Object byte[] 300000
     (New-Object System.Random 7).NextBytes($bytes)
     $in = New-Object System.IO.MemoryStream (, $bytes)

@@ -112,13 +112,16 @@ hikari_fetch() {
         "$THUMBFAST_URL") f=$FAKE/thumbfast.lua ;;
         "$ANIME4K_URL") f=$FAKE/anime4k.zip ;;
         https://release-assets.githubusercontent.com/uosc.zip) f=$FAKE/uosc.zip ;;
+        # A signed address, as GitHub sends: served only when it comes whole.
+        https://release-assets.githubusercontent.com/uosc.zip\?*)
+            [ "$1" != "${HIKARI_TEST_REDIRECT#* }" ] || f=$FAKE/uosc.zip ;;
     esac
     if [ "${FETCH_PROGRESS:-0}" = 1 ]; then
         if [ -n "${HIKARI_TEST_NOSIZE:-}" ]; then
             for i in 1 2 3; do printf '\r-=O=-  #   #  ' >&2; sleep 0.1; done
         else
             printf '\r####                    25.0%%' >&2; sleep 0.15
-            printf '\r########                50.0%%' >&2; sleep 0.15
+            printf '\r########                50.0%%' >&2; sleep "${HIKARI_TEST_PAUSE:-0.15}"
         fi
     fi
     if [ -n "${HIKARI_TEST_FAIL_URL:-}" ] && [ "$1" = "$HIKARI_TEST_FAIL_URL" ]; then
@@ -172,6 +175,7 @@ shell_errors() {
 answers() { printf "$1" >"$tmp/answers.txt"; HIKARI_TEST_TTY="$tmp/answers.txt"; }
 no_answers() { unset HIKARI_TEST_TTY; }
 newhome() { local h="$tmp/home-$1"; mkdir -p "$h"; printf '%s' "$h"; }
+repeat_text() { local i=0 o=''; while [ "$i" -lt "$1" ]; do o=$o$2; i=$((i + 1)); done; printf '%s' "$o"; }
 show_out() { sed 's/^/     | /' "$out"; }
 rec() { grep "^$2=" "$1/hikari-installed.txt" | head -n 1 | cut -d= -f2-; }
 shader_list() { (cd "$1" 2>/dev/null && ls | sort | tr '\n' ' '); }
@@ -1000,6 +1004,29 @@ HIKARI_TEST_REDIRECT='https://github.com/tomasklaen/uosc/releases/download/5.13.
     run "$h" --yes --anime4k no
 check 'redirect to release-assets.githubusercontent.com: followed, checked, installed' \
     test "$rc" = 0 -a -n "$(grep -x 'https://release-assets.githubusercontent.com/uosc.zip' "$fake/downloads.log")" -a -f "$h/.config/mpv/scripts/uosc/main.lua"
+# GitHub's signed addresses run to ~900 characters: they are used whole.
+sig=$(repeat_text 60 'AbCdEfGhIjKlMnOp')
+long="https://release-assets.githubusercontent.com/uosc.zip?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-10-11T12%3A00%3A00Z&rscd=attachment%3B+filename%3Duosc.zip&rsct=application%2Foctet-stream&skoid=96c2d410&sig=$sig%3D"
+h=$(newhome redirect-long)
+: >"$fake/downloads.log"
+HIKARI_TEST_REDIRECT="https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip $long" \
+    run "$h" --yes --anime4k no
+check "redirect to a signed address of ${#long} characters: used whole, installed" \
+    test "${#long}" -gt 900 -a "$rc" = 0 -a "$(grep -c -xF "$long" "$fake/downloads.log")" = 1 -a -f "$h/.config/mpv/scripts/uosc/main.lua"
+h=$(newhome redirect-huge)
+: >"$fake/downloads.log"
+HIKARI_TEST_REDIRECT="https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip $long$(repeat_text 600 'abcdefghijklmnop')" \
+    run "$h" --yes --anime4k no
+check 'redirect to an address over 8192 characters: refused, shown cut short' \
+    test "$rc" = 1 -a -z "$(grep -v '^https://github.com/' "$fake/downloads.log")" -a -n "$(grep -F 'Refusing to download https://release-assets.githubusercontent.com/uosc.zip?sp=r' "$out")" \
+    -a "$(awk 'length > 400' "$out" | wc -l | tr -d ' ')" = 0
+h=$(newhome redirect-c1)
+: >"$fake/downloads.log"
+HIKARI_TEST_REDIRECT="https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip https://evil.example/$(printf '\302\233')31mX$(printf '\033')[0m" \
+    run "$h" --yes --anime4k no
+check 'redirect elsewhere with C0 and C1 control characters: refused, shown without them' \
+    test "$rc" = 1 -a -n "$(grep -F 'Refusing to download https://evil.example/31mX[0m:' "$out")" \
+    -a -z "$(LC_ALL=C grep -F "$(printf '\302\233')" "$out")" -a -z "$(LC_ALL=C grep -F "$(printf '\033')" "$out")"
 for target in 'https://evil.example/uosc.zip' 'http://release-assets.githubusercontent.com/uosc.zip' \
     'https://a.b.githubusercontent.com/uosc.zip' 'https://release-assets.githubusercontent.com:8443/uosc.zip' \
     'https://user@release-assets.githubusercontent.com/uosc.zip'; do
@@ -1564,6 +1591,15 @@ def wait_menu(limit):
             return False
     return True
 alive = drain(1.5)
+# PTY_INTR_AT: Ctrl+C once that text has been drawn.
+intr = os.environ.get('PTY_INTR_AT', '').encode()
+if intr:
+    end = time.time() + 30
+    while alive and intr not in out and time.time() < end:
+        alive = drain(0.05)
+    if alive:
+        os.write(fd, b'\x03')
+        alive = drain(0.5)
 for k in keys:
     if alive and menus:
         alive = wait_menu(30)
@@ -1722,6 +1758,12 @@ check 'terminal, error: x Installing, then what failed, the backup and how to un
 HIKARI_TEST_FAIL_URL='https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip' LC_ALL=C PTY_OPTS='--yes' pty_run "$(newhome fancy-dlerror)"
 check 'terminal, failed download: the row ends in x, the error says what curl said' \
     test "$rc" = 1 -a -n "$(screen "$out" | grep -x '  uosc        x')" -a -n "$(screen "$out" | grep -F 'Could not download https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip. curl: (22) The requested URL returned error: 404')"
+# Ctrl+C halfway through a bar (25 % drawn, the download paused): the line is
+# cleared, nothing left behind.
+HIKARI_TEST_PAUSE=5 PTY_INTR_AT=' 25 %' LC_ALL=C PTY_OPTS='--yes' pty_run "$(newhome fancy-intr)"
+check 'terminal, Ctrl+C during a download: exit 130, the bar taken off its line' \
+    test "$rc" = 130 -a -n "$(nocolor "$out" | grep -F ' 25 %')" -a -z "$(screen "$out" | grep -E '%|\^C')" -a -z "$(ls -A "$tmp/tmpdir")"
+screen "$out" | grep -E '%|\^C' | sed 's/^/     | /'
 # Questions while the spinner runs (Anime4K by hand on the Mac): it gets out
 # of the way for the warnings and the menu, then carries on.
 h=$(newhome fancy-ask)

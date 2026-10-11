@@ -764,6 +764,7 @@ row_done() { # row_done <label> <ok|fail> [text]
     local mark
     if [ "$2" = ok ]; then mark=$(paint 32 "$G_OK"); else mark=$(paint 31 "$G_FAIL"); fi
     [ "$FANCY" != 1 ] || printf '\r\033[K'
+    BAR_ACTIVE=0
     printf '  %-12s%s%s\n' "$1" "$mark" "${3:+ $3}"
 }
 
@@ -1861,21 +1862,23 @@ add_record_entries() {
 # ---------------------------------------------------------------------------
 
 # Replaceable in tests: downloads $1 to $2. Only HTTPS, TLS 1.2 or newer, and
-# no redirect (resolve_url has followed them already), at most 200 MB. With
+# no redirect (resolve_url has followed them already), at most 200 MB; a
+# connection that takes over 20 s to open or stays under 1 KB/s for a minute
+# is given up. With
 # FETCH_PROGRESS=1 curl draws its progress bar on stderr (read by
 # progress_reader); otherwise it only says what failed.
 hikari_fetch() {
     if [ "${FETCH_PROGRESS:-0}" = 1 ]; then
-        curl -fL --progress-bar --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 -o "$2" "$1"
+        curl -fL --progress-bar --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 --connect-timeout 20 --speed-limit 1024 --speed-time 60 -o "$2" "$1"
     else
-        curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 -o "$2" "$1"
+        curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 0 --max-filesize 209715200 --retry 2 --connect-timeout 20 --speed-limit 1024 --speed-time 60 -o "$2" "$1"
     fi
 }
 
 # Replaceable in tests: where $1 redirects to ('' when it does not), asked
 # with a request for its first byte only, without following it.
 hikari_redirect_of() {
-    curl -sS --proto '=https' --tlsv1.2 --max-redirs 0 --retry 2 -r 0-0 -o /dev/null -w '%{redirect_url}' "$1"
+    curl -sS --proto '=https' --tlsv1.2 --max-redirs 0 --retry 2 --connect-timeout 20 --max-time 60 -r 0-0 -o /dev/null -w '%{redirect_url}' "$1"
 }
 
 # May a download be redirected to $1? Only to HTTPS on GitHub: github.com,
@@ -1897,6 +1900,20 @@ redirect_ok() {
     return 1
 }
 
+# $1 without control characters: C0, DEL and, written as UTF-8, C1 (U+0080 to
+# U+009F, which some terminals take as escape sequences too).
+clean_text() {
+    local c1
+    c1=$(printf '\302[\200-\237]')
+    printf '%s' "$1" | LC_ALL=C sed "s/$c1//g" | LC_ALL=C tr -d '[:cntrl:]'
+}
+
+# $1 cut to $2 characters (200 by default) to be shown, with "..." when cut.
+shorten() {
+    local max=${2:-200}
+    if [ "${#1}" -gt "$max" ]; then printf '%s...' "${1:0:max}"; else printf '%s' "$1"; fi
+}
+
 # FINAL_URL: where $1 leads once its redirects (at most 5) are followed, each
 # checked by redirect_ok. Fails, with HIKARI_ERR set, on a redirect elsewhere.
 resolve_url() {
@@ -1904,9 +1921,11 @@ resolve_url() {
     while :; do
         if ! next=$(hikari_redirect_of "$url"); then HIKARI_ERR=$(T download_failed "$1"); return 1; fi
         if [ -z "$next" ]; then FINAL_URL=$url; return 0; fi
-        # What a server sent is never shown with its control characters.
-        next=$(printf '%s' "$next" | LC_ALL=C tr -d '[:cntrl:]' | cut -c1-500)
-        if ! redirect_ok "$next"; then HIKARI_ERR=$(T url_bad "$next"); return 1; fi
+        # What a server sent is never used or shown with its control
+        # characters. The address is kept whole: GitHub's are signed and
+        # ~900 characters long, and a cut one fails. Only messages shorten it.
+        next=$(clean_text "$next")
+        if [ "${#next}" -gt 8192 ] || ! redirect_ok "$next"; then HIKARI_ERR=$(T url_bad "$(shorten "$next")"); return 1; fi
         n=$((n + 1))
         if [ "$n" -gt 5 ]; then HIKARI_ERR=$(T download_failed "$1"); return 1; fi
         url=$next
@@ -1924,10 +1943,13 @@ fetch_file() {
     fi
     msgs="$TEMP_DIR/fetch-messages.txt"
     : >"$msgs"
+    # The bar stays on its line, unfinished, until verified_download ends
+    # the row (row_done or a newline).
+    BAR_ACTIVE=1
     { FETCH_PROGRESS=1; hikari_fetch "$url" "$out"; } 2>&1 >/dev/null | progress_reader "$label" "$msgs"
     rc=${PIPESTATUS[0]}
     if [ "$rc" != 0 ] && [ -s "$msgs" ]; then
-        FETCH_NOTE=" $(head -n 3 "$msgs" | tr '\n' ' ' | LC_ALL=C tr -d '[:cntrl:]' | cut -c1-300)"
+        FETCH_NOTE=" $(shorten "$(clean_text "$(head -n 3 "$msgs" | tr '\n' ' ')")" 300)"
     fi
     rm -f "$msgs"
     return "$rc"
@@ -1966,6 +1988,7 @@ verified_download() {
     if [ "$FANCY" = 1 ]; then
         draw_bar "$label" 100
         printf '\n'
+        BAR_ACTIVE=0
     else
         row_done "$label" ok "$(T ui_downloaded)"
     fi
@@ -3952,6 +3975,8 @@ show_versions() {
 
 hikari_cleanup() {
     spin_stop
+    # A bar cut short (Ctrl+C) is taken off its line.
+    if [ "${BAR_ACTIVE:-0}" = 1 ]; then printf '\r\033[K'; BAR_ACTIVE=0; fi
     STEP_LABEL=''
     [ -z "$STTY_SAVED" ] || menu_exit
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then rm -rf "$TEMP_DIR"; fi
@@ -4009,6 +4034,7 @@ main() {
     HAVE_INPUT=0
     SPIN_PID=''
     SPIN_HOLD=0
+    BAR_ACTIVE=0
     STEP_LABEL=''
     ui_setup
     SCRIPT_FILE=${BASH_SOURCE[0]:-}
