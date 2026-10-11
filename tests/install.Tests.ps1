@@ -1184,8 +1184,11 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Set-TestFile (P @($cfg, 'scripts', 'uosc', 'stale.lua')) '--'
     $updateState = "last_check=1800000000`nlatest=9.9.9`ndismissed=9.9.9`n"
     Set-TestFile (P @($cfg, 'hikari-update.txt')) $updateState
+    $aniskipCache = '{"version":1,"titles":{},"episodes":{}}' + "`n"
+    Set-TestFile (P @($cfg, 'hikari-aniskip.json')) $aniskipCache
     [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-120100')
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-update.txt'))) $updateState 'update check state kept on update'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-aniskip.json'))) $aniskipCache 'AniSkip cache kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvAfter 'mpv.conf idempotent'
     Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputAfter 'input.conf idempotent'
     Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'script-opts', 'thumbfast.conf'))), 'mpv_path=')).Count 1 'one mpv_path'
@@ -1198,9 +1201,13 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
 
     # Uninstall with default answers.
     Set-TestFile (P @($cfg, 'hikari-update.txt.tmp')) 'x'
+    Set-TestFile (P @($cfg, 'hikari-aniskip.json.tmp')) 'x'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261005-120200')
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update check state gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt.tmp')))) 'update check temporary file gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json')))) 'AniSkip cache gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json.tmp')))) 'AniSkip cache temporary file gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-aniskip.lua')))) 'AniSkip module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-update.conf')))) 'update check options gone'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvConf 'mpv.conf as before'
     Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputConf 'input.conf as before'
@@ -2936,6 +2943,140 @@ Test-Case 'uninstall without uosc: an osc=no of the user is reported; -Yes only 
 }
 
 # ---------------------------------------------------------------------------
+# Installed version (-Version, menu option 3)
+# ---------------------------------------------------------------------------
+
+# Every file under $Dir with its hash, to show that a run changed nothing.
+function Get-TreeState {
+    param([string]$Dir)
+    if (-not (Test-Path -LiteralPath $Dir)) { return '' }
+    $items = @(Get-ChildItem -LiteralPath $Dir -Recurse -Force | ForEach-Object {
+            $rel = Get-HikariRelativePath -Path $_.FullName -Root $Dir
+            if ($_.PSIsContainer) { $rel } else { $rel + ' ' + (Get-HikariFileSha256 $_.FullName) }
+        } | Sort-Object)
+    return [string]::Join("`n", $items)
+}
+
+# Runs $Body with Write-HikariInfo collecting its lines; returns them.
+function Get-InfoLines {
+    param([scriptblock]$Body)
+    $script:InfoLines = New-Object System.Collections.Generic.List[string]
+    function Write-HikariInfo { param([string]$Message) $script:InfoLines.Add($Message) }
+    try { & $Body } finally { Remove-Item Function:\Write-HikariInfo }
+    return $script:InfoLines.ToArray()
+}
+
+Test-Case 'version: only X.Y.Z, dev and preview-<commit> are shown; versions compare as numbers' {
+    foreach ($v in @('0.6.0', '10.20.300', 'dev', 'preview-abc1234', ('preview-' + ('f' * 40)))) {
+        Assert-True (Test-HikariVersionText $v) $v
+    }
+    foreach ($v in @('', '0.6', '0.6.0.1', "0.6.0`n", '0.6.0 ', 'v0.6.0', 'DEV', 'dev2', 'preview-ABC1234', 'preview-abc',
+            ('0.6.' + [char]0x0663), '1234567890.0.0', '0.6.0$(calc)', ('0.6.0' + [char]27 + '[2J'))) {
+        Assert-True (-not (Test-HikariVersionText $v)) ('refused: ' + $v)
+    }
+    Assert-Equal (Compare-HikariVersion '0.10.0' '0.9.9') 1 '0.10.0 > 0.9.9'
+    Assert-Equal (Compare-HikariVersion '0.6.0' '0.7.0') (-1) 'older'
+    Assert-Equal (Compare-HikariVersion '0.07.0' '0.7.0') 0 'leading zero'
+}
+
+Test-Case 'version: each folder found and each -Target, compared with this installer; nothing changed' {
+    Reset-Fake
+    $d = New-TestDir 'version-show'
+    $base = P @($d, 'machine')
+    $env1 = New-FakeEnv $base
+    # mpv.net installed with hikari 0.6.0, %APPDATA%\mpv with sosc, a -Target with
+    # hikari files but no record, another one empty.
+    Set-TestFile (P @($base, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    $net = P @($base, 'Roaming', 'mpv.net')
+    Set-TestFile (P @($net, 'hikari-installed.txt')) "# record`r`nhikari_version=0.6.0`r`n"
+    $mpv = P @($base, 'Roaming', 'mpv')
+    Set-TestFile (P @($mpv, 'sosc-installed.txt')) "sosc_version=0.3.0`n"
+    $manual = P @($d, 'manual')
+    Set-TestFile (P @($manual, 'scripts', 'hikari-skip.lua')) '--'
+    $empty = P @($d, 'empty')
+    $before = Get-TreeState $d
+    $saved = $script:HikariVersion
+    try {
+        $script:HikariVersion = '0.7.0'
+        $lines = Get-InfoLines { Show-HikariVersions -Env $env1 -Paths @($manual, $empty, $net) }
+        Assert-Equal $lines[0] 'This installer: hikari 0.7.0' 'installer'
+        Assert-True ($lines -contains ('mpv.net (' + $net + '): hikari 0.6.0 (older than this installer)')) ('mpv.net: ' + [string]::Join(' | ', $lines))
+        Assert-True ($lines -contains ('config folder (' + $mpv + '): sosc (the name of hikari until v0.3.0)')) 'sosc'
+        Assert-True ($lines -contains ('config folder (' + $manual + '): hikari files without an installer record')) 'manual'
+        Assert-True ($lines -contains ('config folder (' + $empty + '): not installed')) 'empty -Target'
+        Assert-Equal $lines.Count 5 'a -Target already found is listed once'
+        foreach ($pair in @(@('0.7.0', 'hikari 0.7.0 (the same as this installer)'), @('0.10.0', 'hikari 0.10.0 (newer than this installer)'),
+                @('preview-abc1234', 'hikari preview-abc1234'), @('dev', 'hikari dev'), @('0.6.0$(calc)', 'hikari, unknown version'))) {
+            Set-TestFile (P @($net, 'hikari-installed.txt')) ("hikari_version=" + $pair[0] + "`n")
+            $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) }
+            Assert-Equal $lines[1] ('mpv.net (' + $net + '): ' + $pair[1]) $pair[0]
+        }
+        Set-TestFile (P @($net, 'hikari-installed.txt')) "# record`r`nhikari_version=0.6.0`r`n"
+        $script:HikariVersion = 'dev'
+        $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) }
+        Assert-Equal $lines[0] 'This installer: hikari dev' 'repository copy'
+        Assert-Equal $lines[1] ('mpv.net (' + $net + '): hikari 0.6.0') 'no comparison with dev'
+        Set-HikariLanguage 'es'
+        try { $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) } }
+        finally { Set-HikariLanguage 'en' }
+        Assert-Equal $lines[0] 'Este instalador: hikari dev' 'Spanish'
+        Assert-True ($lines -contains ('carpeta de configuraci' + [char]0xF3 + 'n (' + $mpv + '): sosc (el nombre de hikari hasta la v0.3.0)')) 'Spanish, decoded'
+    }
+    finally { $script:HikariVersion = $saved }
+    Assert-Equal (Get-TreeState $d) $before 'nothing written, not even a write test'
+    $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv (P @($d, 'nothing'))) }
+    Assert-Equal $lines[1] 'No mpv config folder found.' 'nothing found'
+}
+
+Test-Case 'version: -Version wins over -Action, exit 0, nothing installed; menu option 3 comes back to the menu' {
+    Reset-Fake
+    $d = New-TestDir 'version-main'
+    $script:FakeEnvBase = P @($d, 'machine')
+    $cfg = P @($d, 'mpv')
+    function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    $script:Lines = New-Object System.Collections.Generic.Queue[string]
+    function Read-HikariLine { param([string]$Prompt) if ($script:Lines.Count -eq 0) { return $null } return $script:Lines.Dequeue() }
+    try {
+        $lines = Get-InfoLines { Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true -ShowVersion $true) 0 'exit code' }
+        Assert-Equal $lines[0] 'This installer: hikari dev' 'no title, the version first'
+        Assert-True ($lines -contains ('config folder (' + $cfg + '): not installed')) ('-Target listed: ' + [string]::Join(' | ', $lines))
+        Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing installed'
+        # Numbers: 3, then 0.
+        $script:NonInteractive = $false
+        foreach ($a in @('3', '0')) { $script:Lines.Enqueue($a) }
+        $lines = Get-InfoLines { Assert-Equal (Invoke-HikariMain -Action '' -Target @() -Yes $false) 0 'menu exit code' }
+        Assert-Equal $script:Lines.Count 0 'both answers used: the menu came back'
+        Assert-True ($lines -contains 'This installer: hikari dev') 'versions shown'
+        Assert-True (@($lines | Where-Object { $_ -like '*3) Show installed version*' }).Count -ge 1) 'option in the numbered menu'
+    }
+    finally {
+        Remove-Item Function:\New-HikariEnvironment
+        Remove-Item Function:\Read-HikariLine
+        $script:NonInteractive = $true
+    }
+}
+
+Test-Case 'version: the keyboard menu has the entry, with arrows and with 3' {
+    function Read-HikariLine { param([string]$Prompt) throw 'a number question was asked' }
+    try {
+        Use-FakeConsole @('DownArrow', 'DownArrow', 'Enter')
+        Assert-Equal (Read-HikariMainChoice) '3' 'arrows'
+        Assert-True ($script:Frames[0].Contains('Show installed version')) 'drawn'
+        Assert-Equal (Get-LastFrame) ($Ptr + ' Show installed version') 'choice left on screen'
+        Use-FakeConsole @('3')
+        Assert-Equal (Read-HikariMainChoice) '3' 'hotkey 3'
+        Set-HikariLanguage 'es'
+        try {
+            Use-FakeConsole @('Escape')
+            [void](Read-HikariMainChoice)
+            Assert-True ($script:Frames[0].Contains('Ver versi' + [char]0xF3 + 'n instalada')) 'Spanish label'
+        }
+        finally { Set-HikariLanguage 'en' }
+    }
+    finally { Remove-Item Function:\Read-HikariLine; Reset-FakeConsole }
+}
+
+# ---------------------------------------------------------------------------
 # Run without a file: irm | iex, and [scriptblock]::Create for options. Each of
 # these starts a real pwsh and dot-sources tests/iex-harness.ps1 from -Command,
 # so the installer runs in the global scope of a fresh session, as at a prompt.
@@ -2988,7 +3129,8 @@ function New-TestRelease {
 # e.g. because the installer called exit) and everything the process printed.
 function Invoke-IexHarness {
     param([string]$Script, [hashtable]$Downloads = @{}, [string]$Mode = 'iex', [string[]]$Stdin = @(),
-        [string]$Action = '', [string]$Target = '', [string]$YesValue = '', [switch]$StrictLatest, [string]$TempDir = '')
+        [string]$Action = '', [string]$Target = '', [string]$YesValue = '', [switch]$StrictLatest, [string]$TempDir = '',
+        [switch]$ShowVersion)
     $id = [guid]::NewGuid().ToString('N')
     $report = P @($TestRoot, ('harness-' + $id + '.json'))
     $dl = P @($TestRoot, ('harness-' + $id + '-downloads.json'))
@@ -2999,6 +3141,7 @@ function Invoke-IexHarness {
     if ($Target) { $cmd += ' -Target ' + (& $q $Target) }
     if ($YesValue) { $cmd += ' -YesValue ' + $YesValue }
     if ($StrictLatest) { $cmd += ' -StrictLatest' }
+    if ($ShowVersion) { $cmd += ' -ShowVersion' }
     # Windows PowerShell 5.1 turns a native command's stderr under 2>&1 into an
     # error that 'Stop' would throw; the exit code and the text are checked instead.
     $ErrorActionPreference = 'Continue'
@@ -3144,6 +3287,19 @@ Test-Case 'options through [scriptblock]::Create: -Yes:$false is not -Yes' {
     Assert-SessionClean $run 0
 }
 
+Test-Case '-Version through [scriptblock]::Create: versions shown, exit 0, nothing left in the session' {
+    $d = New-TestDir 'iex-version'
+    $rel = New-TestRelease -Dir $d -Zip (New-TestReleaseZip $d)
+    $cfg = P @($d, 'mpv')
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Mode create -ShowVersion -Target $cfg
+    Assert-SessionClean $run 0
+    Assert-True ($run.Text.Contains('This installer: hikari 9.9.9')) ('installer version; output: ' + $run.Text)
+    Assert-True ($run.Text.Contains('config folder (' + $cfg + '): not installed')) ('-Target; output: ' + $run.Text)
+    Assert-Equal @($run.Report.Downloads).Count 0 'nothing downloaded'
+    Assert-True (-not $run.Text.Contains('running as administrator')) 'no administrator question: it only reads'
+    Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing created'
+}
+
 Test-Case '-File: the exit code reaches the caller' {
     # An invalid -Action is reported on stderr; Windows PowerShell 5.1 would throw
     # on it here (2>&1 with 'Stop') instead of letting the exit code be checked.
@@ -3157,6 +3313,9 @@ Test-Case '-File: the exit code reaches the caller' {
         Assert-True ($LASTEXITCODE -ne 0) 'invalid -Action fails'
         $out = '0' | & $script:Pwsh -NoProfile -File $InstallScript -NoMenu 2>&1
         Assert-Equal $LASTEXITCODE 0 ('exit from the menu: ' + [string]::Join(' ', @($out)))
+        $out = @(& $script:Pwsh -NoProfile -NonInteractive -File $InstallScript -Version 2>&1 | ForEach-Object { [string]$_ })
+        Assert-Equal $LASTEXITCODE 0 ('-Version: ' + [string]::Join(' ', $out))
+        Assert-Equal $out[0] 'This installer: hikari dev' '-Version output'
     }
     finally { $env:HIKARI_INSTALL_TEST = $saved }
 }

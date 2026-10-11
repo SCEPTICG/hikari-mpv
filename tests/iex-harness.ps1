@@ -6,8 +6,9 @@
 #
 # -Mode iex     : Invoke-Expression of the file text, no options; the answers to
 #                 the installer's questions come from stdin.
-# -Mode create  : & ([scriptblock]::Create(<text>)) with -Action/-Target and
-#                 -Yes:<YesValue> (true or false), the documented way to pass options.
+# -Mode create  : & ([scriptblock]::Create(<text>)) with -Action/-Target,
+#                 -Yes:<YesValue> (true or false) and -Version (-ShowVersion
+#                 here), the documented way to pass options.
 # -Downloads    : JSON file with an object { url: local file }. Invoke-WebRequest
 #                 is replaced by a global function that serves those files (the
 #                 installer finds a function before the cmdlet) and logs the URLs.
@@ -28,7 +29,8 @@ param(
     [string]$Action = '',
     [string]$Target = '',
     [string]$YesValue = '',
-    [switch]$StrictLatest
+    [switch]$StrictLatest,
+    [switch]$ShowVersion
 )
 
 # The parent test run loads the installer in test mode; this run must not.
@@ -79,6 +81,7 @@ else {
     if ($Action) { $__hParams['Action'] = $Action }
     if ($Target) { $__hParams['Target'] = $Target }
     if ($YesValue) { $__hParams['Yes'] = [bool]::Parse($YesValue) }
+    if ($ShowVersion) { $__hParams['Version'] = $true }
     $__hOut = @(& ([scriptblock]::Create($__hCode)) @__hParams)
 }
 $__hExit = $global:LASTEXITCODE

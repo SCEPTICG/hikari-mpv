@@ -11,6 +11,7 @@
 # and checks its SHA256 before using it):
 #     curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
 #     curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --uninstall
+#     curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --version
 # From a copy of the repository (the hikari files then come from that copy):
 #     bash install/hikari.sh
 #
@@ -20,6 +21,9 @@
 #     --yes                    no questions: take the default answer to everything
 #     --no-menu                ask with numbers and typed answers, not keyboard menus
 #     --anime4k yes|no         answer the Anime4K questions instead of asking
+#     --version                show the hikari version in each mpv config folder
+#                              found (and in --target folders) and this
+#                              installer's, then leave without changing anything
 #     --help
 #
 # Questions are read from the terminal (/dev/tty), also when this file comes
@@ -126,6 +130,9 @@ hikari_defaults() {
     # What hikari-update.lua saves (last check, latest version, dismissed one):
     # state, not a choice. Kept on update, removed on uninstall like the record.
     UPDATE_STATE='hikari-update.txt'
+    # What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
+    # uninstall like the update state.
+    ANISKIP_CACHE='hikari-aniskip.json'
     DISABLED_DIR='scripts-desactivados'
     ORIGINALS_DIR='hikari-originales'
     # What the backup copies: only what the installer can change (and the files
@@ -181,7 +188,7 @@ hikari_text_en() {
     case $1 in
         title) s='hikari installer' ;;
         preview_note) s='Preview build (%s). To go back to the stable version: %s' ;;
-        menu) s='1) Install or update\n2) Uninstall\n0) Exit' ;;
+        menu) s='1) Install or update\n2) Uninstall\n3) Show installed version\n0) Exit' ;;
         menu_prompt) s='Choose an option' ;;
         invalid) s='Invalid option.' ;;
         detecting) s='Looking for mpv...' ;;
@@ -325,7 +332,18 @@ hikari_text_en() {
         missing_tool) s='%s is needed and was not found.' ;;
         bad_option) s='Unknown option: %s (see --help).' ;;
         no_input) s='No terminal to ask on: every question takes its default answer.' ;;
-        usage) s='Usage: hikari.sh [--install | --uninstall] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Usage: hikari.sh [--install | --uninstall | --version] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        version_installer) s='This installer: hikari %s' ;;
+        version_folder) s='%s (%s): %s' ;;
+        version_installed) s='hikari %s' ;;
+        version_older) s='hikari %s (older than this installer)' ;;
+        version_same) s='hikari %s (the same as this installer)' ;;
+        version_newer) s='hikari %s (newer than this installer)' ;;
+        version_unknown) s='hikari, unknown version' ;;
+        version_manual) s='hikari files without an installer record' ;;
+        version_sosc) s='sosc (the name of hikari until v0.3.0)' ;;
+        version_none) s='not installed' ;;
+        version_nothing) s='No mpv config folder found.' ;;
         tag_sosc) s='[sosc installed: it becomes hikari]' ;;
         sosc_found) s='sosc is installed here (the name of hikari until v0.3.0): it becomes hikari, with your choices.' ;;
         sosc_line_changed) s='%s: line of yours changed from sosc to hikari: %s' ;;
@@ -342,7 +360,7 @@ hikari_text_es() {
     case $1 in
         title) s='Instalador de hikari' ;;
         preview_note) s='Versión de prueba (%s). Para volver a la estable: %s' ;;
-        menu) s='1) Instalar o actualizar\n2) Desinstalar\n0) Salir' ;;
+        menu) s='1) Instalar o actualizar\n2) Desinstalar\n3) Ver versión instalada\n0) Salir' ;;
         menu_prompt) s='Elige una opción' ;;
         invalid) s='Opción no válida.' ;;
         detecting) s='Buscando mpv...' ;;
@@ -486,7 +504,18 @@ hikari_text_es() {
         missing_tool) s='Hace falta %s y no se encuentra.' ;;
         bad_option) s='Opción desconocida: %s (mira --help).' ;;
         no_input) s='No hay terminal en el que preguntar: cada pregunta toma su respuesta por defecto.' ;;
-        usage) s='Uso: hikari.sh [--install | --uninstall] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Uso: hikari.sh [--install | --uninstall | --version] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        version_installer) s='Este instalador: hikari %s' ;;
+        version_folder) s='%s (%s): %s' ;;
+        version_installed) s='hikari %s' ;;
+        version_older) s='hikari %s (más antigua que este instalador)' ;;
+        version_same) s='hikari %s (la misma que este instalador)' ;;
+        version_newer) s='hikari %s (más nueva que este instalador)' ;;
+        version_unknown) s='hikari, versión desconocida' ;;
+        version_manual) s='ficheros de hikari sin registro del instalador' ;;
+        version_sosc) s='sosc (el nombre de hikari hasta la v0.3.0)' ;;
+        version_none) s='no instalado' ;;
+        version_nothing) s='No se ha encontrado ninguna carpeta de configuración de mpv.' ;;
         tag_sosc) s='[sosc instalado: pasa a ser hikari]' ;;
         sosc_found) s='Aquí está instalado sosc (el nombre de hikari hasta la v0.3.0): pasa a ser hikari, con tus elecciones.' ;;
         sosc_line_changed) s='%s: línea tuya cambiada de sosc a hikari: %s' ;;
@@ -3045,7 +3074,7 @@ uninstall_steps() {
     done
     remove_item "$CFG/$ORIGINALS_DIR" "$CFG" || return 1
     remove_item "$CFG/$RECORD_NAME" "$CFG" || return 1
-    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp"; do
+    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp"; do
         if [ -f "$CFG/$f" ] || [ -L "$CFG/$f" ]; then remove_item "$CFG/$f" "$CFG" || return 1; fi
     done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do
@@ -3072,7 +3101,8 @@ show_candidates() { # numbered list of the candidates in LIST
     done
 }
 
-# Main menu: SEL = 1 install, 2 uninstall, 0 exit; fails at the end of the input.
+# Main menu: SEL = 1 install, 2 uninstall, 3 show the installed versions, 0
+# exit; fails at the end of the input.
 main_choice() {
     if [ "$MENU" = 1 ]; then
         local labels l
@@ -3084,10 +3114,11 @@ EOF
         menu_reset
         menu_item "${labels[0]}" '' 0 0 '' 0 1
         menu_item "${labels[1]}" '' 0 0 '' 0 2
-        menu_item "${labels[2]}" '' 0 0 '' 1 0
+        menu_item "${labels[2]}" '' 0 0 '' 0 3
+        menu_item "${labels[3]}" '' 0 0 '' 1 0
         if list_menu 0; then
             if [ "$M_CANCELLED" = 1 ]; then SEL=0; return 0; fi
-            case $M_INDEX in 0) SEL=1 ;; 1) SEL=2 ;; *) SEL=0 ;; esac
+            case $M_INDEX in 0) SEL=1 ;; 1) SEL=2 ;; 2) SEL=3 ;; *) SEL=0 ;; esac
             return 0
         fi
         MENU=0
@@ -3269,6 +3300,68 @@ ensure_mpv() {
     return 1
 }
 
+# A hikari version as a record or this installer may say it: X.Y.Z, dev (a
+# copy of the repository) or preview-<commit>. Anything else is never shown:
+# the record can be edited by anyone.
+version_ok() {
+    [[ $1 =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$ ]] || [ "$1" = dev ] || [[ $1 =~ ^preview-[0-9a-f]{7,40}$ ]]
+}
+
+# version_cmp <a> <b>: -1, 0 or 1 for two X.Y.Z versions, compared as numbers.
+version_cmp() {
+    local a=$1 b=$2 x y
+    while [ -n "$a" ]; do
+        x=$((10#${a%%.*})); y=$((10#${b%%.*}))
+        if [ "$x" -lt "$y" ]; then printf -- -1; return; fi
+        if [ "$x" -gt "$y" ]; then printf 1; return; fi
+        case $a in *.*) a=${a#*.}; b=${b#*.} ;; *) a='' ;; esac
+    done
+    printf 0
+}
+
+# What folder $1 has: the hikari version of its record (compared with this
+# installer's when both are releases), sosc, hikari files without a record,
+# or nothing. Only reads.
+version_state() {
+    local dir=$1 f
+    if read_record "$dir" 1; then
+        rec_get hikari_version
+        if ! version_ok "$REC_VALUE"; then T version_unknown; return; fi
+        if [[ $REC_VALUE =~ ^[0-9.]+$ ]] && [[ $HIKARI_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            case $(version_cmp "$REC_VALUE" "$HIKARI_VERSION") in
+                -1) T version_older "$REC_VALUE" ;;
+                0) T version_same "$REC_VALUE" ;;
+                *) T version_newer "$REC_VALUE" ;;
+            esac
+            return
+        fi
+        T version_installed "$REC_VALUE"
+        return
+    fi
+    if sosc_present "$dir"; then T version_sosc; return; fi
+    for f in "$dir"/scripts/hikari-*.lua; do
+        if [ -f "$f" ]; then T version_manual; return; fi
+    done
+    T version_none
+}
+
+# --version and the menu's "Show installed version": this installer's version
+# and the one in each config folder found (and each --target). Changes nothing.
+show_versions() {
+    local i=0 t
+    info "$(T version_installer "$HIKARI_VERSION")"
+    MPV_EXE=$(hikari_find_mpv)
+    find_candidates
+    for t in ${OPT_TARGETS[@]+"${OPT_TARGETS[@]}"}; do
+        if abs_path "$t" >/dev/null; then add_candidate folder "$t" ''; else warn "$(T path_bad "$t")"; fi
+    done
+    [ "${#C_DIR[@]}" -gt 0 ] || info "$(T version_nothing)"
+    while [ "$i" -lt "${#C_DIR[@]}" ]; do
+        info "$(T version_folder "$(kind_label "${C_KIND[i]}")" "${C_DIR[i]}" "$(version_state "${C_DIR[i]}")")"
+        i=$((i + 1))
+    done
+}
+
 hikari_cleanup() {
     [ -z "$STTY_SAVED" ] || menu_exit
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then rm -rf "$TEMP_DIR"; fi
@@ -3282,6 +3375,7 @@ parse_args() {
     OPT_YES=0
     OPT_NO_MENU=0
     OPT_ANIME4K=''
+    OPT_VERSION=0
     OPT_TARGETS=()
     while [ $# -gt 0 ]; do
         case $1 in
@@ -3289,6 +3383,7 @@ parse_args() {
             --uninstall) OPT_ACTION=uninstall ;;
             --yes | -y) OPT_YES=1 ;;
             --no-menu) OPT_NO_MENU=1 ;;
+            --version | -V) OPT_VERSION=1 ;;
             --anime4k)
                 [ $# -ge 2 ] || { error "$(T bad_option "$1")"; return 2; }
                 case $2 in yes | no) OPT_ANIME4K=$2 ;; *) error "$(T bad_option "$1 $2")"; return 2 ;; esac
@@ -3337,6 +3432,8 @@ main() {
 
     OS=$(hikari_uname)
     case $OS in Darwin | Linux) ;; *) error "$(T unsupported_os "$OS")"; return 2 ;; esac
+    # Only reading: no curl, unzip or terminal needed.
+    if [ "$OPT_VERSION" = 1 ]; then show_versions; return 0; fi
     local tool
     for tool in curl unzip; do
         command -v "$tool" >/dev/null 2>&1 || { error "$(T missing_tool "$tool")"; return 2; }
@@ -3359,6 +3456,7 @@ main() {
                 case $SEL in
                     1) action=install ;;
                     2) action=uninstall ;;
+                    3) show_versions; info '' ;;
                     0) info "$(T cancelled)"; return 0 ;;
                     *) warn "$(T invalid)" ;;
                 esac

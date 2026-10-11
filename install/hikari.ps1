@@ -11,6 +11,8 @@
         irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex
     With options (iex cannot pass them):
         & ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Action uninstall
+    The installed version, without changing anything:
+        & ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version
     From a copy of the repository, or a downloaded hikari.ps1:
         powershell -ExecutionPolicy Bypass -File install\hikari.ps1
 
@@ -49,6 +51,11 @@
     their own when there is no interactive console (input or output
     redirected, -NonInteractive, ISE...).
 
+.PARAMETER HikariShowVersion
+    Use it as -Version (alias). Show the hikari version in each mpv config
+    folder found (and in -Target folders) and this installer's, then leave
+    without changing anything (exit code 0). Wins over -Action.
+
 .PARAMETER HikariAnime4K
     Use it as -Anime4K (alias). yes or no: answers the Anime4K questions
     (install it; take over an Anime4K installed by hand) instead of asking.
@@ -62,7 +69,7 @@
 # The parameters are named Hikari* on purpose: run through iex, a param block
 # creates its variables in the caller's session, so they get names nobody else
 # uses and are removed again at the end (see the finally below). The aliases
-# keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K.
+# keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K, -Version.
 [CmdletBinding()]
 param(
     [Alias('Action')]
@@ -76,7 +83,9 @@ param(
     [switch]$HikariNoMenu,
     [Alias('Anime4K')]
     [ValidateSet('', 'yes', 'no')]
-    [string]$HikariAnime4K = ''
+    [string]$HikariAnime4K = '',
+    [Alias('Version')]
+    [switch]$HikariShowVersion
 )
 
 try {
@@ -91,7 +100,8 @@ param(
     [string[]]$Target = @(),
     [switch]$Yes,
     [switch]$NoMenu,
-    [string]$Anime4K = ''
+    [string]$Anime4K = '',
+    [switch]$ShowVersion
 )
 
 # Both are local to this script block: the caller's session keeps its own.
@@ -211,6 +221,9 @@ $script:RecordName = 'hikari-installed.txt'
 # What hikari-update.lua saves (last check, latest version, dismissed one):
 # state, not a choice. Kept on update, removed on uninstall like the record.
 $script:UpdateState = 'hikari-update.txt'
+# What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
+# uninstall like the update state.
+$script:AniSkipCache = 'hikari-aniskip.json'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'hikari-originales'
 
@@ -303,7 +316,18 @@ $script:HikariDownloader = {
 $script:HikariStringsEn = @{
     title                 = 'hikari installer'
     preview_note          = 'Preview build ({0}). To go back to the stable version: {1}'
-    menu                  = "1) Install or update`n2) Uninstall`n0) Exit"
+    menu                  = "1) Install or update`n2) Uninstall`n3) Show installed version`n0) Exit"
+    version_installer     = 'This installer: hikari {0}'
+    version_folder        = '{0} ({1}): {2}'
+    version_installed     = 'hikari {0}'
+    version_older         = 'hikari {0} (older than this installer)'
+    version_same          = 'hikari {0} (the same as this installer)'
+    version_newer         = 'hikari {0} (newer than this installer)'
+    version_unknown       = 'hikari, unknown version'
+    version_manual        = 'hikari files without an installer record'
+    version_sosc          = 'sosc (the name of hikari until v0.3.0)'
+    version_none          = 'not installed'
+    version_nothing       = 'No mpv config folder found.'
     menu_prompt           = 'Choose an option'
     invalid               = 'Invalid option.'
     detecting             = 'Looking for mpv players...'
@@ -459,7 +483,18 @@ $script:HikariStringsEn = @{
 $script:HikariStringsEs = @{
     title                 = 'Instalador de hikari'
     preview_note          = 'Versi\u00f3n de prueba ({0}). Para volver a la estable: {1}'
-    menu                  = '1) Instalar o actualizar\n2) Desinstalar\n0) Salir'
+    menu                  = '1) Instalar o actualizar\n2) Desinstalar\n3) Ver versi\u00f3n instalada\n0) Salir'
+    version_installer     = 'Este instalador: hikari {0}'
+    version_folder        = '{0} ({1}): {2}'
+    version_installed     = 'hikari {0}'
+    version_older         = 'hikari {0} (m\u00e1s antigua que este instalador)'
+    version_same          = 'hikari {0} (la misma que este instalador)'
+    version_newer         = 'hikari {0} (m\u00e1s nueva que este instalador)'
+    version_unknown       = 'hikari, versi\u00f3n desconocida'
+    version_manual        = 'ficheros de hikari sin registro del instalador'
+    version_sosc          = 'sosc (el nombre de hikari hasta la v0.3.0)'
+    version_none          = 'no instalado'
+    version_nothing       = 'No se ha encontrado ninguna carpeta de configuraci\u00f3n de mpv.'
     menu_prompt           = 'Elige una opci\u00f3n'
     invalid               = 'Opci\u00f3n no v\u00e1lida.'
     detecting             = 'Buscando reproductores de mpv...'
@@ -3740,7 +3775,7 @@ function Uninstall-HikariTarget {
         }
         Remove-HikariItem -Path (Join-HikariPath $config $script:OriginalsDir) -Root $config
         Remove-HikariItem -Path (Join-HikariPath $config $script:RecordName) -Root $config
-        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'))) {
+        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'))) {
             $statePath = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $statePath -PathType Leaf) { Remove-HikariItem -Path $statePath -Root $config }
         }
@@ -3850,19 +3885,21 @@ function Read-HikariTargetChoice {
     }
 }
 
-# Main menu: '1' install, '2' uninstall, '0' exit, $null when the input ends;
-# anything else typed in number mode is returned as it is (invalid).
+# Main menu: '1' install, '2' uninstall, '3' show the installed versions, '0'
+# exit, $null when the input ends; anything else typed in number mode is
+# returned as it is (invalid).
 function Read-HikariMainChoice {
     $r = Invoke-HikariMenuOrNumbers {
         $labels = @((T 'menu') -split "`r?`n" | ForEach-Object { Get-HikariPlainLabel $_ })
         $items = @(
             (New-HikariMenuItem -Label $labels[0] -Hotkey '1'),
             (New-HikariMenuItem -Label $labels[1] -Hotkey '2'),
-            (New-HikariMenuItem -Label $labels[2] -Quit $true -Hotkey '0')
+            (New-HikariMenuItem -Label $labels[2] -Hotkey '3'),
+            (New-HikariMenuItem -Label $labels[3] -Quit $true -Hotkey '0')
         )
         $m = Invoke-HikariListMenu -Items $items
         if ($m.Cancelled) { return '0' }
-        return @('1', '2', '0')[$m.Index]
+        return @('1', '2', '3', '0')[$m.Index]
     }
     if (-not (Test-HikariUseNumbers $r)) { return $r }
     Write-HikariInfo (T 'menu')
@@ -4088,8 +4125,72 @@ function Confirm-HikariElevation {
     return (Confirm-Hikari -Question (T 'admin_confirm') -Default $false)
 }
 
+# A hikari version as a record or this installer may say it: X.Y.Z, dev (a
+# copy of the repository) or preview-<commit>. Anything else is never shown:
+# the record can be edited by anyone. ASCII digits only, nothing after the end.
+function Test-HikariVersionText {
+    param([string]$Text)
+    return ($Text -cmatch '\A[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}\z' -or $Text -ceq 'dev' -or
+        $Text -cmatch '\Apreview-[0-9a-f]{7,40}\z')
+}
+
+# -1, 0 or 1 for two X.Y.Z versions, compared as numbers.
+function Compare-HikariVersion {
+    param([string]$A, [string]$B)
+    $x = @($A.Split('.') | ForEach-Object { [long]$_ })
+    $y = @($B.Split('.') | ForEach-Object { [long]$_ })
+    for ($i = 0; $i -lt 3; $i++) {
+        if ($x[$i] -lt $y[$i]) { return -1 }
+        if ($x[$i] -gt $y[$i]) { return 1 }
+    }
+    return 0
+}
+
+# What a candidate's folder has: the hikari version of its record (compared
+# with this installer's when both are releases), sosc, hikari files without a
+# record, or nothing.
+function Get-HikariVersionState {
+    param($Candidate)
+    $sosc = $Candidate.PSObject.Properties['Sosc']
+    if ($null -ne $sosc -and $sosc.Value) { return (T 'version_sosc') }
+    if (-not $Candidate.Installed) { return (T 'version_none') }
+    if ($Candidate.Manual) { return (T 'version_manual') }
+    $v = [string]$Candidate.InstalledVersion
+    if (-not (Test-HikariVersionText $v)) { return (T 'version_unknown') }
+    $release = '\A[0-9]+\.[0-9]+\.[0-9]+\z'
+    if ($v -cmatch $release -and $script:HikariVersion -cmatch $release) {
+        $cmp = Compare-HikariVersion $v $script:HikariVersion
+        if ($cmp -lt 0) { return (T 'version_older' @($v)) }
+        if ($cmp -eq 0) { return (T 'version_same' @($v)) }
+        return (T 'version_newer' @($v))
+    }
+    return (T 'version_installed' @($v))
+}
+
+# -Version and the menu's "Show installed version": this installer's version
+# and the one in each config folder found (and each -Target). Only reads: the
+# usual write test of each folder is replaced by nothing.
+function Show-HikariVersions {
+    param([hashtable]$Env, [string[]]$Paths = @())
+    Write-HikariInfo (T 'version_installer' @($script:HikariVersion))
+    $Env.TestWritable = { param([string]$Path) $true }
+    $all = New-Object System.Collections.Generic.List[object]
+    foreach ($c in @(Find-HikariPlayers -Env $Env)) { $all.Add($c) }
+    foreach ($p in $Paths) {
+        try { $full = ConvertTo-HikariTypedPath $p }
+        catch { Write-HikariWarn $_.Exception.Message; continue }
+        $known = $false
+        foreach ($c in $all) { if (Test-HikariSamePath $c.ConfigDir $full) { $known = $true } }
+        if (-not $known) { $all.Add((New-HikariCandidate -Env $Env -Kind 'folder' -Exe '' -ConfigDir $full -Portable $false)) }
+    }
+    if ($all.Count -eq 0) { Write-HikariInfo (T 'version_nothing') }
+    foreach ($c in $all) {
+        Write-HikariInfo (T 'version_folder' @((Get-HikariKindLabel $c.Kind), $c.ConfigDir, (Get-HikariVersionState $c)))
+    }
+}
+
 function Invoke-HikariMain {
-    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '')
+    param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '', [bool]$ShowVersion = $false)
     $script:NonInteractive = $Yes
     $script:HikariAnime4KChoice = $Anime4K
     # Keyboard menus only on a real interactive console; numbers otherwise.
@@ -4098,6 +4199,12 @@ function Invoke-HikariMain {
     if ($PSVersionTable.PSVersion.Major -lt 5 -or ($PSVersionTable.PSVersion.Major -eq 5 -and $PSVersionTable.PSVersion.Minor -lt 1)) {
         Write-HikariError (T 'old_ps')
         return 2
+    }
+    # powershell -File passes "-Target a,b" as one string: ';' separates folders.
+    $paths = @($Target | ForEach-Object { $_ -split ';' } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+    if ($ShowVersion) {
+        Show-HikariVersions -Env (New-HikariEnvironment) -Paths $paths
+        return 0
     }
     if ($PSVersionTable.PSVersion.Major -lt 6) {
         try { [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12 } catch { }
@@ -4115,14 +4222,13 @@ function Invoke-HikariMain {
             switch ($answer.Trim()) {
                 '1' { $Action = 'install' }
                 '2' { $Action = 'uninstall' }
+                '3' { Show-HikariVersions -Env (New-HikariEnvironment); Write-HikariInfo '' }
                 '0' { Write-HikariInfo (T 'cancelled'); return 0 }
                 default { Write-HikariWarn (T 'invalid') }
             }
         }
     }
 
-    # powershell -File passes "-Target a,b" as one string: ';' separates folders.
-    $paths = @($Target | ForEach-Object { $_ -split ';' } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
     $environment = New-HikariEnvironment
     $script:HikariElevated = [bool]$environment.IsAdmin
     $selection = Select-HikariTargets -Env $environment -Mode $Action -Paths $paths
@@ -4189,7 +4295,8 @@ if ($env:HIKARI_INSTALL_TEST) { return }
 $savedTls = $null
 try { $savedTls = [System.Net.ServicePointManager]::SecurityProtocol } catch { }
 try {
-    $code = Invoke-HikariMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu) -Anime4K $Anime4K
+    $code = Invoke-HikariMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu) -Anime4K $Anime4K `
+        -ShowVersion ([bool]$ShowVersion)
 }
 finally {
     if ($null -ne $savedTls) { try { [System.Net.ServicePointManager]::SecurityProtocol = $savedTls } catch { } }
@@ -4199,7 +4306,7 @@ finally {
 # exit: through iex, exit would close the user's PowerShell window.
 if ({ }.File) { exit $code }
 $global:LASTEXITCODE = $code
-} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K
+} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K -ShowVersion:$HikariShowVersion
 }
 catch {
     # An unexpected error that got this far. Same rule as above: exit only when
@@ -4210,5 +4317,5 @@ catch {
 }
 finally {
     # Through iex the parameters above are variables of the caller's session.
-    if (-not { }.File) { Remove-Variable -Name HikariAction, HikariTarget, HikariYes, HikariNoMenu, HikariAnime4K -Scope 0 -ErrorAction SilentlyContinue }
+    if (-not { }.File) { Remove-Variable -Name HikariAction, HikariTarget, HikariYes, HikariNoMenu, HikariAnime4K, HikariShowVersion -Scope 0 -ErrorAction SilentlyContinue }
 }
