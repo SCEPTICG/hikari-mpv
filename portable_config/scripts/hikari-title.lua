@@ -521,19 +521,16 @@ local function token_words(t)
 	return words
 end
 
--- Where the technical tail of a release starts, from token `from` on: the first
--- word outside brackets that is strongly technical (`1080p`, `WEB-DL`, `x264`,
--- `1080p.CR.WEB-DL` in a spaced name), together with the weak ones right
--- before it (`CR.WEB-DL`). Past the end when there is none: `Prueba.ADN` or
--- `- 02 - Costa Rica CR` have no tail.
+-- Where the technical tail of a release starts, from token `from` on: exactly
+-- at the first word outside brackets that is strongly technical (`1080p`,
+-- `WEB-DL`, `BluRay`, `x264`; `1080p.CR.WEB-DL` in a spaced name). Never at a
+-- weak word before it: `Costa Rica CR 720p` or `Prueba.ADN.1080p` would make
+-- the `CR` or `ADN` of a description a sign. Past the end when there is none:
+-- `Prueba.ADN` or `- 02 - Costa Rica CR` have no tail.
 local function tail_start(tokens, from)
 	for i = from, #tokens do
 		local t = tokens[i]
-		if not t.group and tech_kind(t.text) == 'strong' then
-			local s = i
-			while s - 1 >= from and not tokens[s - 1].group and tech_kind(tokens[s - 1].text) == 'weak' do s = s - 1 end
-			return s
-		end
+		if not t.group and tech_kind(t.text) == 'strong' then return i end
 	end
 	return #tokens + 1
 end
@@ -541,34 +538,89 @@ end
 -- A resolution: `1080p`, `720p`, `2160p`, `1080i`.
 local function is_resolution(word) return word:match('^%d%d%d%d?[pi]$') ~= nil end
 
--- A CRC: `[ABCD1234]`, eight hex digits with a letter (`[20240115]` is a date).
+-- Eight hex digits with a letter (`20240115` is a date).
+local function is_crc_text(word) return word:match('^%x%x%x%x%x%x%x%x$') ~= nil and word:find('%a') ~= nil end
+
+-- A CRC: `[ABCD1234]`.
 local function is_crc(t)
 	local inner = t.group == '[' and t.text:sub(2, -2)
-	return inner and inner:match('^%x%x%x%x%x%x%x%x$') ~= nil and inner:find('%a') ~= nil
+	return inner and is_crc_text(inner) or false
+end
+
+-- Labels that only release groups put in brackets, besides the technical
+-- words (`[Dual Audio]`, `[Multi-Subs]`).
+local LABEL_WORDS = {}
+word_set(LABEL_WORDS, [[audio multi-subs multisubs multi-subtitle multi-subtitles softsub softsubs
+	hardsub hardsubs esub esubs]])
+
+-- One lower-case word that is technical by itself: strong, weak, a service, a
+-- source, a resolution, a CRC or a release label.
+local function exact_tech(word)
+	return STRONG_WORDS[word] or WEAK_WORDS[word] or ANIME_WORDS[word] or SOURCE_WORDS[word]
+		or LABEL_WORDS[word] or is_resolution(word) or is_crc_text(word)
+		or word:match('^aac[%d.]*$') or word:match('^ddp?[%d.]*$') or word:match('^e?ac3[%d.]*$')
+		or word:match('^flac[%d.]*$') or word:match('^opus[%d.]+$')
+end
+
+-- Is every word of a [...] or (...) group technical? `[1080p CR WEB-DL AVC
+-- AAC]`, `(HIDIVE)` and `[Multiple Subtitle]` are; `(prueba ADN Garcia)` is
+-- not, and none of its words is then a sign. A dotted word counts when it is
+-- technical whole (`H.264`) or in every part (`1080p.CR`).
+local function technical_group(t)
+	local any = false
+	for word in t.text:sub(2, -2):lower():gmatch('[^%s_,%+]+') do
+		any = true
+		if not exact_tech(word) then
+			if not word:find('.', 1, true) then return false end
+			for part in word:gmatch('[^.]+') do
+				if not exact_tech(part) then return false end
+			end
+		end
+	end
+	return any
 end
 
 -- The signs of a release after the episode number (from token `from` on).
 -- Only two places count, never the free text that follows the number (an
--- episode title, loose words): a [...] or (...) group (`[1080p]`, `(HIDIVE)`,
--- `[CR]`, `[ABCD1234]`), and the technical tail (`.1080p.CR.WEB-DL.`). Returns
--- whether there is an anime service, and how many kinds of technical sign
--- (resolution, source, CRC) there are.
-local function release_signs(tokens, from)
+-- episode title, loose words):
+-- - a [...] or (...) group made only of technical words (`[1080p]`,
+--   `(HIDIVE)`, `[CR]`, `[ABCD1234]`, `[1080p CR WEB-DL AVC AAC]`);
+-- - the technical tail: from its first strong word (tail_start) on, for as
+--   long as every word is technical (`.1080p.CR.WEB-DL.AAC2`), so a
+--   description after it (`1080p.Prueba.ADN`) does not count either. `BD`,
+--   an everyday abbreviation, only counts there in a dotted name
+--   (`.1080p.BD.x264`): in a spaced one only in brackets (`[BD]`).
+-- Returns whether there is an anime service in the tail, whether there is one
+-- in a group, and how many kinds of technical sign (resolution, source, CRC)
+-- there are.
+local function release_signs(tokens, from, spaced)
 	local tail = tail_start(tokens, from)
-	local service, resolution, source, crc = false, false, false, false
+	local in_tail = false
+	local tail_service, group_service, resolution, source, crc = false, false, false, false, false
 	for i = from, #tokens do
 		local t = tokens[i]
-		if t.group or i >= tail then
-			for _, word in ipairs(token_words(t)) do
-				if ANIME_WORDS[word] then service = true
-				elseif is_resolution(word) then resolution = true
-				elseif SOURCE_WORDS[word] then source = true end
+		local words
+		if t.group then
+			if technical_group(t) then words = token_words(t) end
+		else
+			if i == tail then in_tail = true end
+			if in_tail then
+				words = token_words(t)
+				for _, word in ipairs(words) do
+					if not exact_tech(word) then in_tail = false; words = nil; break end
+				end
 			end
-			if is_crc(t) then crc = true end
 		end
+		for _, word in ipairs(words or {}) do
+			if ANIME_WORDS[word] then
+				if t.group then group_service = true else tail_service = true end
+			elseif is_resolution(word) then resolution = true
+			elseif SOURCE_WORDS[word] and (word ~= 'bd' or t.group or not spaced) then source = true end
+		end
+		if words and is_crc(t) then crc = true end
 	end
 	local kinds = (resolution and 1 or 0) + (source and 1 or 0) + (crc and 1 or 0)
-	return service, kinds
+	return tail_service, group_service, kinds
 end
 
 -- Does the release look like anime? An episode marker (the caller has one)
@@ -577,9 +629,10 @@ end
 -- `The Office - 05.mkv` or a file whose episode title happens to hold `ADN` or
 -- `CR` (`Paciente Garcia - 02 - Prueba ADN.mkv`) is never sent anywhere:
 -- - a [Group] in front (`[SubsPlease] Show - 05`);
--- - an anime service (CR, HIDIVE, ADN...) after the episode number, in
---   brackets (`Show S01E05 (HIDIVE)`) or in the technical tail
---   (`Show.S01E05.1080p.CR.WEB-DL`);
+-- - an anime service (CR, HIDIVE, ADN...) in the technical tail
+--   (`Show.S01E05.1080p.CR.WEB-DL`), or in brackets together with another
+--   sign (`Show S01E05 (HIDIVE) [1080p]`): a lone `(ADN)` or `[CR]` is as easy
+--   to write on a personal video as `(Garcia)`;
 -- - or the `Show - 05` marker with two kinds of technical sign after it, in
 --   brackets or in the tail: resolution, source, CRC (`- 05 (1080p)
 --   [ABCD1234]`, `.-.05.1080p.WEB-DL`). One alone is not enough: a CRC or a
@@ -588,21 +641,21 @@ end
 -- sent, and in `Analisis ADN paciente Garcia - 02` its words are not signs. A
 -- western `Show.S01E05.1080p.WEB-DL` has neither the group, the service nor
 -- the `- 05` marker: not anime.
-local function looks_like_anime(tokens, marker, tail)
+local function looks_like_anime(tokens, marker, tail, spaced)
 	if front_group(tokens) then return true end
-	local service, kinds = release_signs(tokens, tail)
-	if service then return true end
+	local tail_service, group_service, kinds = release_signs(tokens, tail, spaced)
+	if tail_service or (group_service and kinds >= 1) then return true end
 	return marker.dash == true and kinds >= 2
 end
 
 -- What hikari-skip can look up on AniSkip for a marker: one plain episode of
 -- a series (not a range, half episode, special or OVA). nil otherwise.
--- `tail` is the first token after the marker.
-local function release_info(tokens, marker, series, tail)
+-- `tail` is the first token after the marker; `spaced`: the name has spaces.
+local function release_info(tokens, marker, series, tail, spaced)
 	if marker.last or marker.fraction or marker.special or marker.extra or not marker.first then return nil end
 	return {
 		series = series, season = marker.season, episode = tonumber(marker.first),
-		anime = looks_like_anime(tokens, marker, tail),
+		anime = looks_like_anime(tokens, marker, tail, spaced),
 	}
 end
 
@@ -633,7 +686,7 @@ local function pretty_title(name, lang)
 				local title = capitalize(series) .. ' · ' .. marker_label(marker, lang)
 				local episode = episode_title(tokens, i + used, spaced)
 				if episode then title = title .. ' · ' .. episode end
-				return title, true, release_info(tokens, marker, capitalize(series), i + used)
+				return title, true, release_info(tokens, marker, capitalize(series), i + used, spaced)
 			end
 			-- `S01E01.1080p`, `- 01`: a marker but no series in front. Look on:
 			-- in `Special 7 - 05` the series is `Special 7`.

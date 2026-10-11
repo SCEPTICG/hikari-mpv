@@ -488,15 +488,21 @@ test('release info: series, season and episode of anime releases', function()
 	eq(info(t, '/a/Sousou no Frieren - 05 1080p WEB-DL.mkv'), 'Sousou no Frieren|nil|5|true', 'spaced, 1080p and WEB-DL in the tail')
 	eq(info(t, '/a/[Erai-raws] Sousou no Frieren - 12 [1080p][Multiple Subtitle].mkv'), 'Sousou no Frieren|nil|12|true')
 	eq(info(t, '/a/Show.S01E05.1080p.CR.WEB-DL.mkv'), 'Show|1|5|true', 'CR')
-	eq(info(t, '/a/Show S01E05 (HIDIVE).mkv'), 'Show|1|5|true', 'a service in brackets')
+	eq(info(t, '/a/Show S01E05 (HIDIVE) [1080p].mkv'), 'Show|1|5|true', 'a service in brackets, with a resolution')
+	eq(info(t, '/a/[Erai-raws] Show - 12 [1080p][Multiple Subtitle].mkv'), 'Show|nil|12|true')
+	eq(info(t, '/a/[Erai-raws] jukishi - 15 [1080p CR WEB-DL AVC AAC][MultiSub][799A2A46].mkv'), 'Jukishi|nil|15|true')
+	eq(info(t, '/a/Show.S01E05.1080p.UNCENSORED.ADN.WEB-DL.mkv'), 'Show|1|5|true', 'UNCENSORED in the tail')
+	eq(info(t, '/a/Show - 05 [1080p][Dual Audio].mkv'), 'Show|nil|5|false', 'a label is no sign by itself')
+	eq(info(t, '/a/Show - 05 (CR) [ABCD1234].mkv'), 'Show|nil|5|true', 'a service in brackets with a CRC')
+	eq(info(t, '/a/Show - 05 [Multi-Subs] [1080p BD].mkv'), 'Show|nil|5|true', 'labels and two signs in brackets')
+	eq(info(t, '/a/Show.-.05.1080p.BD.x264.mkv'), 'Show|nil|5|true', 'BD in a dotted tail')
+	eq(info(t, '/a/Show - 05 [1080p][BD].mkv'), 'Show|nil|5|true', 'BD in brackets')
 	eq(info(t, '/a/Show S01E05 1080p.CR.WEB-DL.mkv'), 'Show|1|5|true', 'a service inside a dotted word')
 	eq(info(t, '/a/[Group] Show S01E05 [1080p].mkv'), 'Show|1|5|true', '[group] in front')
 	eq(info(t, '/a/Show.Name.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'CR in the tail')
 	eq(info(t, '/a/Show.Name.S01E05.1080p.ADN.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'ADN in the tail')
 	eq(info(t, '/a/Show.Name.S01E05.Episode.Title.1080p.ADN.WEB-DL.mkv'), 'Show Name|1|5|true', 'after a title')
 	eq(info(t, '/a/Frieren.S01E05.Le.Voyage.1080p.ADN.WEB-DL.mkv'), 'Frieren|1|5|true', 'ADN in the tail, after a title')
-	eq(info(t, '/a/Show.S01E05.CR.WEB-DL.mkv'), 'Show|1|5|true', 'CR right before WEB-DL starts the tail')
-	eq(info(t, '/a/Show - 05 [CR].mkv'), 'Show|nil|5|true', 'a service in brackets, with the - 05 marker')
 	eq(info(t, '/a/[Erai-raws] Show - 12 [1080p][Multiple Subtitle][ABCD1234].mkv'), 'Show|nil|12|true')
 	-- Seanime: a release name with .ADN. in its tail, through the filename parameter.
 	eq(info(t, 'https://127.0.0.1:43211/api/v1/mediastream/file/x?token=s3cret&filename='
@@ -544,6 +550,30 @@ test('release info: not for other files, or anything but one plain episode', fun
 		'Sousou no Frieren - 05 (1080p).mkv', 'Sousou no Frieren - 05 [ABCD1234].mkv', 'Sousou no Frieren - 05 [BD].mkv',
 		'Boda Ana - 01 [1080p] [1080p].mp4', 'Paciente Garcia - 02 - Prueba ADN [ABCD1234].mkv',
 		'Viaje.Japon.S01E02.Funi.Bilibili.mkv', 'Boda Ana - 02 Crunchyroll Hidive.mp4', 'Show.S01E05.1080p.WEB-DL.mkv',
+	}) do
+		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
+	end
+	-- The tail starts exactly at its first strong word (resolution, WEB-DL,
+	-- BluRay, codec): a CR or ADN right before it is part of the description,
+	-- and so is a description after it. A lone BD is an abbreviation outside
+	-- brackets or a dotted tail.
+	for _, name in ipairs({
+		'Boda Ana - 02 - Costa Rica CR 720p.mp4', 'Paciente Garcia - 02 - Prueba ADN 1080p.mkv',
+		'Paciente.Garcia.S01E02.Prueba.ADN.1080p.mkv', 'Paciente.Garcia.S01E02.ADN.1080p.mkv',
+		'Juicio Garcia S01E02 Prueba CR 1080p.mkv', 'Juicio Garcia S01E02 Prueba ADN 1080p.mkv',
+		'Paciente Garcia - 02 - Prueba ADN WEB-DL.mkv', 'Boda Ana - 02 - Costa Rica CR 1080p.mp4',
+		'Boda Ana - 01 BD 1080p.mp4', 'Boda Ana - 01 1080p BD.mp4', 'Show.S01E05.CR.WEB-DL.mkv',
+		'Paciente.Garcia.S01E02.1080p.Prueba.ADN.mkv', 'Paciente Garcia - 02 1080p prueba ADN.mkv',
+	}) do
+		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
+	end
+	-- A group only counts when all its words are technical, and a service in
+	-- brackets needs another sign.
+	for _, name in ipairs({
+		'Paciente Garcia - 02 (prueba ADN Garcia).mkv', 'Paciente Garcia - 02 [Prueba ADN].mkv',
+		'Consulta Garcia - 02 (ADN).mkv', 'Juicio Garcia S01E02 (CR).mkv', 'Show S01E05 (HIDIVE).mkv',
+		'Show - 05 [CR].mkv', 'Boda Ana - 01 (1080p boda) [ABCD1234].mp4', 'Boda Ana - 01 (video 1080p) (BD).mp4',
+		'Consulta Garcia - 02 [ADN] [CR].mkv',
 	}) do
 		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
 	end
