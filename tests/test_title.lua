@@ -467,6 +467,71 @@ test('pretty: long and hostile names stay fast', function()
 	assert(os.clock() - clock < 2, 'too slow: ' .. (os.clock() - clock))
 end)
 
+-- Release info for hikari-skip (AniSkip) ------------------------------------
+
+local function info(t, path)
+	local r = t.release_for(path)
+	if not r then return 'nil' end
+	return string.format('%s|%s|%s|%s', r.series, tostring(r.season), tostring(r.episode), tostring(r.anime))
+end
+
+test('release info: series, season and episode of anime releases', function()
+	local t = load()
+	eq(info(t, '/a/[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren|nil|5|true')
+	eq(info(t, '/a/[SubsPlease] Sousou no Frieren S2 - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren|2|5|true')
+	eq(info(t, '/a/[Erai-raws] Shingeki no Kyojin Season 3 - 01v2 [1080p].mkv'), 'Shingeki no Kyojin|3|1|true')
+	eq(info(t, '/a/[Group] Kusuriya no Hitorigoto 2nd Season - 03 [1080p].mkv'), 'Kusuriya no Hitorigoto|2|3|true')
+	eq(info(t, '/a/Sousou no Frieren - 05.mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker')
+	eq(info(t, '/a/[Group] Show S01E05 [1080p].mkv'), 'Show|1|5|true', '[group] in front')
+	eq(info(t, '/a/Show.Name.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'CR in the tail')
+	eq(info(t, 'C:\\Anime\\[SubsPlease] Sousou no Frieren - 05 (1080p).mkv'), 'Sousou no Frieren|nil|5|true', 'Windows path')
+	eq(info(t, 'file:///a/%5BSubsPlease%5D%20Sousou%20no%20Frieren%20-%2005%20(1080p).mkv'), 'Sousou no Frieren|nil|5|true')
+	-- Seanime: the filename parameter.
+	eq(info(t, 'https://127.0.0.1:43211/api/v1/mediastream/file/x?token=s3cret&filename='
+		.. '%5BSubsPlease%5D%20Sousou%20no%20Frieren%20-%2005%20(1080p).mkv'), 'Sousou no Frieren|nil|5|true')
+	eq(info(t, 'https://h/files/[SubsPlease] Sousou no Frieren - 05 (1080p).mkv'), 'Sousou no Frieren|nil|5|true')
+end)
+
+test('release info: not for other files, or anything but one plain episode', function()
+	local t = load()
+	eq(info(t, '/a/Show.Name.S01E05.1080p.WEB-DL.mkv'), 'Show Name|1|5|false', 'no sign of anime')
+	eq(info(t, '/a/Holiday video.mkv'), 'nil', 'not a release')
+	eq(info(t, '/a/Blade.Runner.2049.2017.1080p.BluRay.x264.mkv'), 'nil', 'a film')
+	eq(info(t, '/a/[Group] Show - 12.5 [1080p].mkv'), 'nil', 'half episode')
+	eq(info(t, '/a/[Group] Show - S01E01-E02 [1080p].mkv'), 'nil', 'two episodes')
+	eq(info(t, '/a/[Group] Show - OVA [1080p].mkv'), 'nil', 'OVA')
+	eq(info(t, '/a/[Group] Show - SP01 [1080p].mkv'), 'nil', 'special')
+	eq(info(t, '/a/[Group] Show S00E03 [1080p].mkv'), 'nil', 'season 0')
+	eq(info(t, '/a/[Group] - 05 [1080p].mkv'), 'nil', 'no series')
+	eq(info(t, '/a/notes.txt'), 'nil', 'not a video')
+	eq(info(t, 'ytdl://x'), 'nil'); eq(info(t, 'https://h/stream?token=x'), 'nil'); eq(info(t, nil), 'nil')
+end)
+
+test('release info: published on start-file with its path, whatever the options; cleared on end-file', function()
+	for _, opts in ipairs({{}, {['hikari-title-enabled'] = 'no'}, {['hikari-title-pretty'] = 'no'}}) do
+		local t = load(opts)
+		local path = '/a/[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'
+		start(path)
+		local r = mock.props[t.RELEASE_PROP]
+		eq(r.series, 'Sousou no Frieren'); eq(r.episode, 5); eq(r.anime, true); eq(r.path, path)
+		mock.events['end-file']()
+		eq(next(mock.props[t.RELEASE_PROP]), nil, 'cleared')
+		start('/a/Holiday video.mkv')
+		eq(next(mock.props[t.RELEASE_PROP]), nil, 'nothing for a non-release')
+	end
+end)
+
+test('release info: hostile names stay fast and give nothing odd', function()
+	local t = load()
+	local clock = os.clock()
+	t.release_for('https://h/' .. string.rep('a', 1000000) .. '?filename=' .. string.rep('- 05 ', 20000))
+	t.release_for('https://' .. string.rep('a', 1000000))
+	t.release_for(string.rep('[(', 200000) .. ' - 05.mkv')
+	assert(os.clock() - clock < 2, 'too slow: ' .. (os.clock() - clock))
+	local r = t.release_for('/a/[G] Bad\27[31mName\7 - 05.mkv')
+	assert(r and not r.series:find('%c'), 'no control characters')
+end)
+
 test('the script avoids os.execute, io.popen and load*', function()
 	local f = assert(io.open(SCRIPT, 'rb')); local src = f:read('*a'); f:close()
 	for _, bad in ipairs({'os.execute', 'io.popen', 'loadstring', 'loadfile', 'dofile', 'load('}) do

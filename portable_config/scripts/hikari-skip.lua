@@ -3,8 +3,9 @@
 -- While playback is inside a chapter that looks like an opening or an ending,
 -- a rounded button is drawn at the bottom right, above uosc's controls and
 -- timeline. Clicking it (or the `skip` binding) jumps to the start of the next
--- chapter. Outside those chapters, and in files without chapters, nothing is
--- drawn and no input is taken.
+-- chapter. Files with no opening or ending chapters get the times from
+-- AniSkip when they are anime releases (see below). Outside those ranges
+-- nothing is drawn and no input is taken.
 --
 -- mpv turns this file name into the script name `hikari_skip`, so:
 --   input.conf:  <key> script-binding hikari_skip/skip
@@ -43,6 +44,18 @@
 -- - The label follows hikari's language (hikari-i18n) and is redrawn as soon
 --   as it changes. The box is sized from the label's width: CJK and other
 --   full-width characters count double.
+-- - AniSkip (aniskip=yes, the default): only for a file whose chapters mark no
+--   opening or ending (it counts even if the options turn that kind off), once
+--   it has loaded, with a duration, and only when hikari-title.lua has
+--   published a release with one plain episode that looks like anime
+--   (user-data/hikari_title/release) for the path playing. The lookup, its
+--   checks and its cache are in script-modules/hikari-aniskip.lua. Its
+--   opening and ending become ranges like the chapters' ones (same button,
+--   same binding, same double-click guard), the opening skipping to its end,
+--   an ending that runs to the end of the file like a last-chapter ending.
+--   An answer that arrives once the opening is over changes nothing on
+--   screen; one that arrives after the file changed (end-file counts the
+--   files) is dropped.
 --
 -- Options (script-opts/hikari-skip.conf): see that file.
 
@@ -91,8 +104,30 @@ local opts = {
 	opacity = 0.85,
 	scale = 1,
 	scale_fullscreen = 1.3,
+	-- Opening and ending times from AniSkip for files without such chapters.
+	aniskip = true,
 }
 options.read_options(opts, OPTIONS_ID)
+
+-- AniSkip lookups: ~~/script-modules/hikari-aniskip.lua, loaded like the
+-- texts above, and only when wanted. Without it the button still works with
+-- chapters.
+local aniskip = (function()
+	if not opts.aniskip then return nil end
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then return nil end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-aniskip')
+	package.path = saved
+	if not ok then
+		msg.warn('hikari: cannot load script-modules/hikari-aniskip.lua (reinstall hikari): ' .. tostring(module))
+		return nil
+	end
+	return module
+end)()
+-- Where hikari-title.lua publishes the series and episode of the file playing.
+local RELEASE_PROP = 'user-data/hikari_title/release'
 
 -- Number within [min, max]; `default` when it is not a number (or NaN).
 -- Infinities end up at the bounds, so every option stays finite.
@@ -149,12 +184,16 @@ for _, kind in ipairs(KINDS) do
 	end
 end
 
+local KIND_BY_NAME = {}
+for _, kind in ipairs(KINDS) do KIND_BY_NAME[kind.name] = kind end
+
 -- Kind for a chapter title, or nil. Lower-case, trimmed, cut to MAX_TITLE.
-local function classify(title)
+-- With `all`, kinds turned off in the options count too.
+local function classify(title, all)
 	if type(title) ~= 'string' then return nil end
 	local text = title:sub(1, MAX_TITLE):lower():gsub('^%s+', ''):gsub('%s+$', '')
 	for _, kind in ipairs(KINDS) do
-		if kind.enabled then
+		if kind.enabled or all then
 			for _, pattern in ipairs(kind.patterns) do
 				local ok, found = pcall(string.find, text, pattern)
 				if ok and found then return kind end
@@ -193,6 +232,34 @@ local function build_ranges(chapters, duration)
 			if finish > chapter.time then
 				ranges[#ranges + 1] = {kind = kind, start = chapter.time, finish = finish, next_time = nxt and nxt.time}
 			end
+		end
+	end
+	return ranges
+end
+
+-- Does the file mark its opening or ending with chapters (whatever the
+-- options say)? Then AniSkip is not asked.
+local function has_skip_chapters(chapters)
+	if type(chapters) ~= 'table' then return false end
+	for _, chapter in ipairs(chapters) do
+		local kind = type(chapter) == 'table' and classify(chapter.title, true)
+		if kind and (kind.name == 'openings' or kind.name == 'endings') then return true end
+	end
+	return false
+end
+
+-- Ranges from AniSkip's results (see hikari-aniskip.lua) for a file of
+-- `duration` seconds, as build_ranges makes them. An ending that runs to the
+-- end of the file skips like a last-chapter ending (next_time nil).
+local function aniskip_ranges(results, duration)
+	local ranges = {}
+	if not aniskip or not results then return ranges end
+	for _, r in ipairs(aniskip.select(results, duration)) do
+		local kind = KIND_BY_NAME[r.kind == 'opening' and 'openings' or 'endings']
+		if kind.enabled then
+			local to_end = r.finish >= duration - 1
+			ranges[#ranges + 1] = {kind = kind, start = r.start, finish = r.finish,
+				next_time = not to_end and r.finish or nil, aniskip = true}
 		end
 	end
 	return ranges
@@ -290,6 +357,9 @@ local state = {
 	-- dismissed: {start, target} of the range skipped last; `target` is where
 	-- the skip seeked to (nil for playlist-next).
 	time = nil, current = nil, dismissed = nil,
+	-- AniSkip: `file` counts the files played, so a late answer is dropped;
+	-- `asked` once per file; `results` the answer for this file.
+	file = 0, loaded = false, asked = false, results = nil,
 	guard_until = nil, guard_timer = nil, -- double-click guard after a mouse skip
 	idle = false, menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
@@ -418,6 +488,13 @@ on_mouse_pos = function(_, mouse)
 	refresh()
 end
 
+-- Seconds as `12.345`, built from integers so the decimal separator never
+-- depends on the C locale.
+local function format_time(seconds)
+	local ms = math.max(0, round(seconds * 1000))
+	return string.format('%d.%03d', math.floor(ms / 1000), ms % 1000)
+end
+
 -- Recomputes which range we are in; redraws only when that changes.
 local function update_current()
 	local index = range_at(state.ranges, state.time)
@@ -427,6 +504,11 @@ local function update_current()
 		state.dismissed = nil
 	end
 	if index == state.current and state.dismissed == dismissed then return end
+	if index and index ~= state.current then
+		local range = state.ranges[index]
+		msg.verbose(string.format('In a skippable range: %s from %s%s', range.kind.name,
+			format_time(range.start), range.aniskip and ' (AniSkip)' or ''))
+	end
 	state.current = index
 	refresh()
 end
@@ -440,6 +522,10 @@ local time_watched = false
 
 local function rebuild()
 	state.ranges = build_ranges(state.chapters, state.duration)
+	if state.results and not has_skip_chapters(state.chapters) and type(state.duration) == 'number' then
+		for _, range in ipairs(aniskip_ranges(state.results, state.duration)) do state.ranges[#state.ranges + 1] = range end
+		table.sort(state.ranges, function(a, b) return a.start < b.start end)
+	end
 	state.current = nil
 	-- Keep a dismissal while its range still exists (a stream's duration
 	-- grows and rebuilds the ranges without anything really changing).
@@ -461,13 +547,6 @@ local function rebuild()
 	end
 	state.current = range_at(state.ranges, state.time)
 	refresh()
-end
-
--- Seconds as `12.345`, built from integers so the decimal separator never
--- depends on the C locale.
-local function format_time(seconds)
-	local ms = math.max(0, round(seconds * 1000))
-	return string.format('%d.%03d', math.floor(ms / 1000), ms % 1000)
 end
 
 -- Skips the current range. Returns true if it did something.
@@ -547,7 +626,40 @@ mp.set_key_bindings({
 local function reset()
 	state.chapters, state.duration, state.time = nil, nil, nil
 	state.pressed, state.dismissed = false, nil
+	state.file, state.loaded, state.asked, state.results = state.file + 1, false, false, nil
 	rebuild()
+end
+
+-- Asks AniSkip once per file, after it has loaded (its chapters are known
+-- then), when it has no opening or ending chapters, a duration, and
+-- hikari-title has published a lookable release for this very path.
+local function maybe_aniskip()
+	if not aniskip or not state.loaded or state.asked then return end
+	if not KIND_BY_NAME.openings.enabled and not KIND_BY_NAME.endings.enabled then return end
+	if has_skip_chapters(mp.get_property_native('chapter-list')) then return end
+	local duration = mp.get_property_number('duration')
+	if not duration or duration ~= duration or duration <= 0 or duration == math.huge then return end
+	local release = mp.get_property_native(RELEASE_PROP)
+	local path = mp.get_property_native('path')
+	if type(release) ~= 'table' or type(path) ~= 'string' or release.path ~= path then return end
+	local query = aniskip.query(release)
+	if not query then return end
+	state.asked = true
+	local file = state.file
+	aniskip.lookup(query, function(results)
+		if file ~= state.file then
+			msg.verbose('AniSkip: answer for a file that is no longer playing, dropped')
+			return
+		end
+		if not results or #results == 0 then return end
+		state.results = results
+		local found = {}
+		for _, range in ipairs(aniskip_ranges(results, duration)) do
+			found[#found + 1] = range.kind.name .. ' ' .. format_time(range.start) .. '-' .. format_time(range.finish)
+		end
+		msg.verbose('AniSkip ranges for this file: ' .. (#found > 0 and table.concat(found, ', ') or 'none that fit'))
+		rebuild()
+	end)
 end
 
 local function setter(field, transform)
@@ -565,6 +677,8 @@ end)
 mp.observe_property('duration', 'number', function(_, value)
 	state.duration = value
 	rebuild()
+	-- A stream may only know its duration after file-loaded.
+	maybe_aniskip()
 end)
 mp.observe_property('idle-active', 'bool', setter('idle', truthy))
 mp.observe_property('osd-dimensions', 'native', function(_, dims)
@@ -583,6 +697,12 @@ end))
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
+mp.register_event('file-loaded', function()
+	state.loaded = true
+	maybe_aniskip()
+end)
+-- hikari-title may publish after file-loaded has been handled here.
+mp.observe_property(RELEASE_PROP, 'native', function() maybe_aniskip() end)
 -- A seek that leaves playback far from where the skip went (the user going
 -- back into a last-chapter ending with keep-open, say) brings the button back.
 mp.register_event('playback-restart', function()
@@ -608,5 +728,7 @@ if HIKARI_SKIP_TEST then
 		parse_colors = parse_colors, to_bgr = to_bgr, to_alpha = to_alpha, ass_escape = ass_escape,
 		layout = layout, text_width = text_width, is_visible = is_visible, skip = skip, format_time = format_time,
 		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN, guard_active = guard_active,
+		has_skip_chapters = has_skip_chapters, aniskip_ranges = aniskip_ranges, aniskip = aniskip,
+		RELEASE_PROP = RELEASE_PROP,
 	}
 end

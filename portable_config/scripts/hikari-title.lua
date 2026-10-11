@@ -58,6 +58,13 @@
 --   playlist titles are never touched: they are not release names.
 -- - Every pattern is anchored to a token and input is cut to MAX_RAW before
 --   any work, so hostile names cost linear time.
+-- - For hikari-skip's AniSkip lookup, the series, season and episode of a
+--   release name with one plain episode (`Show - 05`, `Show S2 - 05`,
+--   `Show.S02E05`), and whether it looks like anime (a [group] in front, the
+--   `- 05` marker or an anime-only service such as CR in the tail), go to
+--   user-data/hikari_title/release on start-file, with the path they are for
+--   (`{}` for anything else and after end-file). This does not depend on the
+--   options below: they are about the title on screen.
 --
 -- Options (script-opts/hikari-title.conf): enabled=yes|no, pretty=yes|no
 -- (pretty=no: only `filename=` and the fallback, shown as they come).
@@ -82,6 +89,8 @@ local i18n = (function()
 end)()
 
 local OPTIONS_ID = 'hikari-title'
+-- Series, season and episode of the file playing, for hikari-skip (AniSkip).
+local RELEASE_PROP = 'user-data/hikari_title/release'
 local MAX_CHARS = 150
 -- Raw input kept before decoding: enough for MAX_CHARS 4-byte characters
 -- written as %XX%XX%XX%XX, and a bound on the work done per title.
@@ -366,7 +375,7 @@ local function marker_at(tokens, i)
 	-- `Episode 01`, `Ep 01`, `- 01`, `- 01v2`, `- 12.5` (anime releases)
 	if lower == 'episode' or lower == 'ep' or lower == 'ep.' or lower == '-' then
 		local digits, fraction = bare_number(nxt)
-		if digits then return {first = digits, fraction = fraction}, 2 end
+		if digits then return {first = digits, fraction = fraction, dash = lower == '-'}, 2 end
 	end
 	return nil
 end
@@ -486,12 +495,37 @@ local function episode_title(tokens, from, spaced)
 	return title
 end
 
+-- Services and words that only anime releases carry.
+local ANIME_WORDS = {}
+word_set(ANIME_WORDS, [[cr crunchyroll adn hidive funi funimation b-global bilibili]])
+
+-- Does the release look like anime? A [group] in front (fansub style), the
+-- `Show - 05` marker, or an anime-only service in the tail.
+local function looks_like_anime(tokens, marker)
+	if marker.dash or tokens[1].group == '[' then return true end
+	for _, t in ipairs(tokens) do
+		if not t.group and ANIME_WORDS[t.text:lower()] then return true end
+	end
+	return false
+end
+
+-- What hikari-skip can look up on AniSkip for a marker: one plain episode of
+-- a series (not a range, half episode, special or OVA). nil otherwise.
+local function release_info(tokens, marker, series)
+	if marker.last or marker.fraction or marker.special or marker.extra or not marker.first then return nil end
+	return {
+		series = series, season = marker.season, episode = tonumber(marker.first),
+		anime = looks_like_anime(tokens, marker),
+	}
+end
+
 -- Turns a release name into `Series · S1 E05`, `Series · E05 · Episode title`
 -- or, with no episode marker, the name up to its technical tail with dots as
 -- spaces. Falls back to `name` itself when nothing sensible is left. The
 -- second result says whether the name looked like a release (a marker, a
 -- technical tail or brackets dropped); `lang` is the language of the labels
--- (hikari's when nil). Expects sanitized input already cut to MAX_RAW; every
+-- (hikari's when nil). The third, for names with an episode marker, is what
+-- release_info gives. Expects sanitized input already cut to MAX_RAW; every
 -- pattern is anchored to a token, so the work stays linear.
 local function pretty_title(name, lang)
 	local tokens = tokenize(name)
@@ -512,7 +546,7 @@ local function pretty_title(name, lang)
 				local title = capitalize(series) .. ' · ' .. marker_label(marker, lang)
 				local episode = episode_title(tokens, i + used, spaced)
 				if episode then title = title .. ' · ' .. episode end
-				return title, true
+				return title, true, release_info(tokens, marker, capitalize(series))
 			end
 			-- `S01E01.1080p`, `- 01`: a marker but no series in front. Look on:
 			-- in `Special 7 - 05` the series is `Special 7`.
@@ -647,6 +681,53 @@ local function title_for(path)
 	return nil
 end
 
+-- The release name in `path` for hikari-skip: a local or file:// video file
+-- name, an http(s) URL's `filename` parameter, or the video file name at the
+-- end of its path. Cut and decoded as title_for does; nil for anything else.
+local function release_name(path)
+	if type(path) ~= 'string' then return nil end
+	local scheme = path:match('^(%a[%w+.-]*)://')
+	if not scheme then return video_file_name(path:sub(-MAX_RAW * 4)) end
+	scheme = scheme:lower()
+	if scheme == 'file' then
+		return video_file_name(url_decode(path:sub(#scheme + 4):sub(-MAX_RAW * 4), false))
+	end
+	if scheme ~= 'http' and scheme ~= 'https' then return nil end
+	local rest = path:sub(#scheme + 4):gsub('#.*$', '')
+	local location, query = rest:match('^([^?]*)%?(.*)$')
+	location = location or rest
+	for pair in (query or ''):gmatch('[^&;]+') do
+		local key, value = pair:match('^([^=]*)=(.*)$')
+		if key and url_decode(key:sub(1, MAX_RAW), true) == 'filename' then
+			return strip_extension(url_decode(value:sub(1, MAX_RAW), true))
+		end
+	end
+	local route = location:match('^[^/]*(.*)$')
+	local segment = route:match('^.*/([^/]+)/*$')
+	return segment and video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false))
+end
+
+-- What hikari-skip may look up on AniSkip for `path`: {series, season,
+-- episode, anime} from a release name with one plain episode, nil otherwise.
+-- Read whatever the title options say: they are about the title on screen.
+local function release_for(path)
+	local name = release_name(path)
+	if not name then return nil end
+	name = sanitize(name)
+	if name == '' then return nil end
+	local _, release, info = pretty_title(name, 'en')
+	if not release then return nil end
+	return info
+end
+
+-- Publishes release_for(path) for hikari-skip, with the path it is for: a
+-- late reader can tell it apart from the previous file's. `{}` when nothing.
+local function publish_release(path)
+	local info = path and release_for(path)
+	if info then info.path = path end
+	mp.set_property_native(RELEASE_PROP, info or {})
+end
+
 -- What we set for the current file: the title, and whether it is the weak
 -- fallback (file-loaded withdraws it when the file has a title tag).
 local current = nil
@@ -659,8 +740,10 @@ end
 
 local function on_start_file()
 	current = nil
+	local path = mp.get_property_native('path')
+	publish_release(type(path) == 'string' and path or nil)
 	if not opts.enabled then return end
-	local title, source = title_for(mp.get_property('path'))
+	local title, source = title_for(path)
 	if not title then return end
 	local existing = mp.get_property('force-media-title', '')
 	if existing ~= nil and existing ~= '' then
@@ -700,14 +783,18 @@ end
 
 mp.register_event('start-file', on_start_file)
 mp.register_event('file-loaded', on_file_loaded)
-mp.register_event('end-file', function() current = nil end)
+mp.register_event('end-file', function()
+	current = nil
+	publish_release(nil)
+end)
 i18n.on_change(on_language_change)
 
 if HIKARI_TITLE_TEST then
 	return {
 		title_for = title_for, url_decode = url_decode, sanitize = sanitize,
 		truncate = truncate, strip_extension = strip_extension, pretty_title = pretty_title,
-		on_start_file = on_start_file, on_file_loaded = on_file_loaded,
+		on_start_file = on_start_file, on_file_loaded = on_file_loaded, release_for = release_for,
+		RELEASE_PROP = RELEASE_PROP,
 		MAX_CHARS = MAX_CHARS, MAX_RAW = MAX_RAW, opts = opts, i18n = i18n,
 	}
 end

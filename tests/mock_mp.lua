@@ -63,6 +63,119 @@ local function format_json(value)
 	error('cannot encode ' .. t)
 end
 
+-- JSON decoder with mpv's utils.parse_json contract: the value, or nil and an
+-- error. Strict like mpv's: no trailing garbage, no comments, no single
+-- quotes. null inside arrays and objects leaves a hole (nil), as in mpv.
+local function parse_json(text)
+	if type(text) ~= 'string' then return nil, 'not a string' end
+	local pos = 1
+	local function fail(what) error({json = what .. ' at ' .. pos}, 0) end
+	local function skip() pos = text:find('[^ \t\r\n]', pos) or #text + 1 end
+	local value
+	local function str()
+		pos = pos + 1
+		local out = {}
+		while true do
+			local c = text:sub(pos, pos)
+			if c == '' then fail('unterminated string') end
+			if c == '"' then pos = pos + 1 break end
+			if c:byte() < 32 then fail('control character in string') end
+			if c == '\\' then
+				local e = text:sub(pos + 1, pos + 1)
+				local map = {['"'] = '"', ['\\'] = '\\', ['/'] = '/', b = '\b', f = '\f', n = '\n', r = '\r', t = '\t'}
+				if map[e] then
+					out[#out + 1] = map[e]
+					pos = pos + 2
+				elseif e == 'u' then
+					local hex = text:sub(pos + 2, pos + 5)
+					if not hex:match('^%x%x%x%x$') then fail('bad \\u escape') end
+					local code = tonumber(hex, 16)
+					pos = pos + 6
+					if code >= 0xD800 and code <= 0xDBFF and text:sub(pos, pos + 1) == '\\u' then
+						local low = tonumber(text:sub(pos + 2, pos + 5), 16)
+						if low and low >= 0xDC00 and low <= 0xDFFF then
+							code = 0x10000 + (code - 0xD800) * 0x400 + (low - 0xDC00)
+							pos = pos + 6
+						end
+					end
+					if code < 0x80 then out[#out + 1] = string.char(code)
+					elseif code < 0x800 then out[#out + 1] = string.char(0xC0 + math.floor(code / 64), 0x80 + code % 64)
+					elseif code < 0x10000 then
+						out[#out + 1] = string.char(0xE0 + math.floor(code / 4096), 0x80 + math.floor(code / 64) % 64, 0x80 + code % 64)
+					else
+						out[#out + 1] = string.char(0xF0 + math.floor(code / 262144), 0x80 + math.floor(code / 4096) % 64,
+							0x80 + math.floor(code / 64) % 64, 0x80 + code % 64)
+					end
+				else
+					fail('bad escape')
+				end
+			else
+				out[#out + 1] = c
+				pos = pos + 1
+			end
+		end
+		return table.concat(out)
+	end
+	value = function()
+		skip()
+		local c = text:sub(pos, pos)
+		if c == '{' then
+			pos = pos + 1
+			local obj = {}
+			skip()
+			if text:sub(pos, pos) == '}' then pos = pos + 1 return obj end
+			while true do
+				skip()
+				if text:sub(pos, pos) ~= '"' then fail('expected key') end
+				local key = str()
+				skip()
+				if text:sub(pos, pos) ~= ':' then fail('expected :') end
+				pos = pos + 1
+				obj[key] = value()
+				skip()
+				local d = text:sub(pos, pos)
+				pos = pos + 1
+				if d == '}' then return obj end
+				if d ~= ',' then fail('expected , or }') end
+			end
+		elseif c == '[' then
+			pos = pos + 1
+			local arr, n = {}, 0
+			skip()
+			if text:sub(pos, pos) == ']' then pos = pos + 1 return arr end
+			while true do
+				n = n + 1
+				arr[n] = value()
+				skip()
+				local d = text:sub(pos, pos)
+				pos = pos + 1
+				if d == ']' then return arr end
+				if d ~= ',' then fail('expected , or ]') end
+			end
+		elseif c == '"' then
+			return str()
+		elseif text:sub(pos, pos + 3) == 'true' then pos = pos + 4 return true
+		elseif text:sub(pos, pos + 4) == 'false' then pos = pos + 5 return false
+		elseif text:sub(pos, pos + 3) == 'null' then pos = pos + 4 return nil
+		end
+		local num = text:match('^-?%d+%.?%d*[eE]?[-+]?%d*', pos)
+		if not num or num == '' or not tonumber(num) then fail('unexpected character') end
+		pos = pos + #num
+		return tonumber(num)
+	end
+	local ok, result = pcall(function()
+		local v = value()
+		skip()
+		if pos <= #text then fail('trailing characters') end
+		return v
+	end)
+	if not ok then
+		if type(result) == 'table' then return nil, result.json end
+		error(result, 0)
+	end
+	return result
+end
+
 function M.install(script_name)
 	M.commands, M.osd = {}, {}
 	M.logs = {warn = {}, error = {}, info = {}}
@@ -78,6 +191,7 @@ function M.install(script_name)
 	-- The shared texts module is per script in mpv (one Lua state each): load it
 	-- again for every script the tests load, from the repository.
 	package.loaded['hikari-i18n'] = nil
+	package.loaded['hikari-aniskip'] = nil
 	M.expand['~~/script-modules'] = M.expand['~~/script-modules'] or 'portable_config/script-modules'
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
@@ -203,6 +317,7 @@ function M.install(script_name)
 		verbose = logger('info'), debug = logger('info')}
 	package.loaded['mp.utils'] = {
 		format_json = function(v) return format_json(v) end,
+		parse_json = function(text) return parse_json(text) end,
 		file_info = function(path) return M.files[path] end,
 	}
 	package.loaded['mp.options'] = {
@@ -274,4 +389,5 @@ function M.end_file()
 end
 
 M.format_json = format_json
+M.parse_json = parse_json
 return M
