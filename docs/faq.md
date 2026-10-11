@@ -43,7 +43,26 @@ hikari tidies release names, and it can only show what the file name carries. So
 
 ## Does hikari phone home?
 
-Only the update check, and only to GitHub: at most once a day it asks `https://github.com/SCEPTICG/hikari-mpv/releases/latest` where it points. Nothing about you or your files is sent, and it never updates anything by itself. Turn it off with `enabled=no` in `script-opts/hikari-update.conf`. See [Update check](features/update-check.md).
+Two things go out, both to public services and both can be turned off:
+
+- **The update check**, only to GitHub: at most once a day it asks `https://github.com/SCEPTICG/hikari-mpv/releases/latest` where it points. Nothing about you or your files is sent, and it never updates anything by itself. Turn it off with `enabled=no` in `script-opts/hikari-update.conf`. See [Update check](features/update-check.md).
+- **AniSkip**, only for an anime episode whose file has no opening or ending chapters: the series name to AniList (or Jikan, if AniList fails) and then the MyAnimeList id and episode number to AniSkip, to get the times of the opening and the ending. The answers are kept, so an episode is only looked up once. Turn it off with `aniskip=no` in `script-opts/hikari-skip.conf`. See [AniSkip](features/skip.md#aniskip).
+
+## Which version of hikari do I have?
+
+Run the installer and choose *Show installed version*, or ask it straight away; it only reads, it changes nothing:
+
+```
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --version
+```
+
+On Windows, in PowerShell:
+
+```
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version
+```
+
+It prints one line per mpv config folder it finds, such as `mpv (/home/you/.config/mpv): hikari 0.6.0 (older than this installer)`, after the version of the installer itself (the latest release, with these lines). `dev` means a copy installed from the repository, `preview-…` a test build. The same version is the `hikari_version=` line of `hikari-installed.txt` in your config folder.
 
 ## On Windows, `irm` fails with an SSL/TLS error
 
@@ -59,4 +78,4 @@ Run the install line again and choose *Uninstall* (on macOS and Linux you can ad
 
 ## Where do I report a problem?
 
-Open an issue on [GitHub](https://github.com/SCEPTICG/hikari-mpv/issues), with your system, your player and, if you can, what the installer printed.
+Open an issue on [GitHub](https://github.com/SCEPTICG/hikari-mpv/issues), with the line `--version` / `-Version` prints for your player (see [Which version of hikari do I have?](#which-version-of-hikari-do-i-have)), your system, your player and, if you can, what the installer printed.

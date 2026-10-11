@@ -65,7 +65,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![Skip opening button](images/skip-opening.jpg)
 
-    A *Skip opening ›* button while a chapter looks like an opening, intro or ending. One click or `Alt+s`.
+    A *Skip opening ›* button while a chapter looks like an opening, intro or ending, or at the times AniSkip knows for anime episodes without them. One click or `Alt+s`.
 
     [:octicons-arrow-right-24: Skip openings and endings](features/skip.md)
 

@@ -19,7 +19,15 @@ curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikar
 - **Graphics card**. The Anime4K quality comes from the chip on macOS (`Apple M… Pro`, `Max` and `Ultra`: *High*; the base M chips and Intel Macs: *Fast*) and from `lspci` on Linux (a dedicated NVIDIA or AMD card: *High*; anything else, or no `lspci`: *Fast*).
 - No AnimeJaNai or mpv.net there, and no administrator questions: run it as your own user. As root (`sudo`) it warns and asks, and without questions it refuses.
 
-Run the same line to update. To uninstall:
+Run the same line to update. To see which version you have, without changing anything:
+
+```
+curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --version
+```
+
+It prints one line per config folder, such as `mpv (/Users/you/.config/mpv): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `preview-…` a test build. Paste that line when you report a problem.
+
+To uninstall:
 
 ```
 curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --uninstall
@@ -32,6 +40,7 @@ curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikar
 | `--yes` | No questions: take the default answer to everything (and install when no action is given). Needs `--target` when more than one folder is found. |
 | `--no-menu` | Ask with numbers and typed answers instead of the keyboard menus. |
 | `--anime4k yes` / `--anime4k no` | Answer the Anime4K questions instead of asking, as `-Anime4K` on Windows. |
+| `--version` | Show the hikari version in each config folder found (and in each `--target`) and the installer's own, then leave. It only reads: nothing is installed, backed up or changed. Also in the menu, as *Show installed version*. |
 
 Options go after `bash -s --`, as above. With no terminal at all (a script, `ssh` without `-t`...) it runs as with `--yes`, and when an answer is really needed (several folders and no `--target`) it stops with a clear message. Exit codes: 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. The whole script is inside one function that its last line calls, so a download cut short runs nothing.
 

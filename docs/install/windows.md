@@ -35,6 +35,7 @@ If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windo
 
 - **Update**: run the same line again and choose *Install or update*. Your saved palette, subtitle and upscaling choices are kept.
 - **Uninstall**: run the same line again and choose *Uninstall*. It backs up again, removes hikari and its blocks, and asks whether to remove uosc and thumbfast too and whether to put back what it set aside.
+- **Which version do I have?**: run the same line again and choose *Show installed version*, or use `-Version` (see [Options](#options)). It only reads, and changes nothing.
 
 ## Options
 
@@ -51,12 +52,21 @@ If `irm` itself fails with an error about a secure channel (SSL/TLS), your Windo
 | `-Yes` | No questions: take the default answer to everything. Needs `-Action`, and `-Target` when more than one folder is found. |
 | `-NoMenu` | Ask with numbers and typed answers instead of the keyboard menus. |
 | `-Anime4K yes` / `-Anime4K no` | Answer the Anime4K questions instead of asking: install it (and take over an Anime4K installed by hand), or leave it out. See [Anime4K upscaling](../features/anime4k.md). |
+| `-Version` | Show the hikari version in each config folder found (and in each `-Target`) and the installer's own, then leave. It only reads: nothing is installed, backed up or changed, and no administrator question is asked. |
 
 Exit codes (in `$LASTEXITCODE`): 0 done or cancelled, 1 a folder failed, 2 wrong usage or nothing to do. For example:
 
 ```
 & ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Action install -Target "$env:APPDATA\mpv" -Yes
 ```
+
+To see which version you have:
+
+```
+& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version
+```
+
+It prints one line per config folder, such as `mpv.net (C:\Users\you\AppData\Roaming\mpv.net): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `preview-…` a test build. Paste that line when you report a problem.
 
 ## Checking the installer first
 
@@ -97,7 +107,7 @@ For each folder it:
 7. For mpv.net and AnimeJaNai, writes `mpv_path=<path to mpvnet.exe>` into `script-opts/thumbfast.conf`, because some mpv.net builds do not tell thumbfast where they are (see [Thumbnails](../features/thumbnails.md)).
 8. Writes `hikari-installed.txt` with the versions installed and what was already there, for updates and uninstalling.
 
-Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the hikari scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if hikari installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as hikari left them), and whether to delete your saved choices. `hikari-update.txt`, where the update check keeps its state, goes without asking, like `hikari-installed.txt`; updating keeps it. A file that had no line break at its end gets it back that way.
+Run it again at any time to update. *Uninstall* (after another backup of the same files) removes the hikari scripts and options, the Anime4K shaders it installed (only those) and both blocks, and asks whether to remove uosc and thumbfast (yes by default only if hikari installed them), whether to move back what it set aside (interfaces, and an Anime4K installed by hand), whether to turn back on the `input.conf` and `mpv.conf` lines it turned off (only those, and only if they are still there as hikari left them), and whether to delete your saved choices. `hikari-update.txt`, where the update check keeps its state, and `hikari-aniskip.json`, where the skip button keeps its [AniSkip](../features/skip.md#aniskip) answers, go without asking, like `hikari-installed.txt`; updating keeps them. A file that had no line break at its end gets it back that way.
 
 If uosc goes and your own `mpv.conf` (outside the hikari block) still has `osc=no` or `osc=false`, the player would be left without on-screen controls. The installer says so and offers to move back the interfaces it set aside, or else to turn that line off by putting `# hikari: ` in front of it. With `-Yes` it only warns.
 

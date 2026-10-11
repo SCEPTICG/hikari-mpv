@@ -44,3 +44,5 @@ In `script-opts/hikari-title.conf`:
 
 - `pretty=no`: no tidying. Local files keep mpv's own title, and streamed links get their `filename` as it comes, without its video extension.
 - `enabled=no`: the whole script off.
+
+The series, season and episode read from a release name are also what the skip button looks up on [AniSkip](skip.md#aniskip) for files without opening or ending chapters. That works whatever these two settings say: they only decide the title on screen.

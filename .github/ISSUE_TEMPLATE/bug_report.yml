@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in hikari or its installer does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. A security problem? Please do not open a public issue: see [SECURITY.md](https://github.com/SCEPTICG/hikari-mpv/security/policy).
+  - type: textarea
+    id: version
+    attributes:
+      label: hikari version
+      description: |
+        Paste what the installer prints with `--version` (macOS and Linux) or `-Version` (Windows). It only reads: it changes nothing.
+
+        macOS and Linux: `curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --version`
+
+        Windows (PowerShell): `& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version`
+      placeholder: |
+        This installer: hikari 0.7.0
+        mpv (/home/you/.config/mpv): hikari 0.7.0 (the same as this installer)
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: system-details
+    attributes:
+      label: System version
+      description: macOS version, Linux distribution and version, or Windows build.
+      placeholder: macOS 15.5 / Ubuntu 24.04 / Windows 11 24H2
+  - type: input
+    id: player
+    attributes:
+      label: Player and its version
+      description: mpv, mpv.net, AnimeJaNai... and how you installed it (Homebrew, Flatpak, winget...). `mpv --version` prints mpv's.
+      placeholder: mpv 0.40.0 (Homebrew)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce it
+      description: For a title or skip button problem, the exact file name (or the `filename=` of a stream) helps a lot.
+      placeholder: |
+        1. Open `[Group] Show - 05 (1080p).mkv`
+        2. ...
+  - type: textarea
+    id: output
+    attributes:
+      label: Installer output or mpv log
+      description: What the installer printed, or the relevant part of an mpv log (`mpv --log-file=mpv.log <file>`). Remove anything private first.
+      render: text

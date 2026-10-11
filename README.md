@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 
 - **14 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original and hikari's own, SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away.
 - **Your language**: hikari's menus, buttons and messages in English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian and Chinese (Simplified and Hong Kong), the languages of uosc. It follows your system, and `Alt+l` changes it; uosc follows along, and so do the audio and subtitle tracks mpv picks (your dub, otherwise Japanese with your subtitles; Spain or Latin America, Brazil or Portugal).
-- **Skip openings and endings**: a *Skip opening ›* button while a chapter looks like an opening, intro or ending; one click or `Alt+s` jumps to the next chapter.
+- **Skip openings and endings**: a *Skip opening ›* button while a chapter looks like an opening, intro or ending, or, for anime episodes without such chapters, at the times [AniSkip](https://aniskip.com) knows; one click or `Alt+s` skips it.
 - **Timeline thumbnails** through thumbfast, on network streams too.
 - **Subtitle styles**: *Dark box* (Netflix-like), *Thick outline* (Crunchyroll-like), *Classic yellow*, plus size and height (`Alt+t`).
 - **Anime4K upscaling**: an *Upscaling* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automatic*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
