@@ -1905,7 +1905,8 @@ redirect_ok() {
 clean_text() {
     local c1
     c1=$(printf '\302[\200-\237]')
-    printf '%s' "$1" | LC_ALL=C sed "s/$c1//g" | LC_ALL=C tr -d '[:cntrl:]'
+    # C0 first: removing it could otherwise join the bytes of a C1 back together.
+    printf '%s' "$1" | LC_ALL=C tr -d '[:cntrl:]' | LC_ALL=C sed "s/$c1//g"
 }
 
 # $1 cut to $2 characters (200 by default) to be shown, with "..." when cut.
