@@ -481,10 +481,11 @@ test('release info: series, season and episode of anime releases', function()
 	eq(info(t, '/a/[SubsPlease] Sousou no Frieren S2 - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren|2|5|true')
 	eq(info(t, '/a/[Erai-raws] Shingeki no Kyojin Season 3 - 01v2 [1080p].mkv'), 'Shingeki no Kyojin|3|1|true')
 	eq(info(t, '/a/[Group] Kusuriya no Hitorigoto 2nd Season - 03 [1080p].mkv'), 'Kusuriya no Hitorigoto|2|3|true')
-	eq(info(t, '/a/Sousou no Frieren - 05 (1080p).mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker and 1080p')
-	eq(info(t, '/a/Sousou no Frieren - 05 [ABCD1234].mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker and a CRC')
-	eq(info(t, '/a/Sousou no Frieren - 05 [BD].mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker and BD')
-	eq(info(t, '/a/Sousou.no.Frieren.-.05.1080p.WEB-DL.mkv'), 'Sousou no Frieren|nil|5|true', 'dotted, with WEB-DL')
+	eq(info(t, '/a/Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker, 1080p and a CRC')
+	eq(info(t, '/a/Sousou no Frieren - 05 [1080p][BD].mkv'), 'Sousou no Frieren|nil|5|true', 'the - 05 marker, 1080p and BD')
+	eq(info(t, '/a/Sousou no Frieren - 05 [1080p WEB-DL].mkv'), 'Sousou no Frieren|nil|5|true', 'two signs in one group')
+	eq(info(t, '/a/Sousou.no.Frieren.-.05.1080p.WEB-DL.mkv'), 'Sousou no Frieren|nil|5|true', 'dotted, 1080p and WEB-DL in the tail')
+	eq(info(t, '/a/Sousou no Frieren - 05 1080p WEB-DL.mkv'), 'Sousou no Frieren|nil|5|true', 'spaced, 1080p and WEB-DL in the tail')
 	eq(info(t, '/a/[Erai-raws] Sousou no Frieren - 12 [1080p][Multiple Subtitle].mkv'), 'Sousou no Frieren|nil|12|true')
 	eq(info(t, '/a/Show.S01E05.1080p.CR.WEB-DL.mkv'), 'Show|1|5|true', 'CR')
 	eq(info(t, '/a/Show S01E05 (HIDIVE).mkv'), 'Show|1|5|true', 'a service in brackets')
@@ -493,6 +494,13 @@ test('release info: series, season and episode of anime releases', function()
 	eq(info(t, '/a/Show.Name.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'CR in the tail')
 	eq(info(t, '/a/Show.Name.S01E05.1080p.ADN.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'ADN in the tail')
 	eq(info(t, '/a/Show.Name.S01E05.Episode.Title.1080p.ADN.WEB-DL.mkv'), 'Show Name|1|5|true', 'after a title')
+	eq(info(t, '/a/Frieren.S01E05.Le.Voyage.1080p.ADN.WEB-DL.mkv'), 'Frieren|1|5|true', 'ADN in the tail, after a title')
+	eq(info(t, '/a/Show.S01E05.CR.WEB-DL.mkv'), 'Show|1|5|true', 'CR right before WEB-DL starts the tail')
+	eq(info(t, '/a/Show - 05 [CR].mkv'), 'Show|nil|5|true', 'a service in brackets, with the - 05 marker')
+	eq(info(t, '/a/[Erai-raws] Show - 12 [1080p][Multiple Subtitle][ABCD1234].mkv'), 'Show|nil|12|true')
+	-- Seanime: a release name with .ADN. in its tail, through the filename parameter.
+	eq(info(t, 'https://127.0.0.1:43211/api/v1/mediastream/file/x?token=s3cret&filename='
+		.. 'Sousou.no.Frieren.S01E05.VOSTFR.1080p.ADN.WEB-DL.AAC2.0.H.264-Tsundere-Raws.mkv'), 'Sousou no Frieren|1|5|true')
 	eq(info(t, '/a/[SubsPlease] Viaje CR - 02 (1080p).mkv'), 'Viaje CR|nil|2|true', '[group] in front still counts')
 	eq(info(t, 'C:\\Anime\\[SubsPlease] Sousou no Frieren - 05 (1080p).mkv'), 'Sousou no Frieren|nil|5|true', 'Windows path')
 	eq(info(t, 'file:///a/%5BSubsPlease%5D%20Sousou%20no%20Frieren%20-%2005%20(1080p).mkv'), 'Sousou no Frieren|nil|5|true')
@@ -523,6 +531,19 @@ test('release info: not for other files, or anything but one plain episode', fun
 		'Proyecto B-Global - 03.mkv', 'Funi - 01.mkv', 'Clase 1080p - 02.mp4',
 		'Clase [1080p] - 02.mp4', 'Clase [ABCD1234] - 02.mp4', 'Viaje.CR.-.02.mp4', 'Viaje.CR.S01E02.mkv',
 		'Informe BD WEB-DL - 05.mkv',
+	}) do
+		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
+	end
+	-- Signs only count in brackets or in the technical tail, never in the
+	-- loose words after the number (an episode title, a description); a CRC
+	-- or a resolution alone is not enough.
+	for _, name in ipairs({
+		'Boda Ana - 01 (1080p).mp4', 'Paciente Garcia - 02 - Prueba ADN.mkv', 'Paciente Garcia - 02 analisis ADN.mkv',
+		'Analisis.paciente.Garcia.S01E02.Prueba.ADN.mkv', 'Boda Ana - 02 - Costa Rica CR.mp4',
+		'Juicio Garcia S01E02 Prueba ADN.mkv', 'Familia Lopez - 03 [ABCD1234].mkv',
+		'Sousou no Frieren - 05 (1080p).mkv', 'Sousou no Frieren - 05 [ABCD1234].mkv', 'Sousou no Frieren - 05 [BD].mkv',
+		'Boda Ana - 01 [1080p] [1080p].mp4', 'Paciente Garcia - 02 - Prueba ADN [ABCD1234].mkv',
+		'Viaje.Japon.S01E02.Funi.Bilibili.mkv', 'Boda Ana - 02 Crunchyroll Hidive.mp4', 'Show.S01E05.1080p.WEB-DL.mkv',
 	}) do
 		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
 	end
