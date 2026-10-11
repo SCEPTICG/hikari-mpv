@@ -2,7 +2,9 @@
 --
 -- script-modules/hikari-aniskip.lua (AniSkip lookups) and its use in
 -- hikari-skip.lua. The answers in tests/data/aniskip/ were recorded from the
--- real services (AniList, AniSkip) in October 2026, except the Jikan one,
+-- real services (AniList, AniSkip) in October 2026 (AniSkip's with the
+-- episode length sent: 1470 for Frieren 5; 1442 and 0 for Shingeki no
+-- Kyojin 1, to show what 0 gives), except the Jikan one,
 -- written from Jikan's v4 documentation (api.jikan.moe was not reachable from
 -- the machine that recorded the others).
 package.path = './tests/?.lua;' .. package.path
@@ -71,13 +73,28 @@ end
 
 local CACHE = tmp_path()
 local clock = {t = T0}
+local PID = 4242
+
+-- Temporary files of the cache's atomic writes (CACHE.<pid>-<n>.tmp) left.
+local function tmp_files()
+	local list = {}
+	local p = io.popen('ls -1 "' .. CACHE .. '".*.tmp 2>/dev/null')
+	for line in p:lines() do list[#list + 1] = line end
+	p:close()
+	return list
+end
+local function remove_tmp_files()
+	for _, f in ipairs(tmp_files()) do os.remove(f) end
+end
 
 -- Fresh mocks and module, with an empty cache.
 local function load_module()
 	mock.install('hikari_skip')
 	mock.props.platform = 'linux'
+	mock.props.pid = PID
 	mock.expand['~~/hikari-aniskip.json'] = CACHE
-	os.remove(CACHE); os.remove(CACHE .. '.tmp')
+	remove_tmp_files()
+	os.remove(CACHE)
 	clock.t = T0
 	fake_env.PATH = FAKE_BIN
 	local m = dofile(MODULE)
@@ -92,10 +109,11 @@ local function frieren(episode, season)
 	return {series = 'Sousou no Frieren', episode = episode or 5, season = season, anime = true}
 end
 
--- Runs lookup and returns a table that gets the answer.
-local function lookup(m, release)
+-- Runs lookup for a file of `duration` seconds (1470, Frieren 5's length,
+-- when nil) and returns a table that gets the answer.
+local function lookup(m, release, duration)
 	local got = {called = false}
-	m.lookup(assert(m.query(release), 'query'), function(results)
+	m.lookup(assert(m.query(release, duration or 1470), 'query'), function(results)
 		got.called, got.results = true, results
 	end)
 	return got
@@ -276,25 +294,51 @@ test('times are chosen for this file\'s duration', function()
 	near(ranges[2].finish, 1406, 'ending cut to the duration')
 end)
 
+test('AniSkip (recorded): without the length it answers for another cut', function()
+	local m = load_module()
+	-- Shingeki no Kyojin 1 (MAL 16498) in a 1442 s file. With episodeLength=0
+	-- AniSkip gives its most voted opening, for a 1540 s cut: no opening here.
+	local any = assert(m.parse_aniskip(data('aniskip-16498-1-0.json')))
+	near(any[1].length, 1540.061, 'the opening of another cut')
+	for _, r in ipairs(m.select(any, 1442)) do
+		assert(r.kind ~= 'opening', 'an opening from another cut')
+	end
+	-- With episodeLength=1442: one for 1441.9 s.
+	local fit = assert(m.parse_aniskip(data('aniskip-16498-1-1442.json')))
+	local ranges = m.select(fit, 1442)
+	eq(ranges[1].kind, 'opening'); near(ranges[1].start, 128.406); near(ranges[1].finish, 218.406)
+	eq(ranges[2].kind, 'ending')
+	-- The mixed opening (for 1458.5 s, 16.5 s off) is left out.
+	eq(#ranges, 2)
+end)
+
 test('what hikari-title publishes is checked before use', function()
 	local m = load_module()
-	local q = assert(m.query(frieren(5)))
+	local q = assert(m.query(frieren(5), 1469.9685))
 	eq(q.series, 'Sousou no Frieren'); eq(q.episode, 5); eq(q.season, nil); eq(q.key, 'sousou no frieren|1')
-	eq(m.query(frieren(5, 2)).key, 'sousou no frieren|2')
-	eq(m.query({series = 'Show', episode = 1, anime = false}), nil, 'not anime')
-	eq(m.query({series = 'Show', episode = 1}), nil, 'anime not said')
-	eq(m.query({series = 'Show', episode = 0, anime = true}), nil, 'episode 0')
-	eq(m.query({series = 'Show', episode = 1.5, anime = true}), nil, 'half episode')
-	eq(m.query({series = 'Show', episode = '1', anime = true}), nil, 'string episode')
-	eq(m.query({series = 'Show', episode = 10000, anime = true}), nil, 'episode too big')
-	eq(m.query({series = 'Show', episode = 1, season = 0, anime = true}), nil, 'season 0')
-	eq(m.query({series = 'Show', episode = 1, season = 'x', anime = true}), nil, 'string season')
-	eq(m.query({series = '', episode = 1, anime = true}), nil, 'no series')
-	eq(m.query({series = '!!!', episode = 1, anime = true}), nil, 'only punctuation')
-	eq(m.query({series = 'Bad\nname', episode = 1, anime = true}), nil, 'control character')
-	eq(m.query({series = string.rep('a', 201), episode = 1, anime = true}), nil, 'too long')
-	eq(m.query('Show'), nil, 'not a table')
-	eq(m.query(nil), nil, 'nil')
+	eq(q.length, 1470, 'the duration in whole seconds')
+	eq(m.query(frieren(5), 1442.4).length, 1442, 'rounded down')
+	eq(m.query(frieren(5, 2), 1470).key, 'sousou no frieren|2')
+	eq(m.query(frieren(5)), nil, 'no duration')
+	eq(m.query(frieren(5), 0 / 0), nil, 'NaN duration')
+	eq(m.query(frieren(5), math.huge), nil, 'endless')
+	eq(m.query(frieren(5), 0.4), nil, 'shorter than a second')
+	eq(m.query(frieren(5), 7 * 3600), nil, 'longer than an episode')
+	eq(m.query(frieren(5), '1470'), nil, 'a string')
+	eq(m.query({series = 'Show', episode = 1, anime = false}, 1470), nil, 'not anime')
+	eq(m.query({series = 'Show', episode = 1}, 1470), nil, 'anime not said')
+	eq(m.query({series = 'Show', episode = 0, anime = true}, 1470), nil, 'episode 0')
+	eq(m.query({series = 'Show', episode = 1.5, anime = true}, 1470), nil, 'half episode')
+	eq(m.query({series = 'Show', episode = '1', anime = true}, 1470), nil, 'string episode')
+	eq(m.query({series = 'Show', episode = 10000, anime = true}, 1470), nil, 'episode too big')
+	eq(m.query({series = 'Show', episode = 1, season = 0, anime = true}, 1470), nil, 'season 0')
+	eq(m.query({series = 'Show', episode = 1, season = 'x', anime = true}, 1470), nil, 'string season')
+	eq(m.query({series = '', episode = 1, anime = true}, 1470), nil, 'no series')
+	eq(m.query({series = '!!!', episode = 1, anime = true}, 1470), nil, 'only punctuation')
+	eq(m.query({series = 'Bad\nname', episode = 1, anime = true}, 1470), nil, 'control character')
+	eq(m.query({series = string.rep('a', 201), episode = 1, anime = true}, 1470), nil, 'too long')
+	eq(m.query('Show', 1470), nil, 'not a table')
+	eq(m.query(nil, 1470), nil, 'nil')
 end)
 
 -- ---------------------------------------------------------------------------
@@ -309,6 +353,7 @@ test('first lookup: AniList, then AniSkip, both cached; the second asks nothing'
 	local args = cmd.args
 	eq(cmd.name, 'subprocess'); eq(cmd.playback_only, false); eq(cmd.capture_stdout, true)
 	eq(args[1], 'curl'); eq(args[2], '-q', '-q first: no .curlrc')
+	eq(cmd.capture_size, 262144 + 4096, 'no more output kept than curl may write')
 	eq(args[arg_index(args, '--proto') + 1], '=https')
 	eq(args[arg_index(args, '--max-redirs') + 1], '0')
 	assert(arg_index(args, '--max-time'), 'timeout')
@@ -324,7 +369,7 @@ test('first lookup: AniList, then AniSkip, both cached; the second asks nothing'
 	eq(#mock.async, 1, 'AniSkip asked')
 	args = mock.async[1].cmd.args
 	eq(args[#args], 'https://api.aniskip.com/v2/skip-times/52991/5'
-		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=0')
+		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=1470')
 	eq(mock.async[1].cmd.stdin_data, nil, 'GET')
 	mock.finish_async(ok_answer(data('aniskip-52991-5.json')))
 	eq(got.called, true); eq(#got.results, 2)
@@ -334,8 +379,8 @@ test('first lookup: AniList, then AniSkip, both cached; the second asks nothing'
 	eq(cache.titles['sousou no frieren|1'].mal, 52991)
 	eq(cache.titles['sousou no frieren|1'].episodes, 28)
 	eq(cache.titles['sousou no frieren|1'].at, T0)
-	eq(#cache.episodes['52991:5'].results, 2)
-	eq(read(CACHE .. '.tmp'), nil, 'no temporary file left')
+	eq(#cache.episodes['52991:5:1470'].results, 2)
+	eq(#tmp_files(), 0, 'no temporary file left')
 	-- Again, an hour later: straight from the cache.
 	clock.t = T0 + 3600
 	got = lookup(m, frieren(5))
@@ -354,7 +399,7 @@ test('"not found" is cached too, for less time', function()
 	mock.finish_async(ok_answer(data('anilist-sousou-no-frieren.json')))
 	mock.finish_async(ok_answer(data('aniskip-not-found.json')))
 	eq(got.called, true); eq(#got.results, 0)
-	eq(assert(mock.parse_json(read(CACHE))).episodes['52991:5'].found, false)
+	eq(assert(mock.parse_json(read(CACHE))).episodes['52991:5:1470'].found, false)
 	clock.t = T0 + 2 * DAY
 	got = lookup(m, frieren(5))
 	eq(#mock.async, 0, 'within 3 days: from the cache')
@@ -362,6 +407,24 @@ test('"not found" is cached too, for less time', function()
 	clock.t = T0 + 4 * DAY
 	lookup(m, frieren(5))
 	eq(#mock.async, 1, 'after 3 days: asked again')
+end)
+
+test('a "not found" for one length does not stop a file of another length', function()
+	local m = load_module()
+	lookup(m, frieren(5), 1470)
+	mock.finish_async(ok_answer(data('anilist-sousou-no-frieren.json')))
+	mock.finish_async(ok_answer(data('aniskip-not-found.json')))
+	clock.t = T0 + 3600
+	lookup(m, frieren(5), 1470)
+	eq(#mock.async, 0, 'same length: from the cache')
+	lookup(m, frieren(5), 1420.2)
+	eq(#mock.async, 1, 'another length: AniSkip asked (the id from the cache)')
+	local args = mock.async[1].cmd.args
+	assert(args[#args]:find('/52991/5?', 1, true) and args[#args]:find('&episodeLength=1420$'), args[#args])
+	mock.finish_async(ok_answer(data('aniskip-52991-5.json')))
+	local cache = assert(mock.parse_json(read(CACHE)))
+	eq(cache.episodes['52991:5:1470'].found, false)
+	eq(#cache.episodes['52991:5:1420'].results, 2)
 end)
 
 test('no clear match: cached as such, nothing sent to AniSkip', function()
@@ -486,20 +549,20 @@ test('bad cache entries are dropped one by one', function()
 			['bad\nkey|1'] = {at = T0, mal = 7},
 		},
 		episodes = {
-			['7:1'] = {at = T0, results = {{type = 'op', start = 1, finish = 90, length = 1400}}},
-			['7:2'] = {at = T0, results = {{type = 'op', start = 90, finish = 1, length = 1400}}},
-			['7:3'] = {at = T0, found = false},
-			['7:4; rm'] = {at = T0, found = false},
-			['7:5'] = {at = T0, results = 'x'},
+			['7:1:1400'] = {at = T0, results = {{type = 'op', start = 1, finish = 90, length = 1400}}},
+			['7:2:1400'] = {at = T0, results = {{type = 'op', start = 90, finish = 1, length = 1400}}},
+			['7:3:1400'] = {at = T0, found = false},
+			['7:4:1400; rm'] = {at = T0, found = false},
+			['7:5:1400'] = {at = T0, results = 'x'},
 		},
 	}))
 	local cache = m.read_cache()
 	eq(cache.titles['good|1'].mal, 7)
 	eq(cache.titles['string id|1'], nil); eq(cache.titles['no time|1'], nil); eq(cache.titles['bad\nkey|1'], nil)
-	eq(#cache.episodes['7:1'].results, 1)
-	eq(cache.episodes['7:2'], nil, 'impossible times')
-	eq(cache.episodes['7:3'].found, false)
-	eq(cache.episodes['7:4; rm'], nil); eq(cache.episodes['7:5'], nil)
+	eq(#cache.episodes['7:1:1400'].results, 1)
+	eq(cache.episodes['7:2:1400'], nil, 'impossible times')
+	eq(cache.episodes['7:3:1400'].found, false)
+	eq(cache.episodes['7:4:1400; rm'], nil); eq(cache.episodes['7:5:1400'], nil)
 end)
 
 test('a long name made longer by normalising is still cached', function()
@@ -524,6 +587,86 @@ test('the cache keeps the newest entries within its limits', function()
 	for _ in pairs(cache.titles) do n = n + 1 end
 	eq(n, 3)
 	eq(cache.titles['show 1|1'], nil); eq(cache.titles['show 2|1'], nil); eq(cache.titles['show 5|1'].mal, 5)
+end)
+
+test('saving drops expired entries first', function()
+	local m = load_module()
+	write(CACHE, mock.format_json({
+		version = 1,
+		titles = {['old|1'] = {at = T0 - 31 * DAY, mal = 1}, ['new|1'] = {at = T0 - DAY, mal = 2},
+			['future|1'] = {at = T0 + DAY, mal = 3}},
+		episodes = {
+			['1:1:1400'] = {at = T0 - 4 * DAY, found = false},
+			['1:2:1400'] = {at = T0 - 2 * DAY, found = false},
+			['1:3:1400'] = {at = T0 - 29 * DAY, results = {{type = 'op', start = 1, finish = 90, length = 1400}}},
+		},
+	}))
+	m.save('titles', 'x|1', {at = T0, mal = 9})
+	local cache = m.read_cache()
+	eq(cache.titles['old|1'], nil, 'past 30 days'); eq(cache.titles['future|1'], nil, 'from the future')
+	eq(cache.titles['new|1'].mal, 2); eq(cache.titles['x|1'].mal, 9)
+	eq(cache.episodes['1:1:1400'], nil, '"not found" past 3 days')
+	eq(cache.episodes['1:2:1400'].found, false); eq(#cache.episodes['1:3:1400'].results, 1)
+end)
+
+test('the cache file stays under the size that is read: the oldest go', function()
+	local m = load_module()
+	-- A file just under the 512 KB that are read, all of it still fresh.
+	local result = {type = 'mixed-op', start = 1234.5678, finish = 1324.5678, length = 1439.9876}
+	local function entry(i)
+		return {at = T0 - 20 * DAY + i, results = {result, result, result, result}}
+	end
+	local function key(i) return string.format('%06d:%03d:1440', 100000 + i, i % 1000) end
+	-- Every entry is as long as the first (fixed-width keys): as many as fit.
+	local one = #mock.format_json({[key(1)] = entry(1)}) - 1
+	local n = math.floor(518000 / one)
+	local episodes = {}
+	for i = 1, n do episodes[key(i)] = entry(i) end
+	local content = mock.format_json({version = 1, titles = {}, episodes = episodes})
+	assert(#content > 515000, 'start close to the limit: ' .. #content)
+	assert(#content < 524288, 'start under the limit')
+	m.CACHE_LIMITS.episodes = 100000
+	write(CACHE, content)
+	eq(m.read_cache().episodes[key(1)] ~= nil, true, 'read')
+	-- Before: each save made it bigger, until it passed 512 KB and the next
+	-- read ignored it whole (and the next save wrote it empty). Now the first
+	-- save brings it under the budget, and it stays there.
+	for i = 1, 3 do
+		clock.t = T0 + i
+		assert(m.save('episodes', string.format('7:%d:1440', i), {at = clock.t, results = {result, result, result, result}}))
+		local size = #read(CACHE)
+		assert(size <= m.CACHE_BUDGET + 1, 'over the budget: ' .. size)
+	end
+	local cache = m.read_cache()
+	local kept = 0
+	for _ in pairs(cache.episodes) do kept = kept + 1 end
+	assert(kept > n * 0.8, 'most entries kept: ' .. kept .. ' of ' .. n)
+	for i = 1, 3 do assert(cache.episodes['7:' .. i .. ':1440'], 'new entry ' .. i) end
+	eq(cache.episodes[key(1)], nil, 'the oldest went')
+	eq(#tmp_files(), 0, 'no temporary file left')
+end)
+
+test('the temporary file is this mpv\'s own (pid), and goes on failure', function()
+	local m = load_module()
+	-- Another mpv's temporary file, or the old shared name, is not touched.
+	write(CACHE .. '.tmp', 'other window')
+	write(CACHE .. '.999-1.tmp', 'other window')
+	local renamed = {}
+	local system_rename = os.rename
+	os.rename = function(from, to) renamed[#renamed + 1] = from; return system_rename(from, to) end
+	m.save('titles', 'a|1', {at = T0, mal = 1})
+	m.save('titles', 'b|1', {at = T0, mal = 2})
+	os.rename = system_rename
+	eq(renamed[1], CACHE .. '.' .. PID .. '-1.tmp')
+	eq(renamed[2], CACHE .. '.' .. PID .. '-2.tmp', 'a new name for each write')
+	eq(read(CACHE .. '.tmp'), 'other window'); eq(read(CACHE .. '.999-1.tmp'), 'other window')
+	os.remove(CACHE .. '.tmp'); os.remove(CACHE .. '.999-1.tmp')
+	eq(m.read_cache().titles['b|1'].mal, 2)
+	-- A rename that fails leaves no temporary file behind.
+	os.rename = function() return nil, 'denied' end
+	eq(m.save('titles', 'c|1', {at = T0, mal = 3}), false)
+	os.rename = system_rename
+	eq(#tmp_files(), 0, 'cleaned up')
 end)
 
 test('another mpv\'s answers are kept when saving', function()
@@ -562,12 +705,14 @@ end)
 local PATH = '/anime/[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'
 
 -- Loads hikari-skip with a 1280x720 OSD, and plays a file without chapters
--- of `duration` seconds at `path`, for which hikari-title published `release`.
-local function play(opts, release, chapters, duration)
+-- of `duration` seconds at `path`, for which hikari-title published `release`,
+-- from `time` (nil: the start).
+local function play(opts, release, chapters, duration, time)
 	mock.install('hikari_skip')
 	mock.script_opts = opts or {}
 	if mock.script_opts['hikari-language'] == nil then mock.script_opts['hikari-language'] = 'es' end
 	mock.props.platform = 'linux'
+	mock.props.pid = PID
 	mock.expand['~~/hikari-aniskip.json'] = CACHE
 	fake_env.PATH = FAKE_BIN
 	HIKARI_SKIP_TEST = true
@@ -575,6 +720,7 @@ local function play(opts, release, chapters, duration)
 	if s.aniskip then s.aniskip.now = function() return clock.t end end
 	mock.set('osd-dimensions', {w = 1280, h = 720})
 	mock.props.path = PATH
+	mock.props['time-pos'] = time
 	mock.set(RELEASE_PROP, release == nil and {series = 'Sousou no Frieren', episode = 5, anime = true, path = PATH} or release)
 	mock.set('duration', duration or 1470)
 	mock.set('chapter-list', chapters or {})
@@ -710,6 +856,30 @@ test('skip: times that arrive during the opening show the button at once', funct
 	answer_all()
 	eq(label(s), 'Saltar opening ›')
 	assert(s.overlay.visible)
+	local logged = 0
+	for _, line in ipairs(mock.logs.info) do
+		if line:find('In a skippable range: openings from 153.346 (AniSkip)', 1, true) then logged = logged + 1 end
+	end
+	eq(logged, 1, 'logged once')
+	-- A duration that moves rebuilds the ranges, but it is the same range.
+	mock.set('duration', 1470.2)
+	logged = 0
+	for _, line in ipairs(mock.logs.info) do
+		if line:find('In a skippable range', 1, true) then logged = logged + 1 end
+	end
+	eq(logged, 1, 'not logged again')
+end)
+
+test('skip: a file opened inside a range logs it (cached times)', function()
+	-- The cache from the test above; the file resumes at 200 s.
+	local s = play(nil, nil, nil, nil, 200)
+	eq(#mock.async, 0)
+	eq(label(s), 'Saltar opening ›')
+	local logged = false
+	for _, line in ipairs(mock.logs.info) do
+		if line:find('In a skippable range: openings from 153.346 (AniSkip)', 1, true) then logged = true end
+	end
+	assert(logged, 'logged')
 end)
 
 test('skip: options choose the kinds; an ending to the end of the file goes to the next entry', function()
@@ -730,10 +900,14 @@ test('skip: options choose the kinds; an ending to the end of the file goes to t
 	eq(mock.commands[#mock.commands][1], 'playlist-next')
 end)
 
-test('skip: AniSkip times that do not fit this cut are not used', function()
+test('skip: AniSkip is asked for this file\'s length; times for another cut are not used', function()
 	os.remove(CACHE)
-	local s = play(nil, nil, nil, 1420)
-	answer_all()
+	local s = play(nil, nil, nil, 1420.3)
+	mock.finish_async(ok_answer(data('anilist-sousou-no-frieren.json')))
+	local args = mock.async[1].cmd.args
+	assert(args[#args]:find('&episodeLength=1420$'), 'the length sent: ' .. args[#args])
+	-- AniSkip has nothing closer than its times for 1470 s: 50 s off, dropped.
+	mock.finish_async(ok_answer(data('aniskip-52991-5.json')))
 	eq(#s.state.ranges, 0)
 end)
 
@@ -760,7 +934,9 @@ test('skip: without the module (an old install) the button still works with chap
 end)
 
 test('skip: the double-click guard works with AniSkip\'s button too', function()
+	os.remove(CACHE)
 	local s = play()
+	answer_all()
 	mock.set('time-pos', 160)
 	local rect = assert(s.layout())
 	mock.props['mouse-pos'] = {x = (rect.x0 + rect.x1) / 2, y = (rect.y0 + rect.y1) / 2, hover = true}
@@ -770,7 +946,7 @@ test('skip: the double-click guard works with AniSkip\'s button too', function()
 	assert(s.guard_active(), 'guard on after a mouse skip')
 end)
 
-os.remove(CACHE); os.remove(CACHE .. '.tmp')
+os.remove(CACHE); remove_tmp_files()
 os.execute('rm -rf "' .. FAKE_BIN .. '"')
 print(string.format('\n%d passed, %d failed', passed, failed))
 if failed > 0 then os.exit(1) end

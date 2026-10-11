@@ -10,7 +10,9 @@
 --    AniList cannot be reached or answers with an error, Jikan
 --    (https://api.jikan.moe, an unofficial MyAnimeList API) is asked instead.
 -- 2. Times: AniSkip (https://api.aniskip.com/v2/skip-times/<id>/<episode>),
---    asking for `op`, `ed`, `mixed-op` and `mixed-ed`.
+--    asking for `op`, `ed`, `mixed-op` and `mixed-ed` (an opening or ending
+--    mixed with scenes of the episode: skipped as openings and endings too)
+--    for an episode of this file's length (its duration rounded to seconds).
 -- 3. The answers are kept in ~~/hikari-aniskip.json, so the same episode, or
 --    another of the same series, does not ask again.
 --
@@ -29,10 +31,17 @@
 --   `Second Season`, `SN` or `N` (as AniList names sequels). More than one
 --   MyAnimeList id among the matches, or an episode number above the episode
 --   count AniList knows, and the lookup stops.
--- - AniSkip answers with times submitted by players for one length of the
---   episode each. Only times whose episode length is within LENGTH_TOLERANCE
---   seconds of this file's duration are used (the closest one per kind), so a
---   release with another cut does not get times that do not fit.
+-- - AniSkip keeps times submitted by players, each for one length of the
+--   episode, and answers with at most one per type: with `episodeLength`, the
+--   one whose length is closest to it; without (or 0), the most voted
+--   whatever its length, which may be another cut's (Shingeki no Kyojin 1 in
+--   a 1442 s file: an opening for 1540 s with 0, one for 1441.9 s with 1442).
+--   So the length is always sent, and the closest may still be far: only
+--   times whose episode length is within LENGTH_TOLERANCE seconds of this
+--   file's duration are used (the closest one per kind). 10 s takes in the
+--   usual differences between encodes of one broadcast (a second of black, a
+--   card or a preview more or less at the end, which leave the opening in
+--   place) and leaves out other cuts (a TV broadcast against a BD, ads).
 -- - Nothing received is trusted: at most MAX_RESPONSE bytes, JSON through
 --   utils.parse_json, every field checked for type and range (ids and episodes
 --   positive integers, times finite, start < end, within MAX_SECONDS, a segment
@@ -49,13 +58,17 @@
 --   time the episode is opened it asks again).
 -- - Cache: ~~/hikari-aniskip.json, `{"version":1,"titles":{...},"episodes":{...}}`.
 --   titles: normalised series name and season -> {at, mal, episodes} (mal 0:
---   no clear match). episodes: "<mal>:<episode>" -> {at, results} or
---   {at, found=false}. `at` is the unix time of the answer; entries expire
---   after TTL (shorter for "not found", as AniSkip keeps growing), and the
---   oldest go when there are more than CACHE_LIMITS. Read at most MAX_CACHE
---   bytes; a broken file or entry is ignored (as if never asked). Written
---   through a temporary file and a rename after re-reading it, so two mpv
---   windows do not undo each other's answers.
+--   no clear match). episodes: "<mal>:<episode>:<length>" -> {at, results}
+--   or {at, found=false}, the length (seconds) being the one sent to AniSkip,
+--   so a "not found" for one cut does not stop another from asking. `at` is
+--   the unix time of the answer; entries expire after TTL (shorter for "not
+--   found", as AniSkip keeps growing). On saving, expired entries go, then
+--   the oldest when there are more than CACHE_LIMITS or the file would pass
+--   CACHE_BUDGET bytes (under MAX_CACHE, the most that is read: a bigger file
+--   would be ignored whole). A broken file or entry is ignored (as if never
+--   asked). Written through a temporary file of its own (named after mpv's
+--   pid) and a rename after re-reading it, so two mpv windows do not undo
+--   each other's answers or write into the same temporary file.
 
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -67,15 +80,17 @@ M.ANILIST_URL = 'https://graphql.anilist.co'
 M.JIKAN_URL = 'https://api.jikan.moe/v4/anime?limit=25&q='
 M.ANISKIP_URL = 'https://api.aniskip.com/v2/skip-times/'
 -- types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed, with the brackets
--- encoded so curl does not read them as a glob. episodeLength=0: every
--- submission, whatever its length (they are chosen here, see select).
-M.ANISKIP_QUERY = '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=0'
+-- encoded so curl does not read them as a glob, and the episode length in
+-- whole seconds (an integer, see M.query): AniSkip answers with the times
+-- whose length is closest to it (see select for the check done here).
+M.ANISKIP_QUERY = '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength='
 M.ANILIST_QUERY = 'query ($search: String) { Page(perPage: 25) { media(search: $search, type: ANIME) '
 	.. '{ idMal format episodes title { romaji english native } synonyms } } }'
 
 local CURL_TIMEOUT = 8          -- seconds, per request
 local MAX_RESPONSE = 262144     -- bytes of an answer looked at; longer ones are refused
 local MAX_CACHE = 524288        -- bytes of the cache file read
+local CACHE_BUDGET = MAX_CACHE - 65536 -- bytes the cache is kept under when saved
 local MAX_SERIES = 200          -- bytes of a series name looked up
 local MAX_CANDIDATES = 50       -- series in a search answer
 local MAX_NAMES = 60            -- titles of one series
@@ -90,6 +105,7 @@ local LENGTH_TOLERANCE = 10     -- seconds between AniSkip's episode length and 
 local DAY = 24 * 3600
 M.TTL = {title = 30 * DAY, title_miss = 7 * DAY, times = 30 * DAY, times_miss = 3 * DAY}
 M.CACHE_LIMITS = {titles = 500, episodes = 2000}
+M.CACHE_BUDGET = CACHE_BUDGET
 
 -- AniSkip skip types -> the kind of range in hikari-skip.
 M.KIND_OF = {op = 'opening', ['mixed-op'] = 'opening', ed = 'ending', ['mixed-ed'] = 'ending'}
@@ -327,18 +343,22 @@ end
 -- What to look up
 -- ---------------------------------------------------------------------------
 
--- The lookup for what hikari-title published (user-data/hikari_title/release),
--- or nil when it is not an anime episode that can be looked up:
--- {series, season, episode, key}. The table is another script's, so it is
--- checked as if it came from the network.
-function M.query(release)
+-- The lookup for what hikari-title published (user-data/hikari_title/release)
+-- in a file of `duration` seconds, or nil when it is not an anime episode
+-- that can be looked up: {series, season, episode, length, key}, `length`
+-- being the duration rounded to whole seconds. The table is another
+-- script's, so it is checked as if it came from the network.
+function M.query(release, duration)
 	if type(release) ~= 'table' or release.anime ~= true then return nil end
+	if not is_finite(duration) then return nil end
+	local length = math.floor(duration + 0.5)
+	if not is_int(length, 1, MAX_SECONDS) then return nil end
 	local series, episode, season = release.series, release.episode, release.season
 	if not is_text(series, MAX_SERIES) or not is_int(episode, 1, MAX_EPISODE) then return nil end
 	if season ~= nil and not is_int(season, 1, MAX_SEASON) then return nil end
 	local key = M.normalize(series)
 	if key == '' then return nil end
-	return {series = series, season = season, episode = episode, key = key .. '|' .. (season or 1)}
+	return {series = series, season = season, episode = episode, length = length, key = key .. '|' .. (season or 1)}
 end
 
 -- ---------------------------------------------------------------------------
@@ -400,7 +420,7 @@ function M.read_cache()
 	end
 	if type(value.episodes) == 'table' then
 		for key, e in pairs(value.episodes) do
-			if type(key) == 'string' and key:match('^%d+:%d+$') and #key <= 20 then cache.episodes[key] = check_episode(e) end
+			if type(key) == 'string' and key:match('^%d+:%d+:%d+$') and #key <= 30 then cache.episodes[key] = check_episode(e) end
 		end
 	end
 	return cache
@@ -420,9 +440,52 @@ local function prune(entries, limit)
 	return kept
 end
 
+-- The entries of `entries` still fresh at time `t` (see title_fresh).
+local function unexpired(entries, is_fresh, t)
+	local kept = {}
+	for key, e in pairs(entries) do
+		if is_fresh(e, t) then kept[key] = e end
+	end
+	return kept
+end
+
+-- The cache as JSON within `budget` bytes: the oldest entries (titles and
+-- episodes together) go until it fits. nil and an error if it cannot be
+-- written as JSON.
+local function fit(cache, budget)
+	local json, err = utils.format_json(cache)
+	while json and #json > budget do
+		local all = {}
+		for _, section in ipairs({'titles', 'episodes'}) do
+			for key, e in pairs(cache[section]) do all[#all + 1] = {section = section, key = key, at = e.at} end
+		end
+		if #all == 0 then break end
+		table.sort(all, function(a, b)
+			if a.at ~= b.at then return a.at < b.at end
+			if a.section ~= b.section then return a.section < b.section end
+			return a.key < b.key
+		end)
+		-- About the share that is over, and one more: few passes.
+		local drop = math.min(#all, math.floor(#all * (#json - budget) / #json) + 1)
+		for i = 1, drop do cache[all[i].section][all[i].key] = nil end
+		json, err = utils.format_json(cache)
+	end
+	return json, err
+end
+
+-- A name for the temporary file of this mpv: two windows writing at once
+-- must not share one. mpv's pid; a counter for writes within one mpv.
+local tmp_count = 0
+local function tmp_name(path)
+	tmp_count = tmp_count + 1
+	local pid = mp.get_property_number('pid')
+	if not is_int(pid, 1, 2 ^ 31) then pid = math.random(1, 2 ^ 30) end
+	return string.format('%s.%d-%d.tmp', path, pid, tmp_count)
+end
+
 -- Writes through a temporary file and a rename (as hikari-update.lua does).
 local function write_file_atomic(path, content)
-	local tmp = path .. '.tmp'
+	local tmp = tmp_name(path)
 	os.remove(tmp)
 	local file, err = io.open(tmp, 'wb')
 	if not file then return false, err end
@@ -446,15 +509,19 @@ local function write_file_atomic(path, content)
 end
 
 -- Adds one entry (section 'titles' or 'episodes') to the cache on disk,
--- re-read first so another mpv's answers are kept.
+-- re-read first so another mpv's answers are kept. Expired entries go first,
+-- then the oldest beyond CACHE_LIMITS and CACHE_BUDGET.
 function M.save(section, key, entry)
 	local path = expand(M.CACHE_PATH)
 	if not path then return false end
 	local cache = M.read_cache()
+	local t = M.now()
+	cache.titles = unexpired(cache.titles, M.title_fresh, t)
+	cache.episodes = unexpired(cache.episodes, M.episode_fresh, t)
 	cache[section][key] = entry
 	cache.titles = prune(cache.titles, M.CACHE_LIMITS.titles)
 	cache.episodes = prune(cache.episodes, M.CACHE_LIMITS.episodes)
-	local json, err = utils.format_json(cache)
+	local json, err = fit(cache, math.min(M.CACHE_BUDGET, CACHE_BUDGET))
 	local ok = false
 	if json then ok, err = write_file_atomic(path, json .. '\n') end
 	if not ok then msg.warn('Could not save ' .. M.CACHE_PATH .. ': ' .. tostring(err)) end
@@ -547,6 +614,8 @@ local function fetch(what, url, body, done)
 		playback_only = false,
 		capture_stdout = true,
 		capture_stderr = true,
+		-- A bit more than curl may write (--max-filesize), not mpv's 64 MB.
+		capture_size = MAX_RESPONSE + 4096,
 	}, function(success, result, err)
 		if not success or type(result) ~= 'table' then
 			msg.verbose('AniSkip: ' .. what .. ' failed: ' .. tostring(err))
@@ -603,14 +672,17 @@ function M.lookup(query, done)
 			msg.verbose('AniSkip: episode ' .. query.episode .. ' is past the ' .. episodes .. ' of MyAnimeList id ' .. mal)
 			return done(nil)
 		end
-		local key = string.format('%d:%d', mal, query.episode)
+		local key = string.format('%d:%d:%d', mal, query.episode, query.length)
 		local entry = cache.episodes[key]
 		if M.episode_fresh(entry, M.now()) then
 			msg.verbose('AniSkip: times of ' .. key .. ' from the cache')
 			return done(entry.results or {})
 		end
-		msg.verbose('AniSkip: asking AniSkip for episode ' .. query.episode .. ' of MyAnimeList id ' .. mal)
-		fetch('AniSkip', M.ANISKIP_URL .. string.format('%d/%d', mal, query.episode) .. M.ANISKIP_QUERY, nil, function(answer)
+		msg.verbose('AniSkip: asking AniSkip for episode ' .. query.episode .. ' of MyAnimeList id ' .. mal
+			.. ', ' .. query.length .. ' s long')
+		local url = M.ANISKIP_URL .. string.format('%d/%d', mal, query.episode) .. M.ANISKIP_QUERY
+			.. string.format('%d', query.length)
+		fetch('AniSkip', url, nil, function(answer)
 			local results, err = M.parse_aniskip(answer)
 			if not results then
 				if answer then msg.verbose('AniSkip: ' .. tostring(err)) end

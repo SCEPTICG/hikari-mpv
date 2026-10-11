@@ -497,6 +497,11 @@ local function format_time(seconds)
 	return string.format('%d.%03d', math.floor(ms / 1000), ms % 1000)
 end
 
+local function log_range(range)
+	msg.verbose(string.format('In a skippable range: %s from %s%s', range.kind.name,
+		format_time(range.start), range.aniskip and ' (AniSkip)' or ''))
+end
+
 -- Recomputes which range we are in; redraws only when that changes.
 local function update_current()
 	local index = range_at(state.ranges, state.time)
@@ -506,11 +511,7 @@ local function update_current()
 		state.dismissed = nil
 	end
 	if index == state.current and state.dismissed == dismissed then return end
-	if index and index ~= state.current then
-		local range = state.ranges[index]
-		msg.verbose(string.format('In a skippable range: %s from %s%s', range.kind.name,
-			format_time(range.start), range.aniskip and ' (AniSkip)' or ''))
-	end
+	if index and index ~= state.current then log_range(state.ranges[index]) end
 	state.current = index
 	refresh()
 end
@@ -523,6 +524,7 @@ end
 local time_watched = false
 
 local function rebuild()
+	local before = state.current and state.ranges[state.current]
 	state.ranges = build_ranges(state.chapters, state.duration)
 	if state.results and not has_skip_chapters(state.chapters) and type(state.duration) == 'number' then
 		for _, range in ipairs(aniskip_ranges(state.results, state.duration)) do state.ranges[#state.ranges + 1] = range end
@@ -548,6 +550,10 @@ local function rebuild()
 		time_watched = false
 	end
 	state.current = range_at(state.ranges, state.time)
+	-- Opening a file inside a range, or times that arrive during one: logged
+	-- as update_current does (not again when only the duration moved).
+	local now = state.current and state.ranges[state.current]
+	if now and not (before and before.start == now.start and before.kind == now.kind) then log_range(now) end
 	refresh()
 end
 
@@ -644,7 +650,7 @@ local function maybe_aniskip()
 	local release = mp.get_property_native(RELEASE_PROP)
 	local path = mp.get_property_native('path')
 	if type(release) ~= 'table' or type(path) ~= 'string' or release.path ~= path then return end
-	local query = aniskip.query(release)
+	local query = aniskip.query(release, duration)
 	if not query then return end
 	state.asked = true
 	local file = state.file
