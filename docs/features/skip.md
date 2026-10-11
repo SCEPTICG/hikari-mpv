@@ -15,7 +15,7 @@ When the ending is the last chapter, skipping it moves on to the next playlist e
 
 Many fansub releases have no chapters, or none named after the opening or the ending. For those, hikari asks [AniSkip](https://aniskip.com), a free, community-made database of opening and ending times, and the button shows at those times, the same as with chapters (same label, `Alt+s`, click). It is on by default, and only for files that:
 
-- **do not have opening or ending chapters**: when the file has them, they are used and nothing is asked;
+- **do not have opening, intro or ending chapters**: when the file has them, they are used and nothing is asked;
 - **look like an anime episode**: a release name with one episode number and a sign of anime, such as a `[Group]` in front, the `Show - 05` style or an anime service (`CR`, `HIDIVE`...) in the name: `[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv`, `Show S2 - 05`, `Show.S02E05.1080p.CR.WEB-DL.mkv`. Streams from Seanime and similar servers count too, through the file name they carry. Films, specials, OVAs, half episodes (`12.5`) and names that do not look like anime are never looked up.
 
 **What is sent, and to whom.** Three public services, without an account or a key, through `curl` in the background (playback never waits):

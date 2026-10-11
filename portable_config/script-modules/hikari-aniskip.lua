@@ -394,7 +394,8 @@ function M.read_cache()
 	local cache = empty_cache()
 	if type(value.titles) == 'table' then
 		for key, e in pairs(value.titles) do
-			if is_text(key, MAX_SERIES + 4) then cache.titles[key] = check_title(e) end
+			-- Normalising can make a name longer (`×` -> ` x `): twice the limit.
+			if is_text(key, 2 * MAX_SERIES) then cache.titles[key] = check_title(e) end
 		end
 	end
 	if type(value.episodes) == 'table' then

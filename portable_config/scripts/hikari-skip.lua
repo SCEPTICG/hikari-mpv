@@ -45,7 +45,8 @@
 --   as it changes. The box is sized from the label's width: CJK and other
 --   full-width characters count double.
 -- - AniSkip (aniskip=yes, the default): only for a file whose chapters mark no
---   opening or ending (it counts even if the options turn that kind off), once
+--   opening, intro or ending (they count even if the options turn that kind
+--   off; an outro chapter does not), once
 --   it has loaded, with a duration, and only when hikari-title.lua has
 --   published a release with one plain episode that looks like anime
 --   (user-data/hikari_title/release) for the path playing. The lookup, its
@@ -237,13 +238,14 @@ local function build_ranges(chapters, duration)
 	return ranges
 end
 
--- Does the file mark its opening or ending with chapters (whatever the
--- options say)? Then AniSkip is not asked.
+-- Does the file mark its opening (or intro, as many releases call the
+-- opening song) or its ending with chapters, whatever the options say? Then
+-- AniSkip is not asked.
 local function has_skip_chapters(chapters)
 	if type(chapters) ~= 'table' then return false end
 	for _, chapter in ipairs(chapters) do
 		local kind = type(chapter) == 'table' and classify(chapter.title, true)
-		if kind and (kind.name == 'openings' or kind.name == 'endings') then return true end
+		if kind and kind.name ~= 'outros' then return true end
 	end
 	return false
 end

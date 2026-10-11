@@ -502,6 +502,16 @@ test('bad cache entries are dropped one by one', function()
 	eq(cache.episodes['7:4; rm'], nil); eq(cache.episodes['7:5'], nil)
 end)
 
+test('a long name made longer by normalising is still cached', function()
+	local m = load_module()
+	local series = string.rep('a×', 66) -- 198 bytes; normalised 'a x a x ...', 263
+	local got = lookup(m, {series = series, episode = 1, anime = true})
+	mock.finish_async(ok_answer('{"data":{"Page":{"media":[]}}}'))
+	eq(got.called, true)
+	lookup(m, {series = series, episode = 1, anime = true})
+	eq(#mock.async, 0, 'the "no match" came from the cache')
+end)
+
 test('the cache keeps the newest entries within its limits', function()
 	local m = load_module()
 	m.CACHE_LIMITS.titles = 3
@@ -622,6 +632,11 @@ test('skip: files with opening or ending chapters never ask', function()
 	eq(#mock.async, 0, 'OP chapter, even with openings turned off')
 	play(nil, nil, {{time = 0, title = 'Part A'}, {time = 1300, title = 'Ending'}})
 	eq(#mock.async, 0, 'ED chapter')
+	play({['hikari-skip-intros'] = 'no'}, nil, {{time = 0, title = 'Intro'}, {time = 90, title = 'Part A'}})
+	eq(#mock.async, 0, 'an Intro chapter is the opening song in many releases')
+	play(nil, nil, {{time = 0, title = 'Part A'}, {time = 1400, title = 'Preview'}})
+	eq(#mock.async, 1, 'a preview chapter alone: asked')
+	mock.async = {}
 	play(nil, nil, {{time = 0, title = 'Chapter 1'}, {time = 600, title = 'Chapter 2'}})
 	eq(#mock.async, 1, 'plain chapters: asked')
 end)
