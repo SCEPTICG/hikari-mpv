@@ -68,7 +68,9 @@
 --   would be ignored whole). A broken file or entry is ignored (as if never
 --   asked). Written through a temporary file of its own (named after mpv's
 --   pid) and a rename after re-reading it, so two mpv windows do not undo
---   each other's answers or write into the same temporary file.
+--   each other's answers or write into the same temporary file. Temporary
+--   files more than a day old (an mpv that died before the rename) are
+--   removed on the first save of each mpv; younger ones are left alone.
 
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -508,6 +510,31 @@ local function write_file_atomic(path, content)
 	return true
 end
 
+-- Temporary files of the cache older than this are left over from an mpv that
+-- died between writing and renaming: the first save of each mpv removes them.
+-- Younger ones may be another window's write in progress and stay.
+M.STALE_TMP_AGE = 24 * 3600
+local swept = false
+
+-- Removes `<cache>.<pid>-<n>.tmp` files (that exact pattern, next to the
+-- cache) last changed more than STALE_TMP_AGE before time `t`.
+local function remove_stale_tmp(path, t)
+	local dir, base = utils.split_path(path)
+	local names = dir and base and utils.readdir(dir, 'files')
+	if type(names) ~= 'table' then return end
+	local prefix = base .. '.'
+	for _, name in ipairs(names) do
+		if type(name) == 'string' and name:sub(1, #prefix) == prefix
+			and name:sub(#prefix + 1):match('^%d+%-%d+%.tmp$') then
+			local file = utils.join_path(dir, name)
+			local info = utils.file_info(file)
+			if info and info.is_file and type(info.mtime) == 'number' and t - info.mtime > M.STALE_TMP_AGE then
+				os.remove(file)
+			end
+		end
+	end
+end
+
 -- Adds one entry (section 'titles' or 'episodes') to the cache on disk,
 -- re-read first so another mpv's answers are kept. Expired entries go first,
 -- then the oldest beyond CACHE_LIMITS and CACHE_BUDGET.
@@ -516,6 +543,10 @@ function M.save(section, key, entry)
 	if not path then return false end
 	local cache = M.read_cache()
 	local t = M.now()
+	if not swept then
+		swept = true
+		remove_stale_tmp(path, t)
+	end
 	cache.titles = unexpired(cache.titles, M.title_fresh, t)
 	cache.episodes = unexpired(cache.episodes, M.episode_fresh, t)
 	cache[section][key] = entry

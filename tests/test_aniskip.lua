@@ -669,6 +669,40 @@ test('the temporary file is this mpv\'s own (pid), and goes on failure', functio
 	eq(#tmp_files(), 0, 'cleaned up')
 end)
 
+test('temporary files left by an mpv that died go after a day; recent ones and others stay', function()
+	local m = load_module()
+	local dir, base = CACHE:match('^(.*/)(.*)$')
+	local names = {
+		old = base .. '.111-1.tmp', older = base .. '.222-7.tmp', recent = base .. '.333-1.tmp',
+		shared = base .. '.tmp', other = base .. '.111-1.tmp.bak', unrelated = 'other.json.111-1.tmp',
+		future = base .. '.444-1.tmp',
+	}
+	local ages = {old = DAY + 60, older = 30 * DAY, recent = DAY - 60, shared = 30 * DAY,
+		other = 30 * DAY, unrelated = 30 * DAY, future = -DAY}
+	local listed = {}
+	for what, name in pairs(names) do
+		write(dir .. name, what)
+		listed[#listed + 1] = name
+		mock.files[dir .. name] = {is_file = true, mtime = T0 - ages[what]}
+	end
+	mock.dirs[dir] = listed
+	m.save('titles', 'a|1', {at = T0, mal = 1})
+	eq(read(dir .. names.old), nil, 'more than a day old')
+	eq(read(dir .. names.older), nil, 'a month old')
+	for _, what in ipairs({'recent', 'shared', 'other', 'unrelated', 'future'}) do
+		eq(read(dir .. names[what]), what, what .. ' kept')
+	end
+	-- Only on the first save of each mpv.
+	write(dir .. names.old, 'old')
+	m.save('titles', 'b|1', {at = T0, mal = 2})
+	eq(read(dir .. names.old), 'old', 'not looked at again')
+	eq(m.read_cache().titles['b|1'].mal, 2)
+	for _, name in pairs(names) do os.remove(dir .. name) end
+	-- A folder that cannot be listed costs nothing.
+	m = load_module()
+	assert(m.save('titles', 'c|1', {at = T0, mal = 3}))
+end)
+
 test('another mpv\'s answers are kept when saving', function()
 	local m = load_module()
 	m.save('titles', 'a|1', {at = T0, mal = 1})

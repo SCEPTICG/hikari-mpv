@@ -20,6 +20,7 @@ M.native_sets = {}   -- every mp.set_property_native call, as {name, value}
 M.async = {}         -- pending mp.command_native_async calls, as {cmd, cb}; see M.finish_async
 M.set_fails = {}     -- property name -> true: mp.set_property fails for it
 M.files = {}        -- path -> mp.utils.file_info answer (nil: the file does not exist)
+M.dirs = {}         -- dir -> mp.utils.readdir answer (nil: cannot be read)
 M.config_files = {} -- name -> path that mp.find_config_file returns (nil: not found)
 M.sets = {}         -- every mp.set_property call, as {name, value}
 -- Tracks, for the tests that need mpv's track selection: when M.tracks is a
@@ -184,7 +185,7 @@ function M.install(script_name)
 	M.observers, M.overlays, M.sections = {}, {}, {}
 	M.clock, M.timers = 0, {}
 	M.native_sets = {}
-	M.async, M.set_fails, M.files = {}, {}, {}
+	M.async, M.set_fails, M.files, M.dirs = {}, {}, {}, {}
 	M.config_files = {}
 	M.sets = {}
 	M.tracks, M.pick = nil, nil
@@ -319,6 +320,16 @@ function M.install(script_name)
 		format_json = function(v) return format_json(v) end,
 		parse_json = function(text) return parse_json(text) end,
 		file_info = function(path) return M.files[path] end,
+		readdir = function(dir) return M.dirs[dir] end,
+		split_path = function(path)
+			local dir, base = path:match('^(.*[/\\])(.*)$')
+			if not dir then return '.', path end
+			return dir, base
+		end,
+		join_path = function(a, b)
+			if b:match('^/') then return b end
+			return a:match('[/\\]$') and a .. b or a .. '/' .. b
+		end,
 	}
 	package.loaded['mp.options'] = {
 		read_options = function(tbl, identifier)
