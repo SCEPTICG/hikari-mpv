@@ -3150,7 +3150,10 @@ function Get-ScreenLines {
 # an elevated run (the Windows runners), which is not what is tested here.
 function Get-SummaryLines {
     param([string]$Text)
-    return @(Get-ScreenLines $Text | Where-Object { $_ -notmatch 'administrator' })
+    # Get-ScreenLines returns its array as one object (`, $array`): unroll it
+    # before filtering, or the filter sees the whole array at once.
+    $all = Get-ScreenLines $Text
+    return @($all | Where-Object { $_ -notmatch 'administrator' })
 }
 
 $script:FakeLog = New-Object System.Collections.Generic.List[string]
