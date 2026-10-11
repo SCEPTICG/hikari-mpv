@@ -61,8 +61,9 @@
 -- - For hikari-skip's AniSkip lookup, the series, season and episode of a
 --   release name with one plain episode (`Show - 05`, `Show S2 - 05`,
 --   `Show.S02E05`), and whether it looks like anime (a [Group] in front, an
---   anime-only service such as CR, or the `- 05` marker with a resolution,
---   source or CRC; see looks_like_anime), go to
+--   anime-only service such as CR after the episode number, or the `- 05`
+--   marker with a resolution, source or CRC after the episode number; see
+--   looks_like_anime), go to
 --   user-data/hikari_title/release on start-file, with the path they are for
 --   (`{}` for anything else and after end-file). This does not depend on the
 --   options below: they are about the title on screen.
@@ -510,10 +511,12 @@ local function front_group(tokens)
 	return t ~= nil and t.group == '[' and t.text:sub(2, -2):find('%a') ~= nil
 end
 
--- Does a word of the name, inside brackets or not, pass `test`? Words split
--- at spaces, dots, underscores, commas and `+` (`1080p.CR.WEB-DL` is three).
-local function any_word(tokens, test)
-	for _, t in ipairs(tokens) do
+-- Does a word from token `from` on, inside brackets or not, pass `test`?
+-- Words split at spaces, dots, underscores, commas and `+` (`1080p.CR.WEB-DL`
+-- is three).
+local function any_word(tokens, from, test)
+	for i = from, #tokens do
+		local t = tokens[i]
 		local text = t.group and t.text:sub(2, -2) or t.text
 		for word in text:gmatch('[^%s%._,%+]+') do
 			if test(word:lower()) then return true end
@@ -529,9 +532,11 @@ local function resolution_or_source(word)
 	return word:match('^%d%d%d%d?[pi]$') ~= nil or SOURCE_WORDS[word] == true
 end
 
--- A CRC: `[ABCD1234]`, eight hex digits with a letter (`[20240115]` is a date).
-local function has_crc(tokens)
-	for _, t in ipairs(tokens) do
+-- A CRC from token `from` on: `[ABCD1234]`, eight hex digits with a letter
+-- (`[20240115]` is a date).
+local function has_crc(tokens, from)
+	for i = from, #tokens do
+		local t = tokens[i]
 		local inner = t.group == '[' and t.text:sub(2, -2)
 		if inner and inner:match('^%x%x%x%x%x%x%x%x$') and inner:find('%a') then return true end
 	end
@@ -541,21 +546,26 @@ end
 -- Does the release look like anime? An episode marker (the caller has one)
 -- and a second sign, so that a home video called `Holiday - 01.mp4` or a
 -- series such as `The Office - 05.mkv` is never sent anywhere: a [Group] in
--- front, an anime service anywhere, or the `Show - 05` marker together with
--- a resolution, a source or a CRC. A western `Show.S01E05.1080p.WEB-DL` has
+-- front, an anime service after the episode number, or the `Show - 05`
+-- marker together with a resolution, a source or a CRC after the episode
+-- number. Only the technical tail (from token `tail` on, right after the
+-- marker) is searched, never the series name, which is what gets sent: in
+-- `Analisis ADN paciente Garcia - 02` or `Clase 1080p - 02` the words are
+-- part of the name, not signs. A western `Show.S01E05.1080p.WEB-DL` has
 -- neither the group, the service nor the `- 05` marker: not anime.
-local function looks_like_anime(tokens, marker)
-	if front_group(tokens) or any_word(tokens, anime_service) then return true end
-	return marker.dash == true and (has_crc(tokens) or any_word(tokens, resolution_or_source))
+local function looks_like_anime(tokens, marker, tail)
+	if front_group(tokens) or any_word(tokens, tail, anime_service) then return true end
+	return marker.dash == true and (has_crc(tokens, tail) or any_word(tokens, tail, resolution_or_source))
 end
 
 -- What hikari-skip can look up on AniSkip for a marker: one plain episode of
 -- a series (not a range, half episode, special or OVA). nil otherwise.
-local function release_info(tokens, marker, series)
+-- `tail` is the first token after the marker.
+local function release_info(tokens, marker, series, tail)
 	if marker.last or marker.fraction or marker.special or marker.extra or not marker.first then return nil end
 	return {
 		series = series, season = marker.season, episode = tonumber(marker.first),
-		anime = looks_like_anime(tokens, marker),
+		anime = looks_like_anime(tokens, marker, tail),
 	}
 end
 
@@ -586,7 +596,7 @@ local function pretty_title(name, lang)
 				local title = capitalize(series) .. ' · ' .. marker_label(marker, lang)
 				local episode = episode_title(tokens, i + used, spaced)
 				if episode then title = title .. ' · ' .. episode end
-				return title, true, release_info(tokens, marker, capitalize(series))
+				return title, true, release_info(tokens, marker, capitalize(series), i + used)
 			end
 			-- `S01E01.1080p`, `- 01`: a marker but no series in front. Look on:
 			-- in `Special 7 - 05` the series is `Special 7`.

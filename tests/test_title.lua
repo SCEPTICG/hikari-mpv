@@ -491,6 +491,9 @@ test('release info: series, season and episode of anime releases', function()
 	eq(info(t, '/a/Show S01E05 1080p.CR.WEB-DL.mkv'), 'Show|1|5|true', 'a service inside a dotted word')
 	eq(info(t, '/a/[Group] Show S01E05 [1080p].mkv'), 'Show|1|5|true', '[group] in front')
 	eq(info(t, '/a/Show.Name.S01E05.1080p.CR.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'CR in the tail')
+	eq(info(t, '/a/Show.Name.S01E05.1080p.ADN.WEB-DL.AAC2.0.H.264-VARYG.mkv'), 'Show Name|1|5|true', 'ADN in the tail')
+	eq(info(t, '/a/Show.Name.S01E05.Episode.Title.1080p.ADN.WEB-DL.mkv'), 'Show Name|1|5|true', 'after a title')
+	eq(info(t, '/a/[SubsPlease] Viaje CR - 02 (1080p).mkv'), 'Viaje CR|nil|2|true', '[group] in front still counts')
 	eq(info(t, 'C:\\Anime\\[SubsPlease] Sousou no Frieren - 05 (1080p).mkv'), 'Sousou no Frieren|nil|5|true', 'Windows path')
 	eq(info(t, 'file:///a/%5BSubsPlease%5D%20Sousou%20no%20Frieren%20-%2005%20(1080p).mkv'), 'Sousou no Frieren|nil|5|true')
 	-- Seanime: the filename parameter.
@@ -512,6 +515,17 @@ test('release info: not for other files, or anything but one plain episode', fun
 	eq(info(t, '/a/Sousou no Frieren - 05.mkv'), 'Sousou no Frieren|nil|5|false', 'the marker alone')
 	eq(info(t, '/a/Vacaciones - 05 [20240115].mkv'), 'Vacaciones|nil|5|false', 'a date is not a CRC')
 	eq(info(t, '/a/Reunion web - 05.mkv'), 'Reunion web|nil|5|false', '`web` alone is a word')
+	-- Signs in the series name do not count: the series name is what is sent.
+	for _, name in ipairs({
+		'Documental ADN - 03.mp4', 'Analisis ADN paciente Garcia - 02.mkv', 'Viaje CR - 02.mp4',
+		'Clase CR - 01.mp4', 'Informe CR Lopez - 04.mkv', 'Prueba ADN - 01.mkv',
+		'Juicio caso ADN S01E02.mkv', 'Entrevista Hidive Juan S01E01.mkv', 'Viaje Bilibili - 02.mkv',
+		'Proyecto B-Global - 03.mkv', 'Funi - 01.mkv', 'Clase 1080p - 02.mp4',
+		'Clase [1080p] - 02.mp4', 'Clase [ABCD1234] - 02.mp4', 'Viaje.CR.-.02.mp4', 'Viaje.CR.S01E02.mkv',
+		'Informe BD WEB-DL - 05.mkv',
+	}) do
+		eq(info(t, '/a/' .. name):match('|false$'), '|false', name)
+	end
 	eq(info(t, '/a/Holiday video.mkv'), 'nil', 'not a release')
 	eq(info(t, '/a/Blade.Runner.2049.2017.1080p.BluRay.x264.mkv'), 'nil', 'a film')
 	eq(info(t, '/a/[Group] Show - 12.5 [1080p].mkv'), 'nil', 'half episode')
