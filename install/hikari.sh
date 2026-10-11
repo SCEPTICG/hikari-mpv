@@ -24,7 +24,14 @@
 #     --version                show the hikari version in each mpv config folder
 #                              found (and in --target folders) and this
 #                              installer's, then leave without changing anything
+#     --verbose                every step on a line of its own, without
+#                              animations (what to paste in a bug report)
 #     --help
+#
+# On a terminal it shows a short summary: a progress bar for each download and
+# a spinner while it backs up and installs. Without one (output to a file or a
+# pipe, TERM=dumb, NO_COLOR, CI) the same summary comes as plain lines, with no
+# animation or escape sequence. Errors, warnings and questions always show.
 #
 # Questions are read from the terminal (/dev/tty), also when this file comes
 # through a pipe as above. With no terminal at all it runs as with --yes: the
@@ -253,6 +260,7 @@ hikari_text_en() {
         install_ok) s='hikari installed in %s.' ;;
         target_failed) s='%s: %s' ;;
         restore_hint) s='Your previous config is in %s.' ;;
+        restore_how) s='To undo the changes, copy what is in that backup back into %s.' ;;
         summary) s='Done: %s of %s folders.' ;;
         restart) s='Restart the player to see the changes.' ;;
         uninstalling_from) s='Removing hikari from %s' ;;
@@ -332,7 +340,7 @@ hikari_text_en() {
         missing_tool) s='%s is needed and was not found.' ;;
         bad_option) s='Unknown option: %s (see --help).' ;;
         no_input) s='No terminal to ask on: every question takes its default answer.' ;;
-        usage) s='Usage: hikari.sh [--install | --uninstall | --version] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Usage: hikari.sh [--install | --uninstall | --version] [--target <folder>]... [--yes] [--no-menu] [--anime4k yes|no] [--verbose]' ;;
         version_installer) s='This installer: hikari %s' ;;
         version_folder) s='%s (%s): %s' ;;
         version_installed) s='hikari %s' ;;
@@ -351,6 +359,15 @@ hikari_text_en() {
         sosc_done) s='sosc removed: hikari takes its place. Uninstalling hikari puts everything back as it was before sosc.' ;;
         sosc_old_backups) s='There are %s old sosc backups (%s-respaldo-sosc-*). They are not deleted: delete them yourself when you no longer need them.' ;;
         sosc_link_left) s='Left as it is: %s is a symbolic link, nothing is written or moved through it.' ;;
+        uosc_uptodate) s='uosc %s is already installed, unchanged: not downloaded or copied again.' ;;
+        thumbfast_uptodate) s='thumbfast is already installed, unchanged: not downloaded or copied again.' ;;
+        ui_uptodate) s='up to date' ;;
+        ui_downloaded) s='downloaded' ;;
+        ui_backup) s='Backup' ;;
+        ui_installing) s='Installing' ;;
+        ui_removing) s='Removing' ;;
+        ui_installed) s='hikari %s installed in %s' ;;
+        ui_removed) s='hikari removed from %s' ;;
     esac
     printf '%s' "$s"
 }
@@ -425,6 +442,7 @@ hikari_text_es() {
         install_ok) s='hikari instalado en %s.' ;;
         target_failed) s='%s: %s' ;;
         restore_hint) s='Tu configuración anterior está en %s.' ;;
+        restore_how) s='Para deshacer los cambios, copia lo que hay en esa copia de seguridad de vuelta a %s.' ;;
         summary) s='Hecho: %s de %s carpetas.' ;;
         restart) s='Reinicia el reproductor para ver los cambios.' ;;
         uninstalling_from) s='Quitando hikari de %s' ;;
@@ -504,7 +522,7 @@ hikari_text_es() {
         missing_tool) s='Hace falta %s y no se encuentra.' ;;
         bad_option) s='Opción desconocida: %s (mira --help).' ;;
         no_input) s='No hay terminal en el que preguntar: cada pregunta toma su respuesta por defecto.' ;;
-        usage) s='Uso: hikari.sh [--install | --uninstall | --version] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no]' ;;
+        usage) s='Uso: hikari.sh [--install | --uninstall | --version] [--target <carpeta>]... [--yes] [--no-menu] [--anime4k yes|no] [--verbose]' ;;
         version_installer) s='Este instalador: hikari %s' ;;
         version_folder) s='%s (%s): %s' ;;
         version_installed) s='hikari %s' ;;
@@ -523,6 +541,15 @@ hikari_text_es() {
         sosc_done) s='sosc quitado: hikari ocupa su lugar. Al desinstalar hikari todo vuelve a como estaba antes de sosc.' ;;
         sosc_old_backups) s='Hay %s copias de seguridad antiguas de sosc (%s-respaldo-sosc-*). No se borran: bórralas tú cuando ya no te hagan falta.' ;;
         sosc_link_left) s='Se deja como está: %s es un enlace simbólico, no se escribe ni se mueve nada a través de él.' ;;
+        uosc_uptodate) s='uosc %s ya está instalado y sin cambios: no se vuelve a descargar ni a copiar.' ;;
+        thumbfast_uptodate) s='thumbfast ya está instalado y sin cambios: no se vuelve a descargar ni a copiar.' ;;
+        ui_uptodate) s='ya está al día' ;;
+        ui_downloaded) s='descargado' ;;
+        ui_backup) s='Copia de seguridad' ;;
+        ui_installing) s='Instalando' ;;
+        ui_removing) s='Quitando' ;;
+        ui_installed) s='hikari %s instalado en %s' ;;
+        ui_removed) s='hikari quitado de %s' ;;
     esac
     printf '%s' "$s"
 }
@@ -631,13 +658,220 @@ hikari_mpv_language() {
 # Output and input
 # ---------------------------------------------------------------------------
 
-hikari_color() { # hikari_color <code> <text>: colour only on a terminal
-    if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\033[0m\n' "$1" "$2"; else printf '%s\n' "$2"; fi
+# Three ways to show what happens:
+# - verbose (--verbose): every step on a line of its own, as the installer has
+#   always done, without animations: what to paste in a bug report;
+# - fancy (FANCY=1): on a real terminal, a short summary, with a progress bar
+#   for each download and a spinner for each long step that ends in a tick;
+# - plain: the same short summary as plain lines, one per step, with no
+#   animation and no escape sequence (output to a file or a pipe, TERM=dumb,
+#   NO_COLOR, CI).
+# Errors, warnings, questions and menus show in all three. Escape sequences
+# (colours, the spinner) only go to a terminal (COLOR=1).
+
+# Sets COLOR, FANCY, UNICODE and the glyphs. Run before anything is shown and
+# again once the terminal is known (io_setup).
+ui_setup() {
+    local loc=${LC_ALL:-${LC_CTYPE:-${LANG:-}}}
+    COLOR=0
+    FANCY=0
+    UNICODE=0
+    if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ] && [ -z "${NO_COLOR:-}" ] && [ -z "${CI:-}" ]; then COLOR=1; fi
+    if [ "$COLOR" = 1 ] && [ "$VERBOSE" != 1 ] && [ "$(term_cols)" -ge 50 ]; then FANCY=1; fi
+    case $loc in
+        *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) UNICODE=1 ;;
+        '') [ "$(hikari_uname)" = Darwin ] && UNICODE=1 ;;
+    esac
+    if [ "$UNICODE" = 1 ]; then
+        G_OK='✓'; G_FAIL='✗'; G_BAR='━'; G_BAR_EMPTY='━'; G_ARROW='›'; G_DOTS='…'
+        SPIN_FRAMES=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    else
+        G_OK='+'; G_FAIL='x'; G_BAR='#'; G_BAR_EMPTY='-'; G_ARROW='>'; G_DOTS='...'
+        SPIN_FRAMES=('|' '/' '-' "\\")
+    fi
 }
-info() { printf '%s\n' "$1"; }
-ok() { hikari_color 32 "$1"; }
-warn() { hikari_color 33 "$1"; }
-error() { if [ "$COLOR" = 1 ]; then printf '\033[31m%s\033[0m\n' "$1" >&2; else printf '%s\n' "$1" >&2; fi; }
+
+# paint <code> <text>: the text in colour when escape sequences are allowed.
+paint() {
+    if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
+}
+
+# The spinner of the step in progress (STEP_LABEL) runs in the background and
+# only on a terminal. Anything else written while it runs (a warning, a
+# question, a menu) first takes it off the screen (spin_hold) and puts it back
+# after (spin_release). Only the main shell drives it: never a $( ) or a pipe.
+spin_start() {
+    [ "$BASH_SUBSHELL" = 0 ] && [ "$FANCY" = 1 ] && [ -n "$STEP_LABEL" ] && [ -z "$SPIN_PID" ] && [ "$SPIN_HOLD" = 0 ] || return 0
+    spin_loop &
+    SPIN_PID=$!
+}
+# Ends with the installer ($$ is its process, also in here): a spinner is never
+# left drawing after it, even when it is killed.
+spin_loop() {
+    trap 'exit 0' TERM
+    local i=0 n=${#SPIN_FRAMES[@]}
+    while kill -0 "$$" 2>/dev/null; do
+        printf '\r  \033[36m%s\033[0m %s' "${SPIN_FRAMES[i]}" "$STEP_LABEL$G_DOTS"
+        i=$(((i + 1) % n))
+        sleep 0.08
+    done
+}
+spin_stop() {
+    [ "$BASH_SUBSHELL" = 0 ] && [ -n "$SPIN_PID" ] || return 0
+    kill "$SPIN_PID" 2>/dev/null
+    wait "$SPIN_PID" 2>/dev/null
+    SPIN_PID=''
+    printf '\r\033[K'
+}
+spin_hold() {
+    [ "$BASH_SUBSHELL" = 0 ] || return 0
+    SPIN_HOLD=$((SPIN_HOLD + 1))
+    spin_stop
+}
+spin_release() {
+    [ "$BASH_SUBSHELL" = 0 ] || return 0
+    [ "$SPIN_HOLD" -le 0 ] || SPIN_HOLD=$((SPIN_HOLD - 1))
+    spin_start
+}
+
+# A step of the summary: a spinner while it runs (on a terminal), then
+# "✓ label" or "✗ label". Nothing in verbose mode, which says it all already.
+step_begin() {
+    STEP_LABEL=$1
+    spin_start
+}
+step_end() { # step_end ok|fail|quiet
+    local label=$STEP_LABEL mark
+    STEP_LABEL=''
+    spin_stop
+    [ "$VERBOSE" != 1 ] && [ "$1" != quiet ] || return 0
+    if [ "$1" = ok ]; then mark=$(paint 32 "$G_OK"); else mark=$(paint 31 "$G_FAIL"); fi
+    printf '  %s %s\n' "$mark" "$label"
+}
+
+# A line of the summary, as it is (not in verbose mode).
+ui_line() {
+    [ "$VERBOSE" != 1 ] || return 0
+    spin_hold
+    printf '%s\n' "$1"
+    spin_release
+}
+
+# A download row of the summary: "  uosc        ✓ up to date".
+row_done() { # row_done <label> <ok|fail> [text]
+    [ "$VERBOSE" != 1 ] || return 0
+    local mark
+    if [ "$2" = ok ]; then mark=$(paint 32 "$G_OK"); else mark=$(paint 31 "$G_FAIL"); fi
+    [ "$FANCY" != 1 ] || printf '\r\033[K'
+    printf '  %-12s%s%s\n' "$1" "$mark" "${3:+ $3}"
+}
+
+# repeat <n> <text>
+repeat() {
+    local i=0 out=''
+    while [ "$i" -lt "$1" ]; do out=$out$2; i=$((i + 1)); done
+    printf '%s' "$out"
+}
+
+# The progress bar of a download (terminal only): draw_bar <label> <percent>, or
+# draw_bar <label> '' <step> when the size is not known (a block going back and
+# forth).
+draw_bar() {
+    local label=$1 pct=$2 width=20 fill rest bar suffix at
+    if [ -n "$pct" ]; then
+        fill=$((pct * width / 100))
+        rest=$((width - fill))
+        bar="\033[36m$(repeat "$fill" "$G_BAR")\033[90m$(repeat "$rest" "$G_BAR_EMPTY")\033[0m"
+        suffix=$(printf '%3d %%' "$pct")
+    else
+        at=$(($3 % (2 * (width - 4))))
+        [ "$at" -lt $((width - 4)) ] || at=$((2 * (width - 4) - at))
+        bar="\033[90m$(repeat "$at" "$G_BAR_EMPTY")\033[36m$(repeat 4 "$G_BAR")\033[90m$(repeat $((width - 4 - at)) "$G_BAR_EMPTY")\033[0m"
+        suffix='    '
+    fi
+    # shellcheck disable=SC2059 # the bar is built above, with its colours.
+    printf "\r  %-12s$bar  %s" "$label" "$suffix"
+}
+
+# Reads curl's --progress-bar (lines ended by \r) on stdin and draws the bar
+# of $1. Anything else curl says (an error) goes to the file $2.
+progress_reader() {
+    local label=$1 err=$2 chunk line pct step=0 re='([0123456789]{1,3})(\.[0123456789])?%' bars='^[-#=O[:space:]]+$'
+    draw_bar "$label" 0
+    while IFS= read -r -d $'\r' chunk || [ -n "$chunk" ]; do
+        while [ -n "$chunk" ]; do
+            case $chunk in
+                *$'\n'*) line=${chunk%%$'\n'*}; chunk=${chunk#*$'\n'} ;;
+                *) line=$chunk; chunk='' ;;
+            esac
+            # curl's own message may follow the bar on the same line.
+            case $line in
+                *'curl: '*)
+                    printf 'curl: %s\n' "${line#*curl: }" >>"$err"
+                    line=${line%%curl: *}
+                    ;;
+            esac
+            if [[ $line =~ $re ]]; then
+                pct=$((10#${BASH_REMATCH[1]}))
+                [ "$pct" -le 100 ] || pct=100
+                draw_bar "$label" "$pct"
+            elif [[ $line =~ $bars ]]; then
+                step=$((step + 1))
+                draw_bar "$label" '' "$step"
+            elif [ -n "$line" ]; then
+                printf '%s\n' "$line" >>"$err"
+            fi
+        done
+    done
+}
+
+info() {
+    spin_hold
+    printf '%s\n' "$1"
+    spin_release
+}
+# Details: only in verbose mode.
+detail() { [ "$VERBOSE" != 1 ] || info "$1"; }
+detail_ok() { [ "$VERBOSE" != 1 ] || ok "$1"; }
+# Something the user should know, shown in every mode (indented in the summary).
+notice() { if [ "$VERBOSE" = 1 ]; then info "$1"; else ui_line "  $1"; fi; }
+ok() {
+    spin_hold
+    printf '%s\n' "$(paint 32 "$1")"
+    spin_release
+}
+warn() {
+    spin_hold
+    if [ "$VERBOSE" = 1 ]; then printf '%s\n' "$(paint 33 "$1")"; else printf '  %s\n' "$(paint 33 "$1")"; fi
+    spin_release
+}
+error() {
+    local pre=''
+    spin_hold
+    [ "$VERBOSE" = 1 ] || pre='  '
+    if [ "$COLOR" = 1 ] && [ -t 2 ]; then printf '%s\033[31m%s\033[0m\n' "$pre" "$1" >&2; else printf '%s%s\n' "$pre" "$1" >&2; fi
+    spin_release
+}
+
+# The home folder as ~ (paths in the summary).
+short_path() {
+    # shellcheck disable=SC2088 # a ~ to read, not to expand.
+    case $1 in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac
+}
+# The name of a candidate in the summary: its player, or its folder.
+folder_label() {
+    if [ "${C_KIND[$1]}" = folder ]; then short_path "${C_DIR[$1]}"; else kind_label "${C_KIND[$1]}"; fi
+}
+# "  › mpv  ~/.config/mpv", above the steps of a folder.
+ui_folder() {
+    local i=$1 path
+    path=$(short_path "${C_DIR[i]}")
+    if [ "${C_KIND[i]}" = folder ]; then
+        ui_line "  $(paint 36 "$G_ARROW") $path"
+    else
+        ui_line "  $(paint 36 "$G_ARROW") $(kind_label "${C_KIND[i]}")  $(paint 90 "$path")"
+    fi
+}
 
 # Replaceable in tests: the terminal questions are read from.
 hikari_tty_path() { printf '%s' /dev/tty; }
@@ -690,8 +924,18 @@ trim() {
 }
 
 # confirm <question> <default yes|no>: 0 for yes, 1 for no. Without questions
-# (--yes or no terminal) the default answer.
+# (--yes or no terminal) the default answer. The spinner of the step in
+# progress stays off the screen while it asks.
 confirm() {
+    local r
+    if [ "$NONINTERACTIVE" = 1 ]; then [ "$2" = yes ]; return; fi
+    spin_hold
+    confirm_ask "$@"
+    r=$?
+    spin_release
+    return "$r"
+}
+confirm_ask() {
     local question=$1 default=$2 answer
     if [ "$NONINTERACTIVE" = 1 ]; then [ "$default" = yes ]; return; fi
     if [ "$MENU" = 1 ]; then
@@ -1117,6 +1361,27 @@ sha256_of() {
     fi
 }
 
+# The SHA256 of each file given (relative to the current folder), one per line
+# and in the same order, in a single run. A name the tool has to escape gives
+# a line that is no hash, so it never matches.
+sha256_list() {
+    [ $# -gt 0 ] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$@"; else shasum -a 256 -- "$@"; fi | cut -c1-64
+}
+
+# Do the files SUM_PATHS (relative to folder $1) have the hashes SUM_WANT?
+sums_match() {
+    local got i=0 line
+    [ "${#SUM_PATHS[@]}" -gt 0 ] || return 1
+    got=()
+    while IFS= read -r line; do got[${#got[@]}]=$line; done < <(cd "$1" && sha256_list "${SUM_PATHS[@]}" 2>/dev/null)
+    [ "${#got[@]}" = "${#SUM_PATHS[@]}" ] || return 1
+    while [ "$i" -lt "${#SUM_PATHS[@]}" ]; do
+        [ "${got[i]}" = "${SUM_WANT[i]}" ] || return 1
+        i=$((i + 1))
+    done
+}
+
 # Writes stdin to $1 through a temporary file next to it and a rename, so a
 # failure never leaves half a file. The temporary file is made by mktemp (a
 # new file with an unpredictable name, never an existing file or link). The
@@ -1304,12 +1569,12 @@ update_mpv_conf() {
     block=()
     if [ "$found" = 1 ] && [ "$last" != default ] && [ -n "$last" ]; then
         block=('[default]')
-        info "$(T default_section mpv.conf)"
+        detail "$(T default_section mpv.conf)"
     fi
     block=(${block[@]+"${block[@]}"} "${MPV_CONF_LINES[@]}")
     set_block mpv.conf "$eol" "${block[@]}" || return 1
     save_file "$path" || return 1
-    info "$(T block_updated mpv.conf)"
+    detail "$(T block_updated mpv.conf)"
 }
 
 # Normalised key name, as install/hikari.ps1 does: modifiers lower-cased and
@@ -1404,7 +1669,7 @@ update_input_conf() {
         done
         if [ "$hit" = 1 ]; then
             case $existing in
-                "$cmd" | "$cmd "* | "$cmd#"*) info "$(T key_same "$key" "$cmd")" ;;
+                "$cmd" | "$cmd "* | "$cmd#"*) detail "$(T key_same "$key" "$cmd")" ;;
                 *) warn "$(T key_taken "$key" "$existing" "$cmd")" ;;
             esac
             continue
@@ -1413,7 +1678,7 @@ update_input_conf() {
     done
     set_block input.conf "$(file_eol)" ${lines[@]+"${lines[@]}"} || return 1
     save_file "$path" || return 1
-    info "$(T block_updated input.conf)"
+    detail "$(T block_updated input.conf)"
 }
 
 # remove_managed <path> <root> <created by hikari 1|0> <no final eol 1|0>:
@@ -1496,10 +1761,11 @@ recordable_line() {
 }
 
 # Reads the record of folder $1 (fails when there is none): REC_KEYS/REC_VALS
-# and the lists REC_FILES, REC_DISABLED, REC_BROKEN, REC_MOVED, REC_COMMENTED
-# and REC_COMMENTED_MPV. $2 = quiet: no warnings for bad entries.
+# and the lists REC_FILES, REC_DISABLED, REC_BROKEN, REC_MOVED, REC_COMMENTED,
+# REC_COMMENTED_MPV and REC_SUMS. $2 = quiet: no warnings for bad entries.
 read_record() {
     REC_KEYS=(); REC_VALS=(); REC_FILES=(); REC_DISABLED=(); REC_BROKEN=(); REC_MOVED=(); REC_COMMENTED=(); REC_COMMENTED_MPV=()
+    REC_SUMS=()
     local path="$1/$RECORD_NAME" quiet=${2:-0} line key value i=0
     [ -f "$path" ] || return 1
     load_file "$path"
@@ -1535,6 +1801,10 @@ read_record() {
                     else REC_COMMENTED_MPV[${#REC_COMMENTED_MPV[@]}]=$value; fi
                 elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
                 ;;
+            sha256)
+                if sum_entry_ok "$value"; then REC_SUMS[${#REC_SUMS[@]}]=$value
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                ;;
             *)
                 REC_KEYS[${#REC_KEYS[@]}]=$key
                 REC_VALS[${#REC_VALS[@]}]=$value
@@ -1542,6 +1812,12 @@ read_record() {
         esac
     done
     return 0
+}
+
+# "path|sha256" of a file hikari installed: a clean record path and 64 hex digits.
+sum_entry_ok() {
+    case $1 in *'|'*'|'*) return 1 ;; *'|'*) ;; *) return 1 ;; esac
+    record_path_ok "${1%%|*}" && [[ ${1#*|} =~ ^[0123456789abcdef]{64}$ ]]
 }
 
 # "moved|original", both clean record paths.
@@ -1583,32 +1859,68 @@ add_record_entries() {
 # Sources and downloads
 # ---------------------------------------------------------------------------
 
-# Replaceable in tests: downloads $1 to $2.
+# Replaceable in tests: downloads $1 to $2. Only HTTPS (redirects too), TLS
+# 1.2 or newer. With FETCH_PROGRESS=1 curl draws its progress bar on stderr
+# (read by progress_reader); otherwise it only says what failed.
 hikari_fetch() {
-    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 -o "$2" "$1"
+    if [ "${FETCH_PROGRESS:-0}" = 1 ]; then
+        curl -fL --progress-bar --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 5 --retry 2 -o "$2" "$1"
+    else
+        curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-redirs 5 --retry 2 -o "$2" "$1"
+    fi
+}
+
+# hikari_fetch with a progress bar for row $3 on a terminal. What curl says
+# when it fails is kept in FETCH_NOTE (control characters taken out).
+fetch_file() {
+    local url=$1 out=$2 label=$3 rc msgs
+    FETCH_NOTE=''
+    if [ "$FANCY" != 1 ] || [ -z "$label" ]; then
+        hikari_fetch "$url" "$out"
+        return
+    fi
+    msgs="$TEMP_DIR/fetch-messages.txt"
+    : >"$msgs"
+    { FETCH_PROGRESS=1; hikari_fetch "$url" "$out"; } 2>&1 >/dev/null | progress_reader "$label" "$msgs"
+    rc=${PIPESTATUS[0]}
+    if [ "$rc" != 0 ] && [ -s "$msgs" ]; then
+        FETCH_NOTE=" $(head -n 3 "$msgs" | tr '\n' ' ' | LC_ALL=C tr -d '[:cntrl:]' | cut -c1-300)"
+    fi
+    rm -f "$msgs"
+    return "$rc"
 }
 
 # Downloads $1 to $3 and checks its SHA256 ($2). On mismatch the file is
-# deleted: nothing unverified is ever used.
+# deleted: nothing unverified is ever used. $4: the row of the summary
+# (hikari, uosc...), with its progress bar on a terminal.
 verified_download() {
-    local url=$1 sha=$2 out=$3 actual
+    local url=$1 sha=$2 out=$3 label=${4:-} actual
     case $url in
         https://github.com/* | https://raw.githubusercontent.com/*) ;;
         *) HIKARI_ERR=$(T url_bad "$url"); return 1 ;;
     esac
     if [ -z "$sha" ]; then HIKARI_ERR=$(T hash_bad "$url" '?' '?'); return 1; fi
-    info "$(T downloading "$url")"
+    detail "$(T downloading "$url")"
     rm -f "$out"
-    if ! hikari_fetch "$url" "$out" || [ ! -f "$out" ]; then
+    if ! fetch_file "$url" "$out" "$label" || [ ! -f "$out" ]; then
         rm -f "$out"
-        HIKARI_ERR=$(T download_failed "$url")
+        HIKARI_ERR=$(T download_failed "$url")$FETCH_NOTE
+        [ -z "$label" ] || row_done "$label" fail
         return 1
     fi
     actual=$(sha256_of "$out")
     if [ "$actual" != "$(lower "$sha")" ]; then
         rm -f "$out"
         HIKARI_ERR=$(T hash_bad "$url" "$(lower "$sha")" "$actual")
+        [ -z "$label" ] || row_done "$label" fail
         return 1
+    fi
+    [ -n "$label" ] || return 0
+    if [ "$FANCY" = 1 ]; then
+        draw_bar "$label" 100
+        printf '\n'
+    else
+        row_done "$label" ok "$(T ui_downloaded)"
     fi
 }
 
@@ -1637,7 +1949,7 @@ get_source() {
     SRC_VERSION=$HIKARI_VERSION
     SRC_COMMIT=''
     if [ -n "$HIKARI_RELEASE_URL" ]; then
-        verified_download "$HIKARI_RELEASE_URL" "$HIKARI_RELEASE_SHA256" "$TEMP_DIR/hikari.zip" || return 1
+        verified_download "$HIKARI_RELEASE_URL" "$HIKARI_RELEASE_SHA256" "$TEMP_DIR/hikari.zip" hikari || return 1
         unzip_to "$TEMP_DIR/hikari.zip" "$TEMP_DIR/hikari" || { HIKARI_ERR=$(T source_missing "$TEMP_DIR/hikari"); return 1; }
         local d
         for d in "$TEMP_DIR/hikari" "$TEMP_DIR"/hikari/*; do
@@ -1659,12 +1971,106 @@ get_source() {
     return 1
 }
 
-# Downloads and verifies uosc and thumbfast (once for every folder).
+# Downloads and verifies uosc and thumbfast (once for every folder), unless
+# every folder has them already, exactly as pinned (plan_downloads).
 get_artifacts() {
-    verified_download "$UOSC_URL" "$UOSC_SHA256" "$TEMP_DIR/uosc.zip" || return 1
-    unzip_to "$TEMP_DIR/uosc.zip" "$TEMP_DIR/uosc" || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
-    [ -f "$TEMP_DIR/uosc/scripts/uosc/main.lua" ] || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
-    verified_download "$THUMBFAST_URL" "$THUMBFAST_SHA256" "$TEMP_DIR/thumbfast.lua" || return 1
+    UOSC_SUMS=()
+    if [ "$NEED_UOSC" = 1 ]; then
+        verified_download "$UOSC_URL" "$UOSC_SHA256" "$TEMP_DIR/uosc.zip" uosc || return 1
+        unzip_to "$TEMP_DIR/uosc.zip" "$TEMP_DIR/uosc" || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
+        [ -f "$TEMP_DIR/uosc/scripts/uosc/main.lua" ] || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
+        uosc_manifest
+    else
+        row_done uosc ok "$(T ui_uptodate)"
+    fi
+    if [ "$NEED_THUMB" = 1 ]; then
+        verified_download "$THUMBFAST_URL" "$THUMBFAST_SHA256" "$TEMP_DIR/thumbfast.lua" thumbfast || return 1
+    else
+        row_done thumbfast ok "$(T ui_uptodate)"
+    fi
+}
+
+# UOSC_SUMS: "path|sha256" of each file of the verified uosc zip that
+# install_uosc copies (paths as in the config folder). Empty when a name is
+# odd: such a uosc is then never taken as up to date.
+uosc_manifest() {
+    local src="$TEMP_DIR/uosc" f paths sums i font
+    UOSC_SUMS=()
+    paths=()
+    while IFS= read -r f; do paths[${#paths[@]}]=$f; done < <(cd "$src" && find scripts/uosc -type f -print | LC_ALL=C sort)
+    for font in "${UOSC_FONTS[@]}"; do [ -f "$src/fonts/$font" ] && paths[${#paths[@]}]="fonts/$font"; done
+    for f in ${paths[@]+"${paths[@]}"}; do record_path_ok "$f" || return 0; done
+    sums=()
+    while IFS= read -r f; do sums[${#sums[@]}]=$f; done < <(cd "$src" && sha256_list "${paths[@]}")
+    [ "${#sums[@]}" = "${#paths[@]}" ] || return 0
+    i=0
+    while [ "$i" -lt "${#paths[@]}" ]; do
+        sum_entry_ok "${paths[i]}|${sums[i]}" || { UOSC_SUMS=(); return 0; }
+        UOSC_SUMS[i]="${paths[i]}|${sums[i]}"
+        i=$((i + 1))
+    done
+}
+
+# Is the uosc of folder $1 exactly the pinned one, as hikari installed it? Its
+# record (read already) says this version and this zip, and lists the hash of
+# every file it copied: all of them there, unchanged, not links, and nothing
+# else in scripts/uosc; no uosc 4 leftovers. Any doubt: no (it is installed
+# again).
+uosc_uptodate() {
+    local cfg=$1 e rel p n=0 legacy font own
+    rec_get uosc_version && [ "$REC_VALUE" = "$UOSC_VERSION" ] || return 1
+    rec_get uosc_sha256 && [ "$REC_VALUE" = "$(lower "$UOSC_SHA256")" ] || return 1
+    for legacy in "${UOSC_LEGACY[@]}"; do
+        if [ -e "$cfg/scripts/$legacy" ] || [ -L "$cfg/scripts/$legacy" ]; then return 1; fi
+    done
+    [ -d "$cfg/scripts/uosc" ] && [ ! -L "$cfg/scripts/uosc" ] || return 1
+    SUM_PATHS=()
+    SUM_WANT=()
+    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
+        rel=${e%%|*}
+        own=0
+        case $rel in scripts/uosc/*) own=1; n=$((n + 1)) ;; esac
+        for font in "${UOSC_FONTS[@]}"; do [ "$rel" = "fonts/$font" ] && own=1; done
+        [ "$own" = 1 ] || continue
+        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
+        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
+        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
+        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
+    done
+    [ "$n" -gt 0 ] || return 1
+    [ -z "$(find "$cfg/scripts/uosc" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
+    [ "$(find "$cfg/scripts/uosc" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
+    sums_match "$cfg"
+}
+
+# Is the thumbfast of folder $1 the pinned file, byte for byte?
+thumbfast_uptodate() {
+    local f="$1/scripts/thumbfast.lua"
+    [ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256_of "$f")" = "$(lower "$THUMBFAST_SHA256")" ]
+}
+
+# What the downloads must bring, decided before anything is downloaded or
+# touched: NEED_UOSC and NEED_THUMB (1 when a folder lacks them as pinned),
+# NEED_A4K (1 when a folder may install Anime4K) and A4K_ALL_UPTODATE (every
+# folder has hikari's Anime4K as pinned already).
+plan_downloads() {
+    local t cfg
+    NEED_UOSC=0
+    NEED_THUMB=0
+    NEED_A4K=0
+    A4K_ALL_UPTODATE=1
+    for t in "${TARGETS[@]}"; do
+        cfg=${C_DIR[t]}
+        read_record "$cfg" 1 || :
+        uosc_uptodate "$cfg" || NEED_UOSC=1
+        thumbfast_uptodate "$cfg" || NEED_THUMB=1
+        a4k_plan "$cfg"
+        case $PLAN_A4K in
+            need) NEED_A4K=1; A4K_ALL_UPTODATE=0 ;;
+            uptodate) ;;
+            *) A4K_ALL_UPTODATE=0 ;;
+        esac
+    done
 }
 
 # Downloads, checks and extracts Anime4K into A4K_SRC: only the entries named
@@ -1674,8 +2080,9 @@ get_artifacts() {
 get_anime4k() {
     A4K_SRC=''
     A4K_ERROR=''
-    local zip="$TEMP_DIR/anime4k.zip" dest="$TEMP_DIR/anime4k" names name missing=''
-    if ! verified_download "$ANIME4K_URL" "$ANIME4K_SHA256" "$zip"; then A4K_ERROR=$HIKARI_ERR; return 1; fi
+    A4K_SRC_SUMS=()
+    local zip="$TEMP_DIR/anime4k.zip" dest="$TEMP_DIR/anime4k" names name missing='' sums i
+    if ! verified_download "$ANIME4K_URL" "$ANIME4K_SHA256" "$zip" Anime4K; then A4K_ERROR=$HIKARI_ERR; return 1; fi
     names=()
     while IFS= read -r name; do
         [[ $name =~ $ANIME4K_PATTERN ]] && names[${#names[@]}]=$name
@@ -1687,6 +2094,21 @@ get_anime4k() {
     done
     if [ -n "$missing" ]; then A4K_ERROR=$(T anime4k_bad_zip "$missing"); return 1; fi
     A4K_SRC=$dest
+    # The hash of each shader, for the record (anime4k_complete).
+    names=()
+    for name in "$dest"/Anime4K_*.glsl; do
+        [ -f "$name" ] || continue
+        name=${name##*/}
+        [[ $name =~ $ANIME4K_PATTERN ]] && names[${#names[@]}]=$name
+    done
+    sums=()
+    while IFS= read -r name; do sums[${#sums[@]}]=$name; done < <(cd "$dest" && sha256_list "${names[@]}")
+    [ "${#sums[@]}" = "${#names[@]}" ] || return 0
+    i=0
+    while [ "$i" -lt "${#names[@]}" ]; do
+        sum_entry_ok "shaders/${names[i]}|${sums[i]}" && A4K_SRC_SUMS[${#A4K_SRC_SUMS[@]}]="shaders/${names[i]}|${sums[i]}"
+        i=$((i + 1))
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -1868,13 +2290,69 @@ find_manual_anime4k() {
     done
 }
 
-anime4k_complete() { # every required shader there, recorded as hikari's, this version
-    local cfg=$1 name o found
+# Is hikari's Anime4K in folder $1 exactly the pinned one? The record says
+# this version and this zip, every required shader is recorded as hikari's
+# (OWN), and every shader of hikari's is there, not a link, with the hash the
+# record has for it (A4K_OLD_SUMS). Uses A4K_VERSION and A4K_ZIP_SHA.
+anime4k_complete() {
+    local cfg=$1 name o found e want
     [ "$A4K_VERSION" = "$ANIME4K_VERSION" ] || return 1
+    [ "$A4K_ZIP_SHA" = "$(lower "$ANIME4K_SHA256")" ] || return 1
     for name in "${ANIME4K_REQUIRED[@]}"; do
         found=0
         for o in ${OWN[@]+"${OWN[@]}"}; do [ "$o" = "shaders/$name" ] && { found=1; break; }; done
         [ "$found" = 1 ] && [ -f "$cfg/$SHADERS_DIR/$name" ] || return 1
+    done
+    SUM_PATHS=()
+    SUM_WANT=()
+    for o in ${OWN[@]+"${OWN[@]}"}; do
+        want=''
+        for e in ${A4K_OLD_SUMS[@]+"${A4K_OLD_SUMS[@]}"}; do [ "${e%%|*}" = "$o" ] && want=${e#*|}; done
+        [ -n "$want" ] && [ -f "$cfg/$o" ] && [ ! -L "$cfg/$o" ] || return 1
+        SUM_PATHS[${#SUM_PATHS[@]}]=$o
+        SUM_WANT[${#SUM_WANT[@]}]=$want
+    done
+    sums_match "$cfg"
+}
+
+# Before any download: may folder $1 need the Anime4K zip? The same choices as
+# anime4k_step, without asking (its record read already): PLAN_A4K is need
+# (it may install it, or will ask), uptodate (hikari's, exactly as pinned) or
+# none (--anime4k no, AnimeJaNai, one installed by hand that stays, or a "no"
+# that --yes or no terminal keeps).
+a4k_plan() {
+    local cfg=$1 prev='' f
+    PLAN_A4K=none
+    [ "$OPT_ANIME4K" != no ] || return 0
+    for f in "$cfg"/scripts/animejanai*.lua; do [ -f "$f" ] && return 0; done
+    rec_get anime4k && prev=$REC_VALUE
+    a4k_load_record
+    find_manual_anime4k "$cfg"
+    if [ "${#MANUAL_A4K[@]}" -gt 0 ]; then
+        if [ "$OPT_ANIME4K" = yes ]; then PLAN_A4K=need
+        elif [ "$prev" != manual ] && [ "$NONINTERACTIVE" != 1 ]; then PLAN_A4K=need; fi
+    elif [ "$prev" = hikari ] && [ "${#OWN[@]}" -gt 0 ]; then
+        if anime4k_complete "$cfg"; then PLAN_A4K=uptodate; else PLAN_A4K=need; fi
+    elif [ "$OPT_ANIME4K" = yes ] || [ "$NONINTERACTIVE" != 1 ] || [ "$prev" != declined ]; then
+        PLAN_A4K=need
+    fi
+}
+
+# From the record read last: OWN (hikari's shaders), A4K_VERSION, A4K_ZIP_SHA
+# and A4K_OLD_SUMS (the recorded hashes of OWN).
+a4k_load_record() {
+    local f e
+    OWN=()
+    for f in ${REC_FILES[@]+"${REC_FILES[@]}"}; do is_own_shader "$f" && OWN[${#OWN[@]}]=$f; done
+    A4K_VERSION=''
+    rec_get anime4k_version && A4K_VERSION=$REC_VALUE
+    A4K_ZIP_SHA=''
+    rec_get anime4k_sha256 && A4K_ZIP_SHA=$REC_VALUE
+    A4K_OLD_SUMS=()
+    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
+        for f in ${OWN[@]+"${OWN[@]}"}; do
+            if [ "${e%%|*}" = "$f" ]; then A4K_OLD_SUMS[${#A4K_OLD_SUMS[@]}]=$e; break; fi
+        done
     done
 }
 
@@ -1975,23 +2453,23 @@ move_shader_aside() {
 # (hikari: installed and managed by hikari; declined; failed: the download or its
 # check failed, asked again next time; manual: one installed by hand left
 # alone; animejanai), A4K_FILES (record paths of hikari's shaders), A4K_MOVED,
-# A4K_COMMENTED, A4K_COMMENTED_MPV, A4K_VERSION and A4K_FRESH (hikari installed
-# it in this run and it was not hikari's before).
+# A4K_COMMENTED, A4K_COMMENTED_MPV, A4K_VERSION, A4K_ZIP_SHA and A4K_SUMS (the
+# zip and the hashes of A4K_FILES, for the record) and A4K_FRESH (hikari
+# installed it in this run and it was not hikari's before). Uses the record
+# read by install_steps.
 anime4k_step() {
     local prev='' choice=$OPT_ANIME4K take_over=0 update=0 keep_manual install f
     A4K_FRESH=0
     rec_get anime4k && prev=$REC_VALUE
-    A4K_VERSION=''
-    rec_get anime4k_version && A4K_VERSION=$REC_VALUE
-    OWN=()
-    for f in ${OLD_FILES[@]+"${OLD_FILES[@]}"}; do is_own_shader "$f" && OWN[${#OWN[@]}]=$f; done
+    a4k_load_record
+    A4K_SUMS=(${A4K_OLD_SUMS[@]+"${A4K_OLD_SUMS[@]}"})
     A4K_FILES=(${OWN[@]+"${OWN[@]}"})
     A4K_MOVED=(${OLD_MOVED[@]+"${OLD_MOVED[@]}"})
     A4K_COMMENTED=(${OLD_COMMENTED[@]+"${OLD_COMMENTED[@]}"})
     A4K_COMMENTED_MPV=(${OLD_COMMENTED_MPV[@]+"${OLD_COMMENTED_MPV[@]}"})
 
     for f in "$CFG"/scripts/animejanai*.lua; do
-        if [ -f "$f" ]; then info "$(T anime4k_animejanai)"; A4K_STATE=animejanai; return 0; fi
+        if [ -f "$f" ]; then notice "$(T anime4k_animejanai)"; A4K_STATE=animejanai; return 0; fi
     done
 
     find_manual_anime4k "$CFG"
@@ -2010,9 +2488,9 @@ anime4k_step() {
         take_over=1
     elif [ "$prev" = hikari ] && [ "${#OWN[@]}" -gt 0 ]; then
         update=1
-        if [ "$choice" = no ]; then info "$(T anime4k_kept)"; A4K_STATE=hikari; return 0; fi
+        if [ "$choice" = no ]; then detail "$(T anime4k_kept)"; A4K_STATE=hikari; return 0; fi
         if anime4k_complete "$CFG"; then
-            info "$(T anime4k_uptodate "$ANIME4K_VERSION")"
+            detail "$(T anime4k_uptodate "$ANIME4K_VERSION")"
             A4K_STATE=hikari
             return 0
         fi
@@ -2020,13 +2498,14 @@ anime4k_step() {
         install=1
         [ "$choice" = no ] && install=0
         if [ -z "$choice" ]; then
-            info "$(T anime4k_intro)"
+            # Only when it is really asked (always in verbose mode).
+            if [ "$VERBOSE" = 1 ] || [ "$NONINTERACTIVE" != 1 ]; then info "$(T anime4k_intro)"; fi
             local def=yes
             [ "$prev" = declined ] && def=no
             confirm "$(T anime4k_confirm)" "$def" || install=0
         fi
         if [ "$install" = 0 ]; then
-            info "$(T anime4k_declined)"
+            detail "$(T anime4k_declined)"
             A4K_STATE=declined
             return 0
         fi
@@ -2044,7 +2523,7 @@ anime4k_step() {
     local answer
     if [ "$take_over" = 1 ]; then
         for f in "${MANUAL_A4K[@]}"; do move_shader_aside "$f" || return 1; done
-        info "$(T shaders_moved "${#MANUAL_A4K[@]}" "$SHADERS_DISABLED_DIR")"
+        detail "$(T shaders_moved "${#MANUAL_A4K[@]}" "$SHADERS_DISABLED_DIR")"
         if [ -f "$CFG/input.conf" ]; then
             load_file "$CFG/input.conf"
             find_lines input.conf anime4k_key_line || return 1
@@ -2057,7 +2536,7 @@ anime4k_step() {
                     COMMENTED_OUT=(${A4K_COMMENTED[@]+"${A4K_COMMENTED[@]}"})
                     comment_lines "$CFG/input.conf" a4k_commented || return 1
                     A4K_COMMENTED=(${COMMENTED_OUT[@]+"${COMMENTED_OUT[@]}"})
-                    info "$(T anime4k_commented "${#FOUND[@]}")"
+                    detail "$(T anime4k_commented "${#FOUND[@]}")"
                 fi
             fi
         fi
@@ -2079,7 +2558,7 @@ anime4k_step() {
                 COMMENTED_OUT=(${A4K_COMMENTED_MPV[@]+"${A4K_COMMENTED_MPV[@]}"})
                 comment_lines "$CFG/mpv.conf" a4k_commented_mpv || return 1
                 A4K_COMMENTED_MPV=(${COMMENTED_OUT[@]+"${COMMENTED_OUT[@]}"})
-                info "$(T anime4k_conf_commented "${#FOUND[@]}")"
+                detail "$(T anime4k_conf_commented "${#FOUND[@]}")"
             fi
         fi
     fi
@@ -2109,10 +2588,17 @@ anime4k_step() {
         for f in "${files[@]}"; do [ "$f" = "$o" ] && { known=1; break; }; done
         if [ "$known" = 0 ] && [ -f "$CFG/$o" ]; then remove_item "$CFG/$o" "$CFG" || return 1; fi
     done
-    ok "$(T anime4k_done "$ANIME4K_VERSION" "${#files[@]}" "$SHADERS_DIR")"
+    detail_ok "$(T anime4k_done "$ANIME4K_VERSION" "${#files[@]}" "$SHADERS_DIR")"
     A4K_STATE=hikari
     A4K_FILES=("${files[@]}")
     A4K_VERSION=$ANIME4K_VERSION
+    A4K_ZIP_SHA=$(lower "$ANIME4K_SHA256")
+    A4K_SUMS=()
+    for f in "${files[@]}"; do
+        for o in ${A4K_SRC_SUMS[@]+"${A4K_SRC_SUMS[@]}"}; do
+            if [ "${o%%|*}" = "$f" ]; then A4K_SUMS[${#A4K_SUMS[@]}]=$o; break; fi
+        done
+    done
     [ "$update" = 1 ] || A4K_FRESH=1
     return 0
 }
@@ -2124,7 +2610,7 @@ anime4k_step() {
 init_upscale_conf() {
     local mode=$1 overwrite=$2 announce=$3 path="$CFG/$UPSCALE_CONF"
     if [ "$overwrite" != 1 ] && [ -f "$path" ]; then
-        info "$(T kept_user_file "$UPSCALE_CONF")"
+        detail "$(T kept_user_file "$UPSCALE_CONF")"
         return 0
     fi
     gpu_detect
@@ -2132,7 +2618,7 @@ init_upscale_conf() {
     if [ "$announce" = 1 ]; then
         local name=$GPU_NAME
         [ -n "$name" ] || name=$(T gpu_unknown)
-        info "$(T gpu_line "$name" "$(T "quality_$GPU_QUALITY")")"
+        detail "$(T gpu_line "$name" "$(T "quality_$GPU_QUALITY")")"
     fi
 }
 
@@ -2169,12 +2655,12 @@ language_conf_text() {
 init_language_conf() {
     local path="$CFG/$LANGUAGE_CONF" code
     if [ -f "$path" ] && grep -q '^script-opts-append=hikari-language=' "$path"; then
-        info "$(T kept_user_file "$LANGUAGE_CONF")"
+        detail "$(T kept_user_file "$LANGUAGE_CONF")"
         return 0
     fi
     code=$(hikari_mpv_language)
     language_conf_text "$code" | write_file "$path" || return 1
-    info "$(T language_set "$code")"
+    detail "$(T language_set "$code")"
 }
 
 # ---------------------------------------------------------------------------
@@ -2319,7 +2805,7 @@ sosc_migrate_file() {
 migrate_sosc() {
     local f n old new i key value count=0
     sosc_present "$CFG" || return 0
-    info "$(T sosc_found)"
+    notice "$(T sosc_found)"
     sosc_check_blocks || return 1
 
     # What sosc recorded (an empty record without a file).
@@ -2352,7 +2838,7 @@ migrate_sosc() {
                 i=$((i + 1))
             done
             save_file "$new" || return 1
-            info "$(T sosc_choice_moved "sosc-$n.conf" "hikari-$n.conf")"
+            detail "$(T sosc_choice_moved "sosc-$n.conf" "hikari-$n.conf")"
         fi
         remove_item "$old" "$CFG" || return 1
     done
@@ -2420,12 +2906,12 @@ migrate_sosc() {
     for f in ${SOSC_FILES[@]+"${SOSC_FILES[@]}"} "$CFG/$SOSC_UPDATE_STATE" "$CFG/$SOSC_UPDATE_STATE.tmp" "$CFG/$SOSC_RECORD"; do
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
-    ok "$(T sosc_done)"
+    if [ "$VERBOSE" = 1 ]; then ok "$(T sosc_done)"; else notice "$(T sosc_done)"; fi
 
     for f in "$CFG"-respaldo-sosc-*; do
         if [ -d "$f" ] && [ ! -L "$f" ]; then count=$((count + 1)); fi
     done
-    [ "$count" = 0 ] || info "$(T sosc_old_backups "$count" "$CFG")"
+    [ "$count" = 0 ] || notice "$(T sosc_old_backups "$count" "$CFG")"
     return 0
 }
 
@@ -2459,7 +2945,7 @@ make_backup() {
         k=$(du -skL "$cfg/$name" 2>/dev/null | cut -f1)
         kb=$((kb + ${k:-0}))
     done
-    info "$(T backup_size "$((kb / 1024)).$(((kb % 1024) * 10 / 1024))")"
+    detail "$(T backup_size "$((kb / 1024)).$(((kb % 1024) * 10 / 1024))")"
     if ! mkdir "$BACKUP"; then HIKARI_ERR=$BACKUP; BACKUP=''; return 1; fi
     for name in "${items[@]}"; do
         if [ -d "$cfg/$name" ]; then
@@ -2499,7 +2985,7 @@ prune_backups() {
         [ -n "$protect" ] && [ "$(abs_path "$protect")" = "$(abs_path "$path")" ] && continue
         [ -f "$path/$BACKUP_ORIGINAL_MARK" ] && continue
         if is_inside "$path" "$parent" && rm -rf "$path"; then
-            info "$(T backup_pruned "$path")"
+            detail "$(T backup_pruned "$path")"
         else
             warn "$(T backup_prune_failed "$path")"
         fi
@@ -2599,7 +3085,7 @@ move_to_disabled() {
     fi
     mv "$p" "$dest" || return 1
     MOVED_PAIR="$(rel_path "$dest" "$CFG")|$rel"
-    info "$(T moved "$rel" "${MOVED_PAIR%%|*}")"
+    detail "$(T moved "$rel" "${MOVED_PAIR%%|*}")"
 }
 
 uosc_present() { [ -d "$1/scripts/uosc" ] || [ -f "$1/scripts/uosc.lua" ]; }
@@ -2641,39 +3127,72 @@ final_eol_state() { # no when the file exists, is not empty and lacks a final li
     if [ -s "$1" ] && [ "$(tail -c 1 "$1" | wc -l | tr -d ' ')" = 0 ]; then printf no; else printf yes; fi
 }
 
+# Backs up folder CFG (when it has anything to copy) as the "Backup" step of
+# the summary. Fails, with HIKARI_ERR set, when the backup cannot be made.
+backup_step() {
+    step_begin "$(T ui_backup)"
+    if ! make_backup "$CFG"; then
+        step_end fail
+        HIKARI_ERR=$(T backup_failed "$CFG" "$HIKARI_ERR")
+        return 1
+    fi
+    if [ -n "$BACKUP" ]; then step_end ok; else step_end quiet; fi
+    [ -z "$BACKUP" ] || detail "$(T backup_done "$BACKUP")"
+}
+
+# What to add to an error once the folder has been changed: where the backup
+# is, and how to go back to it.
+restore_note() {
+    [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP") $(T restore_how "$CFG")"
+}
+
 # Installs into the candidate $1 (index).
 install_target() {
     CFG=${C_DIR[$1]}
     local kind=${C_KIND[$1]} exe=${C_EXE[$1]} had_record=0
-    info ''
-    info "$(T installing_to "$CFG")"
+    detail ''
+    detail "$(T installing_to "$CFG")"
     BACKUP=''
     if [ -d "$CFG" ]; then
         # A record of sosc counts too: its first backup, from before sosc, is the original.
         if [ -e "$CFG/$RECORD_NAME" ] || [ -e "$CFG/$SOSC_RECORD" ]; then had_record=1; fi
-        if ! make_backup "$CFG"; then HIKARI_ERR=$(T backup_failed "$CFG" "$HIKARI_ERR"); return 1; fi
-        if [ -n "$BACKUP" ]; then
-            info "$(T backup_done "$BACKUP")"
-            if [ "$had_record" = 0 ] && ! other_original_backup "$CFG" "$BACKUP"; then
-                printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$BACKUP/$BACKUP_ORIGINAL_MARK"
-            fi
+        backup_step || return 1
+        if [ -n "$BACKUP" ] && [ "$had_record" = 0 ] && ! other_original_backup "$CFG" "$BACKUP"; then
+            printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$BACKUP/$BACKUP_ORIGINAL_MARK"
         fi
     else
         mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
     fi
+    step_begin "$(T ui_installing)"
     if ! migrate_sosc || ! install_steps "$kind" "$exe"; then
-        [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP")"
+        step_end fail
+        restore_note
         return 1
     fi
-    ok "$(T install_ok "$CFG")"
+    step_end ok
+    detail_ok "$(T install_ok "$CFG")"
+    ui_line ''
+    ui_line "  $(paint 32 "$G_OK") $(T ui_installed "$SRC_VERSION" "$(folder_label "$1")")"
 }
 
 install_steps() {
     local kind=$1 exe=$2 f name c
     FIRST=1
     OLD_FILES=(); OLD_DISABLED=(); OLD_BROKEN=(); OLD_MOVED=(); OLD_COMMENTED=(); OLD_COMMENTED_MPV=()
+    UOSC_UPTODATE=0
+    THUMB_UPTODATE=0
+    UOSC_REC_SHA=$(lower "$UOSC_SHA256")
+    UOSC_REC_SUMS=(${UOSC_SUMS[@]+"${UOSC_SUMS[@]}"})
     if read_record "$CFG"; then
         FIRST=0
+        # Checked before anything in the folder changes.
+        if uosc_uptodate "$CFG"; then
+            UOSC_UPTODATE=1
+            UOSC_REC_SUMS=()
+            for f in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
+                case ${f%%|*} in scripts/uosc/* | fonts/uosc_*) UOSC_REC_SUMS[${#UOSC_REC_SUMS[@]}]=$f ;; esac
+            done
+        fi
         OLD_FILES=(${REC_FILES[@]+"${REC_FILES[@]}"})
         OLD_DISABLED=(${REC_DISABLED[@]+"${REC_DISABLED[@]}"})
         OLD_BROKEN=(${REC_BROKEN[@]+"${REC_BROKEN[@]}"})
@@ -2740,12 +3259,24 @@ install_steps() {
         fi
     fi
 
-    # c. uosc. d. thumbfast.
-    install_uosc || return 1
-    ok "$(T uosc_done "$UOSC_VERSION")"
-    rm -f "$CFG/scripts/thumbfast.lua"
-    cp "$TEMP_DIR/thumbfast.lua" "$CFG/scripts/thumbfast.lua" || return 1
-    ok "$(T thumbfast_done)"
+    # c. uosc. d. thumbfast. Not copied again when they are exactly as pinned.
+    thumbfast_uptodate "$CFG" && THUMB_UPTODATE=1
+    if [ "$UOSC_UPTODATE" = 1 ]; then
+        detail "$(T uosc_uptodate "$UOSC_VERSION")"
+    else
+        [ -f "$TEMP_DIR/uosc/scripts/uosc/main.lua" ] || { HIKARI_ERR=$(T source_missing "$UOSC_URL"); return 1; }
+        install_uosc || return 1
+        detail_ok "$(T uosc_done "$UOSC_VERSION")"
+    fi
+    if [ "$THUMB_UPTODATE" = 1 ]; then
+        detail "$(T thumbfast_uptodate)"
+    else
+        [ -f "$TEMP_DIR/thumbfast.lua" ] || { HIKARI_ERR=$(T source_missing "$THUMBFAST_URL"); return 1; }
+        mkdir -p "$CFG/scripts" || return 1
+        rm -f "$CFG/scripts/thumbfast.lua"
+        cp "$TEMP_DIR/thumbfast.lua" "$CFG/scripts/thumbfast.lua" || return 1
+        detail_ok "$(T thumbfast_done)"
+    fi
 
     # e. hikari files.
     local installed shared s
@@ -2783,7 +3314,7 @@ install_steps() {
     for name in "${USER_CHOICE_FILES[@]}"; do
         [ "$name" = "$UPSCALE_CONF" ] && continue
         [ "$name" = "$LANGUAGE_CONF" ] && continue
-        if [ -f "$CFG/$name" ]; then info "$(T kept_user_file "$name")"
+        if [ -f "$CFG/$name" ]; then detail "$(T kept_user_file "$name")"
         else cp "$SRC_CONFIG/$name" "$CFG/$name" || return 1; fi
     done
     init_language_conf || return 1
@@ -2796,10 +3327,10 @@ install_steps() {
         record_path_ok "$old" || continue
         if [ -f "$CFG/$old" ]; then
             remove_item "$CFG/$old" "$CFG" || return 1
-            info "$(T removed_stale "$old")"
+            detail "$(T removed_stale "$old")"
         fi
     done
-    ok "$(T hikari_files_done "${#installed[@]}")"
+    detail_ok "$(T hikari_files_done "${#installed[@]}")"
 
     # e2. Anime4K, and the upscale choice file: "Automático" when hikari has just
     # installed Anime4K here; on updates the user's mode is kept.
@@ -2819,7 +3350,7 @@ install_steps() {
     if [ "$kind" = mpv ] && [ -n "$exe" ]; then
         set_conf_option "$CFG/script-opts/thumbfast.conf" mpv_path "$exe" \
             'Added by the hikari installer: mpv started from Finder or another app may not find mpv in its PATH.' || return 1
-        info "$(T mpvpath_set "$exe")"
+        detail "$(T mpvpath_set "$exe")"
     fi
 
     # f. Managed blocks.
@@ -2834,6 +3365,7 @@ install_steps() {
         printf 'hikari_version=%s\n' "$SRC_VERSION"
         printf 'hikari_commit=%s\n' "$SRC_COMMIT"
         printf 'uosc_version=%s\n' "$UOSC_VERSION"
+        printf 'uosc_sha256=%s\n' "$UOSC_REC_SHA"
         printf 'thumbfast_commit=%s\n' "$THUMBFAST_COMMIT"
         printf 'installed_at=%s\n' "$(date +%Y-%m-%dT%H:%M:%S)"
         printf 'player=%s\n' "$kind"
@@ -2849,6 +3381,7 @@ install_steps() {
         printf 'shaders_preexisting=%s\n' "$(yesno "$shaders_before")"
         printf 'anime4k=%s\n' "$A4K_STATE"
         printf 'anime4k_version=%s\n' "$A4K_VERSION"
+        printf 'anime4k_sha256=%s\n' "$A4K_ZIP_SHA"
         printf 'first_backup=%s\n' "$first_backup"
         printf 'last_backup=%s\n' "$BACKUP"
         for f in ${DISABLED[@]+"${DISABLED[@]}"}; do printf 'disabled=%s\n' "$f"; done
@@ -2857,6 +3390,7 @@ install_steps() {
         for f in ${A4K_COMMENTED[@]+"${A4K_COMMENTED[@]}"}; do printf 'a4k_commented=%s\n' "$f"; done
         for f in ${A4K_COMMENTED_MPV[@]+"${A4K_COMMENTED_MPV[@]}"}; do printf 'a4k_commented_mpv=%s\n' "$f"; done
         for f in "${installed[@]}" ${A4K_FILES[@]+"${A4K_FILES[@]}"}; do printf 'file=%s\n' "$f"; done
+        for f in ${UOSC_REC_SUMS[@]+"${UOSC_REC_SUMS[@]}"} ${A4K_SUMS[@]+"${A4K_SUMS[@]}"}; do printf 'sha256=%s\n' "$f"; done
     } | write_file "$CFG/$RECORD_NAME" || return 1
 }
 
@@ -2881,7 +3415,7 @@ restore_pairs() {
         mkdir -p "${to%/*}" || return 1
         mv "$from" "$to" || return 1
         RESTORED=$((RESTORED + 1))
-        [ "${RESTORE_QUIET:-0}" = 1 ] || info "$(T moved "${entry%%|*}" "${entry#*|}")"
+        [ "${RESTORE_QUIET:-0}" = 1 ] || detail "$(T moved "${entry%%|*}" "${entry#*|}")"
     done
 }
 
@@ -2900,22 +3434,26 @@ was_there() {
 
 uninstall_target() {
     CFG=${C_DIR[$1]}
-    info ''
-    info "$(T uninstalling_from "$CFG")"
+    detail ''
+    detail "$(T uninstalling_from "$CFG")"
     BACKUP=''
-    if ! make_backup "$CFG"; then HIKARI_ERR=$(T backup_failed "$CFG" "$HIKARI_ERR"); return 1; fi
-    [ -z "$BACKUP" ] || info "$(T backup_done "$BACKUP")"
+    backup_step || return 1
+    step_begin "$(T ui_removing)"
     if ! migrate_sosc || ! uninstall_steps; then
-        [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP")"
+        step_end fail
+        restore_note
         return 1
     fi
-    ok "$(T uninstall_ok "$CFG")"
+    step_end ok
+    detail_ok "$(T uninstall_ok "$CFG")"
+    ui_line ''
+    ui_line "  $(paint 32 "$G_OK") $(T ui_removed "$(folder_label "$1")")"
 }
 
 uninstall_steps() {
     local f c before rel
     HAS_RECORD=0
-    REC_KEYS=(); REC_VALS=(); REC_FILES=(); REC_DISABLED=(); REC_BROKEN=(); REC_MOVED=(); REC_COMMENTED=(); REC_COMMENTED_MPV=()
+    REC_KEYS=(); REC_VALS=(); REC_FILES=(); REC_DISABLED=(); REC_BROKEN=(); REC_MOVED=(); REC_COMMENTED=(); REC_COMMENTED_MPV=(); REC_SUMS=()
     read_record "$CFG" && HAS_RECORD=1
     local files disabled broken moved commented commented_mpv
     files=(${REC_FILES[@]+"${REC_FILES[@]}"})
@@ -2944,14 +3482,14 @@ uninstall_steps() {
         if [ "$before" = yes ] && [ -f "$CFG/$ORIGINALS_DIR/script-opts/$c" ]; then
             rm -f "$CFG/script-opts/$c"
             cp -p "$CFG/$ORIGINALS_DIR/script-opts/$c" "$CFG/script-opts/$c" || return 1
-            info "$(T conf_restored "script-opts/$c")"
+            detail "$(T conf_restored "script-opts/$c")"
         elif [ "$before" = no ]; then
             remove_item "$CFG/script-opts/$c" "$CFG" || return 1
         elif [ "$before" = yes ]; then
             rec_get first_backup
-            info "$(T conf_left "script-opts/$c" "$REC_VALUE")"
+            notice "$(T conf_left "script-opts/$c" "$REC_VALUE")"
         elif [ -f "$CFG/script-opts/$c" ]; then
-            info "$(T conf_unknown "script-opts/$c")"
+            notice "$(T conf_unknown "script-opts/$c")"
         fi
     done
 
@@ -3016,7 +3554,7 @@ uninstall_steps() {
                     load_file "$CFG/mpv.conf"
                     for e in "${osc_found[@]}"; do F_LINE[e]="$COMMENT_PREFIX${F_LINE[e]}"; done
                     save_file "$CFG/mpv.conf" || return 1
-                    info "$(T osc_commented "$osc_text")"
+                    detail "$(T osc_commented "$osc_text")"
                 else
                     warn "$(T osc_left)"
                 fi
@@ -3028,7 +3566,7 @@ uninstall_steps() {
     if [ "${#moved[@]}" -gt 0 ]; then
         if confirm "$(T ask_restore_anime4k "$SHADERS_DISABLED_DIR")" yes; then
             RESTORE_QUIET=1 restore_pairs "${moved[@]}" || return 1
-            info "$(T shaders_restored "$RESTORED" "$SHADERS_DISABLED_DIR")"
+            detail "$(T shaders_restored "$RESTORED" "$SHADERS_DISABLED_DIR")"
         fi
     fi
     if [ "${#commented[@]}" -gt 0 ] && [ -f "$CFG/input.conf" ]; then
@@ -3038,7 +3576,7 @@ uninstall_steps() {
             local n=${#FOUND[@]}
             uncomment_found
             save_file "$CFG/input.conf" || return 1
-            info "$(T uncommented "$n")"
+            detail "$(T uncommented "$n")"
         fi
     fi
     if [ "${#commented_mpv[@]}" -gt 0 ] && [ -f "$CFG/mpv.conf" ]; then
@@ -3048,7 +3586,7 @@ uninstall_steps() {
             local n=${#FOUND[@]}
             uncomment_found
             save_file "$CFG/mpv.conf" || return 1
-            info "$(T uncommented_conf "$n")"
+            detail "$(T uncommented_conf "$n")"
         fi
     fi
 
@@ -3280,7 +3818,7 @@ check_targets() {
 # Succeeds when mpv is there afterwards.
 ensure_mpv() {
     MPV_EXE=$(hikari_find_mpv)
-    if [ -n "$MPV_EXE" ]; then info "$(T mpv_found "$MPV_EXE")"; return 0; fi
+    if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
     if [ "$OS" != Darwin ] && { hikari_flatpak_mpv || hikari_snap_mpv; }; then return 0; fi
     warn "$(T none_found)"
     if [ "$OS" = Darwin ]; then
@@ -3291,7 +3829,7 @@ ensure_mpv() {
             code=$?
             [ "$code" = 0 ] || warn "$(T brew_failed "$code")"
             MPV_EXE=$(hikari_find_mpv)
-            if [ -n "$MPV_EXE" ]; then info "$(T mpv_found "$MPV_EXE")"; return 0; fi
+            if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
         fi
         printf '%b\n' "$(T none_mac_help)"
     else
@@ -3366,6 +3904,8 @@ show_versions() {
 }
 
 hikari_cleanup() {
+    spin_stop
+    STEP_LABEL=''
     [ -z "$STTY_SAVED" ] || menu_exit
     if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then rm -rf "$TEMP_DIR"; fi
     TEMP_DIR=''
@@ -3379,6 +3919,7 @@ parse_args() {
     OPT_NO_MENU=0
     OPT_ANIME4K=''
     OPT_VERSION=0
+    OPT_VERBOSE=0
     OPT_TARGETS=()
     while [ $# -gt 0 ]; do
         case $1 in
@@ -3387,6 +3928,7 @@ parse_args() {
             --yes | -y) OPT_YES=1 ;;
             --no-menu) OPT_NO_MENU=1 ;;
             --version | -V) OPT_VERSION=1 ;;
+            --verbose | -v) OPT_VERBOSE=1 ;;
             --anime4k)
                 [ $# -ge 2 ] || { error "$(T bad_option "$1")"; return 2; }
                 case $2 in yes | no) OPT_ANIME4K=$2 ;; *) error "$(T bad_option "$1 $2")"; return 2 ;; esac
@@ -3416,8 +3958,12 @@ main() {
     hikari_defaults
     STTY_SAVED=''
     HIKARI_LANG_CODE=$(hikari_language)
-    COLOR=0
-    if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ] && [ -z "${NO_COLOR:-}" ]; then COLOR=1; fi
+    VERBOSE=0
+    HAVE_INPUT=0
+    SPIN_PID=''
+    SPIN_HOLD=0
+    STEP_LABEL=''
+    ui_setup
     SCRIPT_FILE=${BASH_SOURCE[0]:-}
     HIKARI_ERR=''
     TEMP_DIR=''
@@ -3428,6 +3974,7 @@ main() {
     parse_args "$@"
     rc=$?
     case $rc in 0) ;; 1) return 0 ;; *) usage >&2; return 2 ;; esac
+    VERBOSE=$OPT_VERBOSE
 
     trap 'hikari_cleanup' EXIT
     trap 'hikari_cleanup; trap - EXIT; exit 130' INT
@@ -3443,10 +3990,17 @@ main() {
     done
 
     io_setup
+    ui_setup
     NONINTERACTIVE=0
     if [ "$OPT_YES" = 1 ] || [ "$HAVE_INPUT" != 1 ]; then NONINTERACTIVE=1; fi
 
-    info "$(T title)"
+    if [ "$VERBOSE" = 1 ]; then
+        info "$(T title)"
+    else
+        ui_line ''
+        ui_line "  $(paint '1;36' hikari) $HIKARI_VERSION"
+        ui_line ''
+    fi
     case $HIKARI_VERSION in preview-*) warn "$(T preview_note "$HIKARI_VERSION" "$HIKARI_STABLE_INSTALL")" ;; esac
     [ "$HAVE_INPUT" = 1 ] || [ "$OPT_YES" = 1 ] || warn "$(T no_input)"
     local action=$OPT_ACTION
@@ -3473,14 +4027,14 @@ main() {
         confirm "$(T root_confirm)" no || { info "$(T cancelled)"; return 0; }
     fi
 
-    info "$(T detecting)"
+    detail "$(T detecting)"
     if [ "$action" = install ]; then
         ensure_mpv || return 2
-        if [ "$OS" = Darwin ] && hikari_iina; then info "$(T iina_note)"; fi
+        if [ "$OS" = Darwin ] && hikari_iina; then notice "$(T iina_note)"; fi
     else
         MPV_EXE=$(hikari_find_mpv)
     fi
-    [ -z "${MPV_HOME:-}" ] || info "$(T mpv_home_note "$MPV_HOME")"
+    [ -z "${MPV_HOME:-}" ] || detail "$(T mpv_home_note "$MPV_HOME")"
     find_candidates
     choose_targets "$action"
     rc=$?
@@ -3498,19 +4052,34 @@ main() {
     fi
 
     STAMP=$(date +%Y%m%d-%H%M%S)
-    local done_count=0 t
+    local done_count=0 t many=0 first=1
+    [ "${#TARGETS[@]}" -le 1 ] || many=1
+    # One folder: its name above the downloads. Several: above each block.
+    if [ "$many" = 0 ]; then ui_folder "${TARGETS[0]}"; ui_line ''; fi
     if [ "$action" = install ]; then
         TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hikari-install.XXXXXX") || { error "$(T error_generic mktemp)"; return 1; }
-        if ! get_source || ! get_artifacts; then
-            error "$(T error_generic "$HIKARI_ERR")"
-            return 1
-        fi
+        if ! get_source; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
+        # Only what some folder lacks is downloaded, all of it checked before
+        # any folder is touched.
+        plan_downloads
+        if ! get_artifacts; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
         A4K_SRC=''
         A4K_ERROR=''
-        [ "$OPT_ANIME4K" = no ] || get_anime4k || :
+        A4K_SRC_SUMS=()
+        if [ "$NEED_A4K" = 1 ]; then
+            get_anime4k || :
+        elif [ "$A4K_ALL_UPTODATE" = 1 ]; then
+            row_done Anime4K ok "$(T ui_uptodate)"
+        fi
+        ui_line ''
     fi
     for t in "${TARGETS[@]}"; do
         HIKARI_ERR=''
+        if [ "$many" = 1 ]; then
+            [ "$first" = 1 ] || ui_line ''
+            ui_folder "$t"
+        fi
+        first=0
         if [ "$action" = install ]; then
             if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
         else
@@ -3518,9 +4087,18 @@ main() {
         fi
     done
     hikari_cleanup
-    info ''
-    info "$(T summary "$done_count" "${#TARGETS[@]}")"
-    [ "$done_count" -eq 0 ] || info "$(T restart)"
+    if [ "$VERBOSE" = 1 ]; then
+        info ''
+        info "$(T summary "$done_count" "${#TARGETS[@]}")"
+        [ "$done_count" -eq 0 ] || info "$(T restart)"
+    elif [ "$many" = 1 ]; then
+        ui_line ''
+        ui_line "  $(T summary "$done_count" "${#TARGETS[@]}")"
+        [ "$done_count" -eq 0 ] || ui_line "  $(T restart)"
+    elif [ "$done_count" = 1 ]; then
+        ui_line "    $(T restart)"
+    fi
+    ui_line ''
     [ "$done_count" -eq "${#TARGETS[@]}" ] || return 1
     return 0
 }

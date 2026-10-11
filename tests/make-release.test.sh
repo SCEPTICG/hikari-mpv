@@ -333,10 +333,10 @@ for lang in en es; do
 done
 check 'preview curl | bash: release zip of the preview tag downloaded first' test "$(head -n 1 "$tmp/pv-downloads.log" 2>/dev/null)" = "$pv_url"
 check 'preview curl | bash: says it is a test version and how to go back (en)' \
-    grep -qFx "Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-en.txt"
+    grep -qFx "  Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-en.txt"
 check 'preview curl | bash: in Spanish too' \
-    grep -qFx "Versión de prueba ($pv_version). Para volver a la estable: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-es.txt"
-check 'preview curl | bash: right after the title' test "$(sed -n 2p "$tmp/pv-en.txt")" = "Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash"
+    grep -qFx "  Versión de prueba ($pv_version). Para volver a la estable: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash" "$tmp/pv-es.txt"
+check 'preview curl | bash: right after the title' test "$(sed -n 2p "$tmp/pv-en.txt")|$(sed -n 4p "$tmp/pv-en.txt")" = "  hikari $pv_version|  Preview build ($pv_version). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash"
 check 'preview curl | bash: record says the build' grep -qx "hikari_version=$pv_version" "$home/.config/mpv/hikari-installed.txt"
 check 'a release (1.2.3) does not say it is a test version' bash -c "! grep -qE 'Preview build|preview-' '$tmp/sh-install.txt'"
 
