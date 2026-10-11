@@ -2994,17 +2994,22 @@ Test-Case 'version: each folder found and each -Target, compared with this insta
     $manual = P @($d, 'manual')
     Set-TestFile (P @($manual, 'scripts', 'hikari-skip.lua')) '--'
     $empty = P @($d, 'empty')
+    # sosc and hikari files without a record: sosc, as hikari.sh says.
+    $both = P @($d, 'both')
+    Set-TestFile (P @($both, 'scripts', 'hikari-skip.lua')) '--'
+    Set-TestFile (P @($both, 'sosc-installed.txt')) "sosc_version=0.3.0`n"
     $before = Get-TreeState $d
     $saved = $script:HikariVersion
     try {
         $script:HikariVersion = '0.7.0'
-        $lines = Get-InfoLines { Show-HikariVersions -Env $env1 -Paths @($manual, $empty, $net) }
+        $lines = Get-InfoLines { Show-HikariVersions -Env $env1 -Paths @($manual, $empty, $net, $both) }
         Assert-Equal $lines[0] 'This installer: hikari 0.7.0' 'installer'
         Assert-True ($lines -contains ('mpv.net (' + $net + '): hikari 0.6.0 (older than this installer)')) ('mpv.net: ' + [string]::Join(' | ', $lines))
         Assert-True ($lines -contains ('config folder (' + $mpv + '): sosc (the name of hikari until v0.3.0)')) 'sosc'
         Assert-True ($lines -contains ('config folder (' + $manual + '): hikari files without an installer record')) 'manual'
         Assert-True ($lines -contains ('config folder (' + $empty + '): not installed')) 'empty -Target'
-        Assert-Equal $lines.Count 5 'a -Target already found is listed once'
+        Assert-True ($lines -contains ('config folder (' + $both + '): sosc (the name of hikari until v0.3.0)')) 'sosc and hikari files'
+        Assert-Equal $lines.Count 6 'a -Target already found is listed once'
         foreach ($pair in @(@('0.7.0', 'hikari 0.7.0 (the same as this installer)'), @('0.10.0', 'hikari 0.10.0 (newer than this installer)'),
                 @('preview-abc1234', 'hikari preview-abc1234'), @('dev', 'hikari dev'), @('0.6.0$(calc)', 'hikari, unknown version'))) {
             Set-TestFile (P @($net, 'hikari-installed.txt')) ("hikari_version=" + $pair[0] + "`n")
@@ -3048,6 +3053,11 @@ Test-Case 'version: -Version wins over -Action, exit 0, nothing installed; menu 
         Assert-Equal $script:Lines.Count 0 'both answers used: the menu came back'
         Assert-True ($lines -contains 'This installer: hikari dev') 'versions shown'
         Assert-True (@($lines | Where-Object { $_ -like '*3) Show installed version*' }).Count -ge 1) 'option in the numbered menu'
+        # Option 3 lists the -Target folders too, as -Version does.
+        foreach ($a in @('3', '0')) { $script:Lines.Enqueue($a) }
+        $lines = Get-InfoLines { Assert-Equal (Invoke-HikariMain -Action '' -Target @($cfg) -Yes $false) 0 'menu with -Target' }
+        Assert-True ($lines -contains ('config folder (' + $cfg + '): not installed')) ('menu -Target listed: ' + [string]::Join(' | ', $lines))
+        Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing installed from the menu'
     }
     finally {
         Remove-Item Function:\New-HikariEnvironment

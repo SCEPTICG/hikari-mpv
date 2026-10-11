@@ -749,6 +749,17 @@ printf 'hikari_version=0.6.0\033[2J$(id)\n' >>"$cfg/hikari-installed.txt"
 run "$h" --version
 check '--version: an odd version in the record is not shown' test "$(sed -n 2p "$out")" = "mpv ($cfg): hikari, unknown version"
 check '--version: no escape sequence printed' hasnt "$out" "$(printf '\033')"
+# [0-9] in a UTF-8 locale may take in other digits (glibc: Arabic-Indic ٣).
+utf8_locale=$(locale -a 2>/dev/null | grep -iE '^(en_GB|en_US)\.utf-?8$' | head -n 1)
+if [ -n "$utf8_locale" ]; then
+    sed "s/^hikari_version=.*/hikari_version=0.6.$(printf '\331\243')/" "$cfg/hikari-installed.txt" >"$tmp/rec" \
+        && cat "$tmp/rec" >"$cfg/hikari-installed.txt"
+    LANG=$utf8_locale run "$h" --version
+    check "--version: an Arabic-Indic digit is not a digit ($utf8_locale)" \
+        test "$(sed -n 2p "$out")" = "mpv ($cfg): hikari, unknown version"
+else
+    printf 'skip: no en_GB/en_US UTF-8 locale for the Arabic-Indic digit check\n'
+fi
 HIKARI_LANG=es run "$h" --version
 check '--version: in Spanish' test "$(sed -n 1p "$out")|$(sed -n 2p "$out")" = "Este instalador: hikari 0.7.0|mpv ($cfg): hikari, versión desconocida"
 copy=$dev_copy
@@ -757,10 +768,15 @@ h=$(newhome version-linux)
 mkdir -p "$h/.config/mpv/scripts" "$h/.var/app/io.mpv.Mpv/config/mpv" "$h/other"
 printf -- '-- x\n' >"$h/.config/mpv/scripts/hikari-skip.lua"
 printf 'sosc_version=0.3.0\n' >"$h/.var/app/io.mpv.Mpv/config/mpv/sosc-installed.txt"
-HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv HIKARI_TEST_FLATPAK=1 run "$h" --version --target "$h/other"
+mkdir -p "$h/both/scripts"
+printf -- '-- x\n' >"$h/both/scripts/hikari-skip.lua"
+printf 'sosc_version=0.3.0\n' >"$h/both/sosc-installed.txt"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv HIKARI_TEST_FLATPAK=1 run "$h" --version --target "$h/other" --target "$h/both"
 check '--version: hikari files without a record' has "$out" "mpv ($h/.config/mpv): hikari files without an installer record"
 check '--version: sosc' has "$out" "mpv (Flatpak) ($h/.var/app/io.mpv.Mpv/config/mpv): sosc (the name of hikari until v0.3.0)"
 check '--version: a --target folder too' has "$out" "config folder ($h/other): not installed"
+check '--version: sosc and hikari files without a record say sosc (as hikari.ps1)' \
+    has "$out" "config folder ($h/both): sosc (the name of hikari until v0.3.0)"
 HIKARI_TEST_OS=Linux HIKARI_TEST_MPV='' run "$(newhome version-none)" --version
 check '--version: no folder at all, exit 0' test "$rc" = 0 -a -n "$(grep 'No mpv config folder found.' "$out")"
 # Through a pipe, as in the README (curl ... | bash -s -- --version).
@@ -780,6 +796,10 @@ run "$h"
 check 'menu: option 3 shows the versions, then the menu again' \
     test "$rc" = 0 -a -n "$(grep '3) Show installed version' "$out")" -a -n "$(grep 'This installer: hikari dev' "$out")" -a "$(grep -c 'Choose an option' "$out")" = 2
 check 'menu: option 3 changes nothing' test -z "$(ls -A "$h")"
+answers '3\n0\n'
+run "$h" --target "$h/elsewhere"
+check 'menu: option 3 lists the --target folders too' has "$out" "config folder ($h/elsewhere): not installed"
+check 'menu: option 3 with --target changes nothing' test ! -e "$h/elsewhere"
 HIKARI_LANG=es run "$h"
 check 'menu: option 3 in Spanish' has "$out" '3) Ver versión instalada'
 no_answers

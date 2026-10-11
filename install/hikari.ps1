@@ -1528,15 +1528,19 @@ function Get-HikariInstallState {
         $state.Version = [string]$record.Values['hikari_version']
         return $state
     }
+    # sosc before loose hikari files, as hikari.sh does: installing over it
+    # carries sosc over (whatever else is there), so that is what the folder
+    # has; hikari files with sosc are most likely copied by hand next to it.
+    if (Test-HikariSoscPresent $ConfigDir) {
+        $state.Installed = $true
+        $state.Sosc = $true
+        return $state
+    }
     $scripts = Join-HikariPath $ConfigDir 'scripts'
     if ((Test-Path -LiteralPath $scripts -PathType Container) -and
         @(Get-ChildItem -LiteralPath $scripts -Filter 'hikari-*.lua' -File -Force).Count -gt 0) {
         $state.Installed = $true
         $state.Manual = $true
-    }
-    elseif (Test-HikariSoscPresent $ConfigDir) {
-        $state.Installed = $true
-        $state.Sosc = $true
     }
     return $state
 }
@@ -4222,7 +4226,7 @@ function Invoke-HikariMain {
             switch ($answer.Trim()) {
                 '1' { $Action = 'install' }
                 '2' { $Action = 'uninstall' }
-                '3' { Show-HikariVersions -Env (New-HikariEnvironment); Write-HikariInfo '' }
+                '3' { Show-HikariVersions -Env (New-HikariEnvironment) -Paths $paths; Write-HikariInfo '' }
                 '0' { Write-HikariInfo (T 'cancelled'); return 0 }
                 default { Write-HikariWarn (T 'invalid') }
             }

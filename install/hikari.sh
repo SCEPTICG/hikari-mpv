@@ -3304,7 +3304,10 @@ ensure_mpv() {
 # copy of the repository) or preview-<commit>. Anything else is never shown:
 # the record can be edited by anyone.
 version_ok() {
-    [[ $1 =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$ ]] || [ "$1" = dev ] || [[ $1 =~ ^preview-[0-9a-f]{7,40}$ ]]
+    # Digits spelled out: [0-9] and [a-f] follow the locale, and in a UTF-8 one
+    # may take in other digits (Arabic-Indic, fullwidth...).
+    [[ $1 =~ ^[0123456789]{1,9}\.[0123456789]{1,9}\.[0123456789]{1,9}$ ]] || [ "$1" = dev ] \
+        || [[ $1 =~ ^preview-[0123456789abcdef]{7,40}$ ]]
 }
 
 # version_cmp <a> <b>: -1, 0 or 1 for two X.Y.Z versions, compared as numbers.
@@ -3327,7 +3330,7 @@ version_state() {
     if read_record "$dir" 1; then
         rec_get hikari_version
         if ! version_ok "$REC_VALUE"; then T version_unknown; return; fi
-        if [[ $REC_VALUE =~ ^[0-9.]+$ ]] && [[ $HIKARI_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        if [[ $REC_VALUE =~ ^[0123456789.]+$ ]] && [[ $HIKARI_VERSION =~ ^[0123456789]+\.[0123456789]+\.[0123456789]+$ ]]; then
             case $(version_cmp "$REC_VALUE" "$HIKARI_VERSION") in
                 -1) T version_older "$REC_VALUE" ;;
                 0) T version_same "$REC_VALUE" ;;
