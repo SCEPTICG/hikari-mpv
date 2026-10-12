@@ -1,0 +1,75 @@
+// Renovate watches what hikari is built on and opens a pull request against dev
+// when a new version comes out: uosc, thumbfast and Anime4K (pinned in both
+// installers) and mpv (the macOS row of docs/compatibility.md, which says what
+// hikari was last tested with).
+//
+// The pull request is only a notice. It changes the version and the URL, not the
+// SHA256 next to them, so merged as it is the installers would refuse the new
+// download. Updating means: new SHA256 in install/hikari.sh and
+// install/hikari.ps1, the tests, a real try on macOS and Windows, then merge.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+
+  // Only the rules below: no workflow actions, no Python packages of the docs.
+  enabledManagers: ['custom.regex'],
+  baseBranchPatterns: ['dev'],
+  dependencyDashboard: true,
+  automerge: false,
+  prBodyNotes: [
+    '**Not ready to merge.** The SHA256 next to this version in `install/hikari.sh` and `install/hikari.ps1` still belongs to the old one. Update it, run the tests and try it on macOS and Windows first.',
+  ],
+
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'uosc, pinned in both installers',
+      managerFilePatterns: ['/^install/hikari\\.(sh|ps1)$/'],
+      matchStrings: [
+        "UOSC_VERSION='(?<currentValue>[^']+)'",
+        "\\$script:UoscVersion = '(?<currentValue>[^']+)'",
+        'tomasklaen/uosc/releases/download/(?<currentValue>[^/]+)/',
+      ],
+      depNameTemplate: 'uosc',
+      packageNameTemplate: 'tomasklaen/uosc',
+      datasourceTemplate: 'github-releases',
+    },
+    {
+      customType: 'regex',
+      description: 'thumbfast has no releases: follow its master branch',
+      managerFilePatterns: ['/^install/hikari\\.(sh|ps1)$/'],
+      matchStrings: [
+        "THUMBFAST_COMMIT='(?<currentDigest>[0-9a-f]{40})'",
+        "\\$script:ThumbfastCommit = '(?<currentDigest>[0-9a-f]{40})'",
+        'po5/thumbfast/(?<currentDigest>[0-9a-f]{40})/',
+      ],
+      depNameTemplate: 'thumbfast',
+      packageNameTemplate: 'https://github.com/po5/thumbfast',
+      currentValueTemplate: 'master',
+      datasourceTemplate: 'git-refs',
+    },
+    {
+      customType: 'regex',
+      description: 'Anime4K, pinned in both installers (its tags start with v)',
+      managerFilePatterns: ['/^install/hikari\\.(sh|ps1)$/'],
+      matchStrings: [
+        "ANIME4K_VERSION='(?<currentValue>[^']+)'",
+        "\\$script:Anime4KVersion = '(?<currentValue>[^']+)'",
+        'bloc97/Anime4K/releases/download/v(?<currentValue>[^/]+)/',
+      ],
+      depNameTemplate: 'Anime4K',
+      packageNameTemplate: 'bloc97/Anime4K',
+      datasourceTemplate: 'github-releases',
+      extractVersionTemplate: '^v(?<version>.+)$',
+    },
+    {
+      customType: 'regex',
+      description: 'mpv: the version hikari was last tested with on macOS',
+      managerFilePatterns: ['/^docs/compatibility\\.md$/'],
+      matchStrings: ['\\| mpv (?<currentValue>\\d+\\.\\d+\\.\\d+) from Homebrew \\|'],
+      depNameTemplate: 'mpv',
+      packageNameTemplate: 'mpv-player/mpv',
+      datasourceTemplate: 'github-releases',
+      extractVersionTemplate: '^v(?<version>.+)$',
+    },
+  ],
+}
