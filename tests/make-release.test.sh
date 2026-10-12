@@ -191,12 +191,13 @@ check 'exit code 0' test "$(report ExitCode)" = 0
 check 'release zip downloaded first' test "$(report Downloads 0)" = "$url"
 check 'nothing left in the session' test "$(report NewVariables)$(report NewFunctions)$(report NewModules)" = 000
 all_same=true
-for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-opts/hikari-*.conf; do
+for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-opts/hikari-*.conf "$work"/portable_config/script-modules/*.lua; do
     rel="${f#"$work"/portable_config/}"
     cmp -s "$f" "$cfg/$rel" || { all_same=false; echo "     differs: $rel"; }
 done
 check 'installed hikari files are the committed ones' $all_same
 check 'record says 1.2.3' grep -q '^hikari_version=1.2.3' "$cfg/hikari-installed.txt"
+check 'input.conf has Alt+r for continue watching' grep -qF 'Alt+r  script-binding hikari_resume/open-menu' "$cfg/input.conf"
 check 'mpv.conf has the hikari block and nothing personal' bash -c "grep -q '^include=\"~~/hikari-subs.conf\"' '$cfg/mpv.conf' && ! grep -qE 'alang|slang|border=no' '$cfg/mpv.conf'"
 check 'Anime4K installed from its (fake) zip' test -f "$cfg/shaders/Anime4K_Clamp_Highlights.glsl"
 check 'hikari-upscale.conf written, in Automatico (Anime4K installed)' grep -q '^script-opts-append=hikari_upscale-mode=auto' "$cfg/hikari-upscale.conf"
@@ -244,12 +245,13 @@ if [[ $rc == 0 ]]; then ok 'curl | bash: exit code 0'; else fail "curl | bash: e
 shcfg="$home/.config/mpv"
 check 'curl | bash: release zip downloaded first' test "$(head -n 1 "$tmp/sh-downloads.log" 2>/dev/null)" = "$url"
 all_same=true
-for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-opts/hikari-*.conf; do
+for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-opts/hikari-*.conf "$work"/portable_config/script-modules/*.lua; do
     rel="${f#"$work"/portable_config/}"
     cmp -s "$f" "$shcfg/$rel" || { all_same=false; echo "     differs: $rel"; }
 done
 check 'curl | bash: installed hikari files are the committed ones' $all_same
 check 'curl | bash: record says 1.2.3' grep -q '^hikari_version=1.2.3$' "$shcfg/hikari-installed.txt"
+check 'curl | bash: input.conf has Alt+r for continue watching' grep -qF 'Alt+r  script-binding hikari_resume/open-menu' "$shcfg/input.conf"
 check 'curl | bash: Anime4K in Automatico' grep -q '^script-opts-append=hikari_upscale-mode=auto$' "$shcfg/hikari-upscale.conf"
 check 'curl | bash: temporary folder removed' test -z "$(ls -A "$tmp/tmpdir-sh")"
 # A download cut short: the call to main is missing, so nothing runs.

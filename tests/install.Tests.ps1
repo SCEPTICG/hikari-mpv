@@ -580,7 +580,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
 Test-Case 'input.conf: taken keys are reported and left alone' {
     $text = "Alt+p cycle pause`nALT+s script-binding hikari_skip/skip  # mine`n# Alt+t commented`n"
     $b = Get-HikariInputBlock $text
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding hikari_subs/open-menu|Alt+u  script-binding hikari_update/open-menu|Alt+l  script-binding hikari_language/open-menu' 'only Alt+t, Alt+u and Alt+l added'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding hikari_subs/open-menu|Alt+r  script-binding hikari_resume/open-menu|Alt+u  script-binding hikari_update/open-menu|Alt+l  script-binding hikari_language/open-menu' 'only Alt+t, Alt+r, Alt+u and Alt+l added'
     Assert-Equal @($b.Taken).Count 1 'taken'
     Assert-Equal $b.Taken[0].Key 'Alt+p' 'taken key'
     Assert-Equal @($b.Same).Count 1 'same'
@@ -1169,6 +1169,11 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (-not $inputAfter.Contains('Alt+p  script-binding')) 'Alt+p left to the user'
     Assert-True ($inputAfter.Contains("Alt+s  script-binding hikari_skip/skip`n")) 'Alt+s, LF kept'
     Assert-True ($inputAfter.Contains("Alt+u  script-binding hikari_update/open-menu`n")) 'Alt+u for the update menu'
+    Assert-True ($inputAfter.Contains("Alt+r  script-binding hikari_resume/open-menu`n")) 'Alt+r for continue watching'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'hikari-resume.lua')) -PathType Leaf) 'continue watching script'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')) -PathType Leaf) 'continue watching options'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')) -PathType Leaf) 'chapters module'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json')))) 'continue watching list not created by the installer'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'hikari-update.lua')) -PathType Leaf) 'update check script'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-update.conf')) -PathType Leaf) 'update check options'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update check state not created by the installer'
@@ -1180,6 +1185,9 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-Equal $rec.Values['player_exe'] $exe 'record exe'
     Assert-Equal $rec.Values['hikari_commit'] $Source.Commit 'record commit'
     Assert-True (@($rec.Files) -contains 'scripts/hikari-skip.lua') 'record files'
+    foreach ($f in @('scripts/hikari-resume.lua', 'script-opts/hikari-resume.conf', 'script-modules/hikari-chapters.lua')) {
+        Assert-True (@($rec.Files) -contains $f) ('record has ' + $f)
+    }
     Assert-Equal @($rec.Disabled).Count 3 'record disabled'
     Assert-True ((Get-HikariInstallState $cfg).Installed) 'detected as installed'
 
@@ -1192,7 +1200,16 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Set-TestFile (P @($cfg, 'hikari-update.txt')) $updateState
     $aniskipCache = '{"version":1,"titles":{},"episodes":{}}' + "`n"
     Set-TestFile (P @($cfg, 'hikari-aniskip.json')) $aniskipCache
-    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-120100')
+    $resumeList = '{"version":1,"entries":[{"path":"C:\\x\\ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}' + "`n"
+    Set-TestFile (P @($cfg, 'hikari-resume.json')) $resumeList
+    $resumeConf = "enabled=yes`nask=no`nhistory_size=5`n"
+    Set-TestFile (P @($cfg, 'script-opts', 'hikari-resume.conf')) $resumeConf
+    $backup2 = Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-120100'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-resume.json'))) $resumeList 'continue watching list kept on update'
+    Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'hikari-resume.conf'))) $resumeConf 'your hikari-resume.conf kept on update'
+    Assert-True (@((Read-HikariRecord $cfg).Files) -contains 'script-opts/hikari-resume.conf') 'kept hikari-resume.conf still in the record'
+    Assert-True (Test-Path -LiteralPath (P @($backup2, 'script-opts', 'hikari-resume.conf'))) 'the backup has the options'
+    Assert-True (-not (Test-Path -LiteralPath (P @($backup2, 'hikari-resume.json')))) 'the continue watching list is not in the backup'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-update.txt'))) $updateState 'update check state kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-aniskip.json'))) $aniskipCache 'AniSkip cache kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvAfter 'mpv.conf idempotent'
@@ -1208,7 +1225,14 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     # Uninstall with default answers.
     Set-TestFile (P @($cfg, 'hikari-update.txt.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-aniskip.json.tmp')) 'x'
+    Set-TestFile (P @($cfg, 'hikari-resume.json.4242-1.tmp')) 'x'
+    Set-TestFile (P @($cfg, 'hikari-resume.json.bak')) 'mine'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261005-120200')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json')))) 'continue watching list gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json.4242-1.tmp')))) 'continue watching temporary file gone'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-resume.json.bak'))) 'mine' 'a file of the user named like the list stays'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')))) 'continue watching options gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')))) 'chapters module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update check state gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt.tmp')))) 'update check temporary file gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json')))) 'AniSkip cache gone'

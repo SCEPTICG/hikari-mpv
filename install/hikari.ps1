@@ -225,6 +225,7 @@ $script:InputBindings = @(
     @{ Key = 'Alt+p'; Command = 'script-binding hikari_palettes/open-menu' },
     @{ Key = 'Alt+s'; Command = 'script-binding hikari_skip/skip' },
     @{ Key = 'Alt+t'; Command = 'script-binding hikari_subs/open-menu' },
+    @{ Key = 'Alt+r'; Command = 'script-binding hikari_resume/open-menu' },
     @{ Key = 'Alt+u'; Command = 'script-binding hikari_update/open-menu' },
     @{ Key = 'Alt+l'; Command = 'script-binding hikari_language/open-menu' }
 )
@@ -238,6 +239,10 @@ $script:UserChoiceFiles = @('hikari-palette.conf', 'hikari-subs.conf', 'hikari-u
 # script-opts that are not named hikari-*: removed on uninstall only if hikari put them there.
 $script:SharedConfs = @('uosc.conf', 'thumbfast.conf')
 
+# script-opts of hikari that hold the user's own settings: only copied when
+# missing, so an update keeps them (removed on uninstall like the others).
+$script:KeptConfs = @('hikari-resume.conf')
+
 $script:RecordName = 'hikari-installed.txt'
 # What hikari-update.lua saves (last check, latest version, dismissed one):
 # state, not a choice. Kept on update, removed on uninstall like the record.
@@ -245,6 +250,11 @@ $script:UpdateState = 'hikari-update.txt'
 # What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
 # uninstall like the update state.
 $script:AniSkipCache = 'hikari-aniskip.json'
+# The files left half-watched that hikari-resume.lua remembers (paths and
+# positions): never in a backup, removed on uninstall with the temporary files
+# of its writes (<list>.<pid>-<n>.tmp, ResumeTmpPattern).
+$script:ResumeList = 'hikari-resume.json'
+$script:ResumeTmpPattern = '^hikari-resume\.json\.[0-9]+-[0-9]+\.tmp\z'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'hikari-originales'
 
@@ -4126,6 +4136,12 @@ function Install-HikariTarget {
         $origDir = Join-HikariPath $config @($script:OriginalsDir, 'script-opts')
         foreach ($f in @(Get-ChildItem -LiteralPath (Join-HikariPath $Source.ConfigDir 'script-opts') -File -Filter '*.conf' -Force)) {
             $dest = Join-HikariPath $opts $f.Name
+            # Get-Item, not Test-Path: a link whose target is gone counts too (never written through).
+            if ($script:KeptConfs -contains $f.Name -and $null -ne (Get-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue)) {
+                Write-HikariDetail (T 'kept_user_file' @('script-opts/' + $f.Name))
+                $installed.Add('script-opts/' + $f.Name)
+                continue
+            }
             if ($first -and $script:SharedConfs -contains $f.Name -and (Test-Path -LiteralPath $dest -PathType Leaf)) {
                 New-HikariDirectory $origDir
                 Copy-Item -LiteralPath $dest -Destination (Join-HikariPath $origDir $f.Name) -Force
@@ -4498,9 +4514,12 @@ function Uninstall-HikariTarget {
         }
         Remove-HikariItem -Path (Join-HikariPath $config $script:OriginalsDir) -Root $config
         Remove-HikariItem -Path (Join-HikariPath $config $script:RecordName) -Root $config
-        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'))) {
+        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'), $script:ResumeList)) {
             $statePath = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $statePath -PathType Leaf) { Remove-HikariItem -Path $statePath -Root $config }
+        }
+        foreach ($f in @(Get-ChildItem -LiteralPath $config -File -Force | Where-Object { $_.Name -match $script:ResumeTmpPattern })) {
+            Remove-HikariItem -Path $f.FullName -Root $config
         }
         foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {
             $dir = Join-HikariPath $config $dirName
