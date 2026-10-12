@@ -16,6 +16,7 @@ M.overlays = {}      -- every mp.create_osd_overlay object, in creation order
 M.sections = {}      -- input section name -> {bindings, flags, enabled, enable_flags}
 M.clock = 0          -- what mp.get_time returns; move it with M.advance
 M.timers = {}        -- pending mp.add_timeout timers
+M.periodic = {}      -- every mp.add_periodic_timer timer (fired by M.advance)
 M.native_sets = {}   -- every mp.set_property_native call, as {name, value}
 M.async = {}         -- pending mp.command_native_async calls, as {cmd, cb}; see M.finish_async
 M.set_fails = {}     -- property name -> true: mp.set_property fails for it
@@ -183,7 +184,7 @@ function M.install(script_name)
 	M.bindings, M.messages = {}, {}
 	M.props, M.events, M.backups = {}, {}, {}
 	M.observers, M.overlays, M.sections = {}, {}, {}
-	M.clock, M.timers = 0, {}
+	M.clock, M.timers, M.periodic = 0, {}, {}
 	M.native_sets = {}
 	M.async, M.set_fails, M.files, M.dirs = {}, {}, {}, {}
 	M.config_files = {}
@@ -193,6 +194,7 @@ function M.install(script_name)
 	-- again for every script the tests load, from the repository.
 	package.loaded['hikari-i18n'] = nil
 	package.loaded['hikari-aniskip'] = nil
+	package.loaded['hikari-chapters'] = nil
 	M.expand['~~/script-modules'] = M.expand['~~/script-modules'] or 'portable_config/script-modules'
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
@@ -230,6 +232,14 @@ function M.install(script_name)
 			local timer = {due = M.clock + seconds, fn = fn, active = true}
 			function timer:kill() self.active = false end
 			table.insert(M.timers, timer)
+			return timer
+		end,
+		-- Fires every `seconds` of M.clock while not killed (see M.advance).
+		add_periodic_timer = function(seconds, fn)
+			local timer = {interval = seconds, due = M.clock + seconds, fn = fn, active = true}
+			function timer:kill() self.active = false end
+			function timer:resume() if not self.active then self.active = true; self.due = M.clock + self.interval end end
+			table.insert(M.periodic, timer)
 			return timer
 		end,
 		set_property_native = function(name, value)
@@ -367,7 +377,8 @@ function M.set_script_opt(key, value)
 	for _, fn in ipairs(fns) do fn('options/script-opts', copy) end
 end
 
--- Moves the clock forward and fires the timers that fall due, in order.
+-- Moves the clock forward and fires the timers that fall due, in order, then
+-- the periodic ones (each as many times as its interval fits).
 function M.advance(seconds)
 	M.clock = M.clock + seconds
 	table.sort(M.timers, function(a, b) return a.due < b.due end)
@@ -381,6 +392,12 @@ function M.advance(seconds)
 		end
 	end
 	M.timers = pending
+	for _, timer in ipairs(M.periodic) do
+		while timer.active and timer.due <= M.clock do
+			timer.due = timer.due + timer.interval
+			timer.fn()
+		end
+	end
 end
 
 -- Answers the oldest pending mp.command_native_async call as mpv would:

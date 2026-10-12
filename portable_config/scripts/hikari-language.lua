@@ -89,6 +89,7 @@ local BUTTONS = {
 	['script-binding hikari_subs/open-menu'] = 'tooltip_subs',
 	['script-binding hikari_upscale/open-menu'] = 'tooltip_upscale',
 	['script-binding hikari_speed/open-menu'] = 'tooltip_speed',
+	['script-binding hikari_resume/open-menu'] = 'tooltip_resume',
 	['script-binding hikari_palettes/open-menu'] = 'tooltip_palettes',
 	['script-binding hikari_update/open-menu'] = 'tooltip_update',
 }

@@ -13,7 +13,8 @@
 -- Decisions:
 -- - Chapters are classified with the same title patterns uosc uses for its
 --   chapter ranges (lib/utils.lua, serialize_chapter_ranges), plus the Japanese
---   words. An opening or intro only counts when another chapter follows it.
+--   words: script-modules/hikari-chapters.lua, shared with hikari-resume.lua.
+--   An opening or intro only counts when another chapter follows it.
 -- - Layout is in real OSD pixels times a scale factor, like uosc does
 --   (hidpi * scale, or scale_fullscreen when fullscreen or maximized), so the
 --   button keeps its place above uosc's bar in any window size. The default
@@ -39,8 +40,8 @@
 --   entry, otherwise a seek to one second before the end, so mpv finishes the
 --   file the way it normally would (keep-open, idle...). With neither (no next
 --   entry and no known duration) the skip does nothing.
--- - Chapter titles come from the file: they are only cut to MAX_TITLE bytes and
---   compared with patterns, never shown.
+-- - Chapter titles come from the file: they are only cut to a bounded length
+--   and compared with patterns, never shown.
 -- - The label follows hikari's language (hikari-i18n) and is redrawn as soon
 --   as it changes. The box is sized from the label's width: CJK and other
 --   full-width characters count double.
@@ -79,10 +80,24 @@ local i18n = (function()
 	return module
 end)()
 
+-- Chapter kinds by title: ~~/script-modules/hikari-chapters.lua, loaded like
+-- the texts above.
+local chapter_kinds = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-chapters')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-chapters.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
 local OPTIONS_ID = 'hikari-skip'
 -- Input section names are global to mpv, so ours carries the script name.
 local MOUSE_SECTION = mp.get_script_name() .. '_button'
-local MAX_TITLE = 200
 -- The button hides this many seconds before the next chapter starts, so a
 -- frame that lands just short of the boundary does not keep it on screen.
 local END_MARGIN = 0.25
@@ -144,31 +159,9 @@ opts.scale = clamp(opts.scale, 0.1, 10, 1)
 opts.scale_fullscreen = clamp(opts.scale_fullscreen, 0.1, 10, 1.3)
 opts.opacity = clamp(opts.opacity, 0, 1, 0.85)
 
--- Order matters: the first kind whose patterns match wins. `label` is the key
--- of the button text in hikari-i18n.
-local KINDS = {
-	{
-		name = 'openings', label = 'skip_opening', requires_next = true,
-		patterns = {'^op ', '^op$', ' op$', '^opening$', ' opening$'},
-		words = {'オープニング'},
-	},
-	{
-		name = 'intros', label = 'skip_intro', requires_next = true,
-		patterns = {'^intro$', ' intro$', '^avant$', '^prologue$'},
-		words = {},
-	},
-	{
-		name = 'endings', label = 'skip_ending',
-		patterns = {'^ed ', '^ed$', ' ed$', '^ending ', '^ending$', ' ending$',
-			'^credits$', '^credits ', ' credits$'},
-		words = {'エンディング'},
-	},
-	{
-		name = 'outros', label = 'skip_outro',
-		patterns = {'^outro$', ' outro$', '^closing$', '^closing ', '^preview$', '^pv$'},
-		words = {},
-	},
-}
+-- Our own copy of the kinds (see hikari-chapters.lua), in its order, with the
+-- options below. `label` is the key of the button text in hikari-i18n.
+local KINDS = chapter_kinds.kinds()
 
 -- Adds the user's extra patterns; malformed ones are dropped with a warning.
 for _, kind in ipairs(KINDS) do
@@ -188,23 +181,10 @@ end
 local KIND_BY_NAME = {}
 for _, kind in ipairs(KINDS) do KIND_BY_NAME[kind.name] = kind end
 
--- Kind for a chapter title, or nil. Lower-case, trimmed, cut to MAX_TITLE.
--- With `all`, kinds turned off in the options count too.
+-- Kind for a chapter title, or nil (see hikari-chapters.lua). With `all`,
+-- kinds turned off in the options count too.
 local function classify(title, all)
-	if type(title) ~= 'string' then return nil end
-	local text = title:sub(1, MAX_TITLE):lower():gsub('^%s+', ''):gsub('%s+$', '')
-	for _, kind in ipairs(KINDS) do
-		if kind.enabled or all then
-			for _, pattern in ipairs(kind.patterns) do
-				local ok, found = pcall(string.find, text, pattern)
-				if ok and found then return kind end
-			end
-			for _, word in ipairs(kind.words) do
-				if text:find(word, 1, true) then return kind end
-			end
-		end
-	end
-	return nil
+	return chapter_kinds.classify(KINDS, title, all)
 end
 
 -- Skippable ranges: {kind, start, finish, next_time}. `finish` is the next

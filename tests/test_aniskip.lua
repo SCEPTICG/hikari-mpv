@@ -949,6 +949,7 @@ test('skip: without the module (an old install) the button still works with chap
 	local dir = tmp_path()
 	assert(os.execute('mkdir -p "' .. dir .. '"'))
 	write(dir .. '/hikari-i18n.lua', assert(read('portable_config/script-modules/hikari-i18n.lua')))
+	write(dir .. '/hikari-chapters.lua', assert(read('portable_config/script-modules/hikari-chapters.lua')))
 	mock.install('hikari_skip')
 	mock.script_opts = {['hikari-language'] = 'es'}
 	mock.expand['~~/script-modules'] = dir
