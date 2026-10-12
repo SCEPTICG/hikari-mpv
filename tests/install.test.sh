@@ -1775,6 +1775,101 @@ screen "$out" >"$tmp/fancy-ask-screen"
 check 'terminal with questions: warnings, question and steps on their own lines' \
     test -n "$(grep -F 'installed by hand' "$tmp/fancy-ask-screen")" -a -n "$(grep -x '  + Installing' "$tmp/fancy-ask-screen")" \
     -a -z "$(grep -E '[|/\\-] Installing\.\.\..+' "$tmp/fancy-ask-screen")"
+# Menus in the summary: once answered, the menu and its title go (the folder
+# block says what was chosen); the notices stay, indented, with a blank line
+# before the folder. A preview build on a Mac with IINA, chosen with Enter twice.
+h=$(newhome fancy-menus)
+cfg="$h/.config/mpv"
+copy="$tmp/build-preview/install/hikari.sh"
+HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r'
+copy=$dev_copy
+screen "$out" >"$tmp/fancy-menus-screen"
+check 'terminal, menus: installs' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
+cat >"$tmp/want-fancy-menus" <<'TXT'
+
+  hikari preview-abc1234
+
+  Preview build (preview-abc1234). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
+  IINA is installed: it has its own settings and is not touched. hikari is for mpv.
+
+  > mpv  ~/.config/mpv
+
+TXT
+head -n 8 "$tmp/fancy-menus-screen" >"$tmp/got-fancy-menus"
+check 'terminal, menus: nothing of the menus left above the summary' same "$tmp/want-fancy-menus" "$tmp/got-fancy-menus"
+same "$tmp/want-fancy-menus" "$tmp/got-fancy-menus" || diff "$tmp/want-fancy-menus" "$tmp/got-fancy-menus" | sed 's/^/     | /'
+check 'terminal, menus: no chosen entry, title or help left anywhere' \
+    test -z "$(grep -E 'Install or update|Config folders found|Enter|mpv \(' "$tmp/fancy-menus-screen")" -a -n "$(grep -x '  + Installing' "$tmp/fancy-menus-screen")"
+# Esc in the first menu, and in the folders menu: the menus go, "Cancelled." stays.
+LC_ALL=C pty_run "$(newhome fancy-esc)" '\x1b'
+screen "$out" >"$tmp/fancy-esc-screen"
+printf '\n  hikari dev\n\n  Cancelled.\n' >"$tmp/want-fancy-esc"
+check 'terminal, Esc in the first menu: only the title and "Cancelled."' test "$rc" = 0 -a "$(cat "$tmp/fancy-esc-screen")" = "$(cat "$tmp/want-fancy-esc")"
+LC_ALL=C pty_run "$(newhome fancy-esc2)" '\r' '\x1b'
+screen "$out" >"$tmp/fancy-esc-screen"
+check 'terminal, Esc in the folders menu: only the title and "Cancelled."' test "$rc" = 0 -a "$(cat "$tmp/fancy-esc-screen")" = "$(cat "$tmp/want-fancy-esc")"
+# A folder from MPV_HOME with control characters: shown without them in the
+# menu and in the summary (used as it is).
+h=$(newhome fancy-ctl)
+esc=$(printf '\033')
+ctl_dir="$h/cu${esc}[31mstom"
+mkdir -p "$ctl_dir"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r'
+check 'terminal, MPV_HOME with an escape sequence: installs into it' test "$rc" = 0 -a -f "$ctl_dir/hikari-installed.txt"
+check 'terminal, MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mstom"
+# shellcheck disable=SC2088 # a ~ as shown, not to expand.
+check 'terminal, MPV_HOME with an escape sequence: shown without it' has "$out" '~/cu[31mstom'
+# Every message that names such a folder shows it without control characters
+# too: read-only, not mpv's, the numbered list, --version; with the menus,
+# with --no-menu and with no terminal.
+h=$(newhome ctl-ro)
+ro_dir="$h/ro${esc}[31mZQ"
+mkdir -p "$ro_dir"
+: >"$ro_dir/mpv.conf"
+chmod 555 "$ro_dir"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ro_dir" pty_run "$h" '\r' '\r'
+check 'terminal, read-only MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mZQ"
+check 'terminal, read-only MPV_HOME with an escape sequence: said without it' \
+    has "$out" "Cannot write to $h/ro[31mZQ."
+LC_ALL=C PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$ro_dir" pty_run "$h" '1\r' '1\r'
+check '--no-menu, read-only MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mZQ"
+check '--no-menu, read-only MPV_HOME with an escape sequence: listed and said without it' \
+    test -n "$(grep -F "Config: $h/ro[31mZQ" "$out")" -a -n "$(grep -F "Skipping $h/ro[31mZQ." "$out")"
+T_MPV_HOME="$ro_dir" run "$h" --yes --anime4k no
+check 'no tty, read-only MPV_HOME with an escape sequence: not written out' hasnt "$out" "${esc}[31mZQ"
+check 'no tty, read-only MPV_HOME with an escape sequence: said without it' has "$out" "Cannot write to $h/ro[31mZQ."
+T_MPV_HOME="$ro_dir" run "$h" --version
+check '--version, MPV_HOME with an escape sequence: not written out' hasnt "$out" "${esc}[31mZQ"
+check '--version, MPV_HOME with an escape sequence: shown without it' has "$out" "$h/ro[31mZQ"
+chmod 755 "$ro_dir"
+h=$(newhome ctl-notmpv)
+nm_dir="$h/nm${esc}]0;PWNED${esc}\\x"
+mkdir -p "$nm_dir"
+printf 'x' >"$nm_dir/letter.txt"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$nm_dir" pty_run "$h" '\r' '\r' 'n'
+check 'terminal, MPV_HOME not mpv'"'"'s with an escape sequence: not written to the terminal' \
+    test "$(count_of "$out" "${esc}]")" = 0 -a "$(ls "$nm_dir")" = letter.txt
+check 'terminal, MPV_HOME not mpv'"'"'s with an escape sequence: said without it' \
+    has "$out" "$h/nm]0;PWNED\\x does not look like an mpv config folder"
+LC_ALL=C PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$nm_dir" pty_run "$h" '1\r' '1\r' 'n\r'
+check '--no-menu, MPV_HOME not mpv'"'"'s with an escape sequence: not written to the terminal' \
+    test "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "Config: $h/nm]0;PWNED\\x" "$out")"
+T_MPV_HOME="$nm_dir" run "$h" --yes --anime4k no
+check 'no tty, MPV_HOME not mpv'"'"'s with an escape sequence: refused, not written out' \
+    test "$rc" = 2 -a "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "$h/nm]0;PWNED\\x does not look" "$out")"
+# Typed answers in the summary are indented as it is: the folder of "Other
+# folder..." and a yes/no asked in writing.
+sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
+    "$repo/install/hikari.sh" >"$tmp/ask-funcs.sh"
+ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
+    NONINTERACTIVE=0; MENU=0; HAVE_INPUT=1; FANCY=1; exec 3</dev/null
+    read_line Folder; confirm_ask "Go on?" yes; FANCY=0; read_line Folder; printf "|"' _ "$tmp/ask-funcs.sh")
+check 'terminal, typed answers: indented in the summary only' \
+    test "$ask_out" = "$(printf '  Folder: \n  Go on? [Y/n] \nFolder: \n|')"
+# --verbose keeps the menus' title and the line with the choice.
+LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r'
+check 'terminal, --verbose: the title of the folders and the chosen entries stay' \
+    test "$rc" = 0 -a -n "$(screen "$out" | grep -x 'Config folders found:')" -a -n "$(screen "$out" | grep -xE '[^ ]+ Install or update')"
 # No real terminal: nothing animated and no escape sequence, also on a terminal.
 for setting in NO_COLOR=1 PTY_TERM=dumb PTY_CI=true; do
     h=$(newhome "fancy-off-${setting%%=*}")

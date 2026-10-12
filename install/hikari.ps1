@@ -720,11 +720,21 @@ function Set-HikariLanguage {
     }
 }
 
+# Text arguments go in without control characters (C0, DEL and C1: \p{Cc}):
+# a message only shows them, and a folder (from MPV_HOME, typed or found) or
+# what an error says must not send escape sequences to the console.
 function T {
     param([string]$Key, [object[]]$FormatArgs = @())
     $text = $script:HikariStrings[$Key]
     if ($null -eq $text) { $text = $Key }
-    if (@($FormatArgs).Count -gt 0) { return ($text -f $FormatArgs) }
+    if (@($FormatArgs).Count -gt 0) {
+        # A copy: the caller's array stays as it is.
+        $shown = [object[]]$FormatArgs.Clone()
+        for ($i = 0; $i -lt $shown.Length; $i++) {
+            if ($shown[$i] -is [string]) { $shown[$i] = [regex]::Replace($shown[$i], '\p{Cc}', '') }
+        }
+        return ($text -f $shown)
+    }
     return $text
 }
 
@@ -765,6 +775,9 @@ $script:HikariBarStep = 0
 $script:HikariBarTicks = [long]0
 # A bar is on its line, not yet ended by a row or a new line.
 $script:HikariBarOpen = $false
+# The last line written is blank (in the summary, a blank line goes before the
+# first folder only when something came after the title's).
+$script:HikariLastBlank = $false
 # ASCII until Initialize-HikariUi has looked at the console.
 $script:GlyphOk = '+'
 $script:GlyphFail = 'x'
@@ -840,7 +853,12 @@ function Write-HikariPieces {
         if ($color -and $script:HikariColor) { Write-Host $text -NoNewline -ForegroundColor $color }
         else { Write-Host $text -NoNewline }
     }
-    if (-not $NoNewline) { Write-Host '' }
+    if (-not $NoNewline) {
+        Write-Host ''
+        $blank = $true
+        for ($i = 0; $i -lt $Pieces.Count; $i += 2) { if ([string]$Pieces[$i] -ne '') { $blank = $false } }
+        $script:HikariLastBlank = $blank
+    }
 }
 
 # The spinner of the step in progress: drawn again (next frame) at most every
@@ -950,7 +968,14 @@ function Write-HikariInfo {
     param([string]$Message)
     if ($script:HikariQuiet) { return }
     Enter-HikariOutput
-    try { Write-Host $Message } finally { Exit-HikariOutput }
+    try { Write-Host $Message; $script:HikariLastBlank = ($Message -eq '') } finally { Exit-HikariOutput }
+}
+
+# A line the user should read in the summary, indented as the summary is; as
+# it is in verbose mode and without a console.
+function Write-HikariSay {
+    param([string]$Message)
+    if ($script:HikariFancy) { Write-HikariInfo ('  ' + $Message) } else { Write-HikariInfo $Message }
 }
 
 function Write-HikariOk {
@@ -998,6 +1023,9 @@ function Write-HikariError {
 
 function Read-HikariLine {
     param([string]$Prompt)
+    $script:HikariLastBlank = $false
+    # In the summary the question is indented as the rest of it.
+    if ($script:HikariFancy) { $Prompt = '  ' + $Prompt }
     return (Read-Host -Prompt $Prompt)
 }
 
@@ -1337,18 +1365,19 @@ function Get-HikariNextItem {
 # otherwise a compact one (no folder lines, short help). When not even that
 # fits, the question is asked with numbers.
 function Get-HikariListFrame {
-    param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi)
+    param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi, [string[]]$Header = @())
     foreach ($compact in @($false, $true)) {
-        $frame = New-HikariListFrame -Items $Items -Current $Current -Checked $Checked -Multi $Multi -Compact $compact
+        $frame = New-HikariListFrame -Items $Items -Current $Current -Checked $Checked -Multi $Multi -Compact $compact -Header $Header
         if (Test-HikariFrameFits @($frame).Count) { return , $frame }
     }
     throw $script:HikariNoConsole
 }
 
 function New-HikariListFrame {
-    param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi, [bool]$Compact)
+    param([object[]]$Items, [int]$Current, [bool[]]$Checked, [bool]$Multi, [bool]$Compact, [string[]]$Header = @())
     $width = Get-HikariMenuWidth
     $lines = New-Object System.Collections.Generic.List[object]
+    foreach ($h in $Header) { $lines.Add([object[]]@(New-HikariSeg ('  ' + $h))) }
     for ($i = 0; $i -lt $Items.Count; $i++) {
         $it = $Items[$i]
         $on = ($i -eq $Current)
@@ -1398,25 +1427,32 @@ function New-HikariListFrame {
 # the ticked entries or, with none ticked, the highlighted one; Enter on an
 # action entry chooses it (together with what is ticked).
 # Single choice: a digit chooses the entry with that Hotkey (not when disabled).
-# $Header: lines written above the menu, only once it is sure the menu fits.
+# $Header and $Title: lines written above the menu, only once it is sure the
+# menu fits. $Header always stays on the screen (something to keep, such as a
+# link). $Title, in the summary (fancy mode), is part of the menu instead and
+# goes with it once answered: the summary says the folders already. Otherwise
+# the title stays too and the menu is replaced by a line with the choice.
 # Returns Cancelled, Index (entry Enter was pressed on; -1 for ticked ones) and
 # Checked (indexes of the chosen entries that are not actions).
 function Invoke-HikariListMenu {
-    param([object[]]$Items, [switch]$Multi, [int]$Start = 0, [string[]]$Header = @())
+    param([object[]]$Items, [switch]$Multi, [int]$Start = 0, [string[]]$Header = @(), [string[]]$Title = @())
     $n = $Items.Count
     $checked = New-Object 'bool[]' $n
     $cur = Get-HikariNextItem -Items $Items -From ($Start - 1) -Step 1
     $result = $null
     $drawn = 0
+    $inFrame = @()
+    if ($script:HikariFancy) { $inFrame = @($Title) }
     # Too tall even when compact: this throws before anything is written, so
     # the numbered question that replaces it starts on a clean screen.
-    [void](Get-HikariListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi))
-    foreach ($h in $Header) { Write-HikariInfo $h }
+    [void](Get-HikariListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi) -Header $inFrame)
+    foreach ($h in $Header) { Write-HikariSay $h }
+    if (-not $script:HikariFancy) { foreach ($h in $Title) { Write-HikariInfo $h } }
     $console = & $script:HikariConsoleEnter
     try {
         & $script:HikariKeyFlush
         while ($null -eq $result) {
-            $drawn = Invoke-HikariRender -Lines (Get-HikariListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi)) -Previous $drawn
+            $drawn = Invoke-HikariRender -Lines (Get-HikariListFrame -Items $Items -Current $cur -Checked $checked -Multi ([bool]$Multi) -Header $inFrame) -Previous $drawn
             $key = Read-HikariKey
             if (Test-HikariCancelKey $key) {
                 $result = [pscustomobject]@{ Cancelled = $true; Index = -1; Checked = @() }
@@ -1457,9 +1493,10 @@ function Invoke-HikariListMenu {
         }
     }
     finally {
-        # The menu is replaced by one line with the choice (nothing when cancelled).
+        # The menu is replaced by one line with the choice (nothing when
+        # cancelled or in the summary).
         $final = @()
-        if ($null -ne $result -and -not $result.Cancelled) {
+        if ($null -ne $result -and -not $result.Cancelled -and -not $script:HikariFancy) {
             $parts = @($result.Checked | ForEach-Object { $Items[$_].Summary })
             if ($result.Index -ge 0) {
                 if ($Items[$result.Index].Quit) { $parts = @() }
@@ -1501,7 +1538,7 @@ function Read-HikariYesNoMenu {
     $drawn = 0
     # Checked before the question is written (see Invoke-HikariListMenu).
     [void](Get-HikariYesNoFrame $yes)
-    Write-HikariInfo $Question
+    Write-HikariSay $Question
     $console = & $script:HikariConsoleEnter
     try {
         & $script:HikariKeyFlush
@@ -3410,7 +3447,7 @@ function Invoke-HikariAnime4KStep {
         $install = ($choice -eq 'yes')
         if ($choice -eq '') {
             # Only when it is really asked (always in verbose mode).
-            if ($script:HikariVerbose -or -not $script:NonInteractive) { Write-HikariInfo (T 'anime4k_intro') }
+            if ($script:HikariVerbose -or -not $script:NonInteractive) { Write-HikariSay (T 'anime4k_intro') }
             $install = Confirm-Hikari -Question (T 'anime4k_confirm') -Default ($prevState -ne 'declined')
         }
         if (-not $install) {
@@ -4223,18 +4260,20 @@ function Get-HikariRestoreMessage {
 # The name of a folder in the summary: its player, or the folder itself.
 function Get-HikariFolderLabel {
     param($Candidate)
-    if ($Candidate.Kind -eq 'folder') { return [string]$Candidate.ConfigDir }
+    if ($Candidate.Kind -eq 'folder') { return (Get-HikariCleanText $Candidate.ConfigDir 0) }
     return (Get-HikariKindLabel $Candidate.Kind)
 }
 
 # "  > AnimeJaNai  C:\...\portable_config", above the steps of a folder.
 function Write-HikariFolderHeader {
     param($Candidate)
+    # Only shown: without control characters (see Get-HikariCleanText).
+    $dir = Get-HikariCleanText $Candidate.ConfigDir 0
     if ($Candidate.Kind -eq 'folder') {
-        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + $Candidate.ConfigDir), '')
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + $dir), '')
     }
     else {
-        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + (Get-HikariKindLabel $Candidate.Kind) + '  '), '', $Candidate.ConfigDir, 'DarkGray')
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + (Get-HikariKindLabel $Candidate.Kind) + '  '), '', $dir, 'DarkGray')
     }
 }
 
@@ -4535,8 +4574,10 @@ function New-HikariCandidateItem {
     $label = $kind
     $tags = Get-HikariCandidateTags $Candidate
     if ($tags) { $label += '  ' + $tags }
-    $summary = $kind + ' (' + (Format-HikariFit -Text $Candidate.ConfigDir -Max 40 -Middle) + ')'
-    return (New-HikariMenuItem -Label $label -Details @($Candidate.ConfigDir) -Summary $summary)
+    # Only shown: without control characters (see Get-HikariCleanText).
+    $dir = Get-HikariCleanText $Candidate.ConfigDir 0
+    $summary = $kind + ' (' + (Format-HikariFit -Text $dir -Max 40 -Middle) + ')'
+    return (New-HikariMenuItem -Label $label -Details @($dir) -Summary $summary)
 }
 
 # Which folders to work on: Indexes (into $List), Other (type a folder) and
@@ -4550,7 +4591,7 @@ function Read-HikariTargetChoice {
         $otherIndex = $items.Count
         $items.Add((New-HikariMenuItem -Label ((Get-HikariPlainLabel (T 'opt_other')) + $script:GlyphEllipsis) -Action $true))
         $items.Add((New-HikariMenuItem -Label (Get-HikariPlainLabel (T 'opt_quit')) -Action $true -Quit $true))
-        $m = Invoke-HikariListMenu -Items $items.ToArray() -Multi -Header $header
+        $m = Invoke-HikariListMenu -Items $items.ToArray() -Multi -Title $header
         $sel = [pscustomobject]@{ Indexes = @(); Other = $false; Quit = $false }
         if ($m.Cancelled -or ($m.Index -ge 0 -and $items[$m.Index].Quit)) { $sel.Quit = $true; return $sel }
         $sel.Indexes = @($m.Checked)
@@ -4936,7 +4977,7 @@ function Invoke-HikariMain {
                 '1' { $Action = 'install' }
                 '2' { $Action = 'uninstall' }
                 '3' { Show-HikariVersions -Env (New-HikariEnvironment) -Paths $paths; Write-HikariInfo '' }
-                '0' { Write-HikariInfo (T 'cancelled'); return 0 }
+                '0' { Write-HikariSay (T 'cancelled'); return 0 }
                 default { Write-HikariWarn (T 'invalid') }
             }
         }
@@ -4949,12 +4990,12 @@ function Invoke-HikariMain {
     $targets = @($selection.Targets)
     if (@($targets).Count -eq 0) {
         if ($Yes) { Write-HikariError (T 'usage_none'); return 2 }
-        Write-HikariInfo (T 'cancelled')
+        Write-HikariSay (T 'cancelled')
         return 0
     }
     if (-not (Confirm-HikariElevation -Env $environment -Targets $targets)) {
         if ($Yes) { return 2 }
-        Write-HikariInfo (T 'cancelled')
+        Write-HikariSay (T 'cancelled')
         return 0
     }
 
@@ -4962,6 +5003,8 @@ function Invoke-HikariMain {
     $ok = 0
     $temp = $null
     $many = (@($targets).Count -gt 1)
+    # Warnings or questions after the title: a blank line before the folders.
+    if ($script:HikariFancy -and -not $script:HikariLastBlank) { Write-HikariUi }
     # One folder: its name above the downloads. Several: above each block.
     if (-not $many) { Write-HikariFolderHeader $targets[0]; Write-HikariUi }
     try {

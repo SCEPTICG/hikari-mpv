@@ -3379,6 +3379,149 @@ Test-Case 'summary on a console: Ctrl+C half-way through a download takes the ba
     }
 }
 
+Test-Case 'summary on a console: the menus and their title go once answered, the notices stay' {
+    Reset-Fake
+    $d = New-TestDir 'summary-menus'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $script:FakeEnvBase = P @($d, 'machine')
+    Set-TestFile (P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    $net = P @($script:FakeEnvBase, 'Roaming', 'mpv.net')
+    function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    function Read-HikariLine { param([string]$Prompt) throw 'a number question was asked' }
+    $savedFancy = $script:HikariFancyProbe
+    $savedVersion = $script:HikariVersion
+    $preview = 'Preview build (preview-abc1234). To go back to the stable version: ' + $script:HikariStableInstall
+    try {
+        $script:HikariFancyProbe = { $true }
+        $script:HikariVersion = 'preview-abc1234'
+        # Install (Enter), the highlighted folder (Enter).
+        Use-FakeConsole @('Enter', 'Enter')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
+        Assert-Equal $script:SummaryCode 0 'exit code'
+        Assert-True (Test-Path -LiteralPath (P @($net, 'hikari-installed.txt'))) 'installed'
+        $lines = Get-SummaryLines $text
+        $want = @('', '  hikari preview-abc1234', '', ('  ' + $preview), '', ('  > mpv.net  ' + $net), '')
+        Assert-Equal ([string]::Join('|', @($lines[0..6]))) ([string]::Join('|', $want)) ('the top of the summary; screen: ' + [string]::Join('|', $lines))
+        Assert-True (-not $text.Contains('Install or update') -and -not $text.Contains('folders found')) ('nothing of the menus written; output: ' + $text)
+        Assert-True ($script:Frames[2].StartsWith('  Players and config folders found:' + "`n")) ('the title is part of the menu: ' + $script:Frames[2])
+        $empty = @($script:Frames | Where-Object { $_ -eq '' }).Count
+        Assert-Equal $empty 2 ('both menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
+        # Esc in the folders menu: only "Cancelled." after the notices.
+        Use-FakeConsole @('Enter', 'Escape')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
+        Assert-Equal $script:SummaryCode 0 'Esc: exit code'
+        $want = @('', '  hikari preview-abc1234', '', ('  ' + $preview), '  Cancelled.', '')
+        Assert-Equal ([string]::Join('|', (Get-SummaryLines $text))) ([string]::Join('|', $want)) 'Esc: the title, the notice and "Cancelled."'
+        Assert-Equal (Get-LastFrame) '' 'Esc: the menu taken off the screen'
+        # -Verbose: the title written above the menu, the choice left in its place.
+        Use-FakeConsole @('Enter', 'Enter')
+        $script:HikariConsoleProbe = { $true }
+        $text = Get-ShownText { [void](Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $true) }
+        Assert-True ((Get-ScreenLines $text) -contains 'Players and config folders found:') ('-Verbose: the title stays; output: ' + $text)
+        Assert-True ($script:Frames[0] -ne '' -and (Get-LastFrame).StartsWith($Ptr + ' mpv.net (')) ('-Verbose: the choice stays: ' + (Get-LastFrame))
+    }
+    finally {
+        $script:HikariFancyProbe = $savedFancy
+        $script:HikariVersion = $savedVersion
+        Remove-Item Function:\New-HikariEnvironment
+        Remove-Item Function:\Read-HikariLine
+        Reset-FakeConsole
+    }
+}
+
+Test-Case 'summary on a console: with no player, the link to get mpv stays once the menu goes' {
+    $link = 'Ways to get mpv: https://mpv.io/installation/'
+    $script:ReadPrompts = New-Object System.Collections.Generic.List[string]
+    function Read-Host { param([string]$Prompt) $script:ReadPrompts.Add($Prompt); return '' }
+    try {
+        foreach ($keys in @(@('Escape'), @('Ctrl+C'), @('UpArrow', 'Enter'))) {
+            Use-FakeConsole $keys
+            $text = Get-ShownText {
+                $script:HikariFancy = $true
+                $script:NoPlayerAnswer = Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x'
+            }
+            Assert-Equal $script:NoPlayerAnswer '0' ('exit with ' + [string]::Join(' ', $keys))
+            Assert-True ((Get-ScreenLines $text) -contains ('  ' + $link)) ('the link stays, indented (' + [string]::Join(' ', $keys) + '); output: ' + $text)
+            Assert-True (-not $script:Frames[0].Contains('mpv.io')) ('the link is not part of the menu: ' + $script:Frames[0])
+            Assert-Equal (Get-LastFrame) '' 'the menu taken off the screen'
+        }
+        # A narrow window does not cut it: it is not drawn by the menu.
+        Use-FakeConsole @('Escape')
+        $script:HikariMenuWidth = 50
+        $text = Get-ShownText { $script:HikariFancy = $true; [void](Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') }
+        Assert-True ((Get-ScreenLines $text) -contains ('  ' + $link)) ('50 columns: the whole link; output: ' + $text)
+        # -Verbose (no summary): the link stays as it was, without the indent.
+        Use-FakeConsole @('Escape')
+        $text = Get-ShownText { $script:HikariFancy = $false; [void](Read-HikariNoPlayerChoice -HasWinget $true -AppMpv 'C:\x') }
+        Assert-True ((Get-ScreenLines $text) -contains $link) ('-Verbose: the link; output: ' + $text)
+        # Typed answers in the summary (a folder, a yes/no in numbers) are indented as it is.
+        $script:HikariFancy = $true
+        [void](Read-HikariLine 'Folder')
+        $script:HikariMenu = $false
+        [void](Confirm-HikariAsk -Question 'Go on?' -Default $true)
+        $script:HikariFancy = $false
+        [void](Read-HikariLine 'Folder')
+        Assert-Equal ([string]::Join('|', $script:ReadPrompts)) ('  Folder|  Go on? [Y/n] |Folder') 'prompts'
+    }
+    finally {
+        $script:HikariFancy = $false
+        Remove-Item Function:\Read-Host
+        Reset-FakeConsole
+    }
+}
+
+Test-Case 'folders with control characters: every message, list and menu entry shows them without' {
+    $d = New-TestDir 'ctlpath'
+    $e = New-FakeEnv $d
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    # A C1 CSI is allowed in a Windows folder name; ESC (CSI and OSC) only
+    # elsewhere. The OSC without its ';': -Target splits folders at ';'.
+    $seqs = @([string][char]0x9B)
+    if ([System.IO.Path]::DirectorySeparatorChar -ne '\') { $seqs += @(([string][char]27 + '['), ([string][char]27 + ']0PWNED' + [char]7)) }
+    $script:FakeEnvBase = $d
+    function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    try {
+        $n = 0
+        foreach ($seq in $seqs) {
+            $n++
+            $ro = P @($d, ('ro' + $n + $seq + '31mZQ'))
+            $nm = P @($d, ('nm' + $n + $seq + '31mZQ'))
+            $roShown = [regex]::Replace($ro, '\p{Cc}', '')
+            $nmShown = [regex]::Replace($nm, '\p{Cc}', '')
+            Set-TestFile (P @($ro, 'mpv.conf')) 'x'
+            Set-TestFile (P @($nm, 'letter.txt')) 'x'
+            $script:FakeReadOnly = @($ro)
+            # Without questions: read-only, not mpv's (refused), --version.
+            $script:HikariWarnings.Clear()
+            $text = Get-ShownText { [void](Invoke-HikariMain -Action 'install' -Target @($ro) -Yes $true) }
+            Assert-True (-not $text.Contains($seq)) ('-Yes, read-only: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains('Cannot write to ' + $roShown + '.')) ('read-only, said without it (' + $n + '): ' + $text)
+            $text = Get-ShownText { $script:CtlCode = Invoke-HikariMain -Action 'install' -Target @($nm) -Yes $true }
+            Assert-Equal $script:CtlCode 2 ('refused (' + $n + ')')
+            Assert-True (-not $text.Contains($seq)) ('-Yes, not mpv''s: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains($nmShown + ' does not look like')) ('not mpv''s, said without it (' + $n + '): ' + $text)
+            foreach ($w in $script:HikariWarnings) { Assert-True (-not $w.Contains($seq)) ('warning without it: ' + $w) }
+            Assert-Equal @(Get-ChildItem -LiteralPath $nm -Force).Count 1 ('nothing written (' + $n + ')')
+            $text = Get-ShownText { [void](Invoke-HikariMain -Action 'install' -Target @($ro) -Yes $true -ShowVersion $true) }
+            Assert-True (-not $text.Contains($seq) -and $text.Contains($roShown)) ('-ShowVersion without it (' + $n + '): ' + $text)
+            # The numbered list, the menu entry and the folder above its steps.
+            $cand = New-HikariCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $ro -Portable $false
+            $text = Get-ShownText { Show-HikariCandidates @($cand); $script:HikariVerbose = $false; Write-HikariFolderHeader $cand }
+            Assert-True (-not $text.Contains($seq)) ('list and header: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains('Config: ' + $roShown) -and $text.Contains(' ' + $roShown)) ('list and header without it (' + $n + '): ' + $text)
+            $item = New-HikariCandidateItem $cand
+            Assert-True (-not ([string]::Join('|', @($item.Details)) + $item.Summary).Contains($seq)) ('menu entry without it (' + $n + ')')
+            Assert-Equal $cand.ConfigDir $ro ('the folder itself is kept as it is (' + $n + ')')
+        }
+    }
+    finally {
+        Remove-Item Function:\New-HikariEnvironment
+        $script:FakeReadOnly = @()
+    }
+}
+
 Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
     $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'

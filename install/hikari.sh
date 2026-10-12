@@ -748,6 +748,7 @@ step_end() { # step_end ok|fail|quiet
     [ "$VERBOSE" != 1 ] && [ "$1" != quiet ] || return 0
     if [ "$1" = ok ]; then mark=$(paint 32 "$G_OK"); else mark=$(paint 31 "$G_FAIL"); fi
     printf '  %s %s\n' "$mark" "$label"
+    UI_BLANK=0
 }
 
 # A line of the summary, as it is (not in verbose mode).
@@ -755,6 +756,7 @@ ui_line() {
     [ "$VERBOSE" != 1 ] || return 0
     spin_hold
     printf '%s\n' "$1"
+    if [ -n "$1" ]; then UI_BLANK=0; else UI_BLANK=1; fi
     spin_release
 }
 
@@ -766,6 +768,7 @@ row_done() { # row_done <label> <ok|fail> [text]
     [ "$FANCY" != 1 ] || printf '\r\033[K'
     BAR_ACTIVE=0
     printf '  %-12s%s%s\n' "$1" "$mark" "${3:+ $3}"
+    UI_BLANK=0
 }
 
 # repeat <n> <text>
@@ -827,11 +830,17 @@ progress_reader() {
     done
 }
 
+# UI_BLANK: the last line written is blank (on the summary, a blank line goes
+# before the first folder only when something came after the title's).
 info() {
     spin_hold
     printf '%s\n' "$1"
+    if [ -n "$1" ]; then UI_BLANK=0; else UI_BLANK=1; fi
     spin_release
 }
+# A line the user should read in the summary, indented as the summary is; as
+# it is in verbose mode and without a terminal.
+say() { if [ "$FANCY" = 1 ]; then info "  $1"; else info "$1"; fi; }
 # Details: only in verbose mode.
 detail() { [ "$VERBOSE" != 1 ] || info "$1"; }
 detail_ok() { [ "$VERBOSE" != 1 ] || ok "$1"; }
@@ -840,11 +849,13 @@ notice() { if [ "$VERBOSE" = 1 ]; then info "$1"; else ui_line "  $1"; fi; }
 ok() {
     spin_hold
     printf '%s\n' "$(paint 32 "$1")"
+    UI_BLANK=0
     spin_release
 }
 warn() {
     spin_hold
     if [ "$VERBOSE" = 1 ]; then printf '%s\n' "$(paint 33 "$1")"; else printf '  %s\n' "$(paint 33 "$1")"; fi
+    UI_BLANK=0
     spin_release
 }
 error() {
@@ -852,13 +863,16 @@ error() {
     spin_hold
     [ "$VERBOSE" = 1 ] || pre='  '
     if [ "$COLOR" = 1 ] && [ -t 2 ]; then printf '%s\033[31m%s\033[0m\n' "$pre" "$1" >&2; else printf '%s%s\n' "$pre" "$1" >&2; fi
+    UI_BLANK=0
     spin_release
 }
 
 # The home folder as ~ (paths in the summary).
+# Only to be shown: without control characters (see clean_text), as the folder
+# can come from $MPV_HOME, $XDG_CONFIG_HOME or be typed.
 short_path() {
     # shellcheck disable=SC2088 # a ~ to read, not to expand.
-    case $1 in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac
+    case $1 in "$HOME"/*) clean_text "~/${1#"$HOME"/}" ;; *) clean_text "$1" ;; esac
 }
 # The name of a candidate in the summary: its player, or its folder.
 folder_label() {
@@ -903,7 +917,9 @@ io_setup() {
 # Reads a line into REPLY_LINE (fails at the end of the input).
 read_line() {
     REPLY_LINE=''
-    printf '%s: ' "$1"
+    UI_BLANK=0
+    # In the summary the question is indented as the rest of it.
+    if [ "$FANCY" = 1 ]; then printf '  %s: ' "$1"; else printf '%s: ' "$1"; fi
     if [ "$HAVE_INPUT" != 1 ]; then printf '\n'; return 1; fi
     if IFS= read -r REPLY_LINE <&3; then
         [ -t 3 ] || printf '%s\n' "$REPLY_LINE"
@@ -947,8 +963,10 @@ confirm_ask() {
     fi
     local suffix
     if [ "$default" = yes ]; then suffix=$(T yes_no_default_yes); else suffix=$(T yes_no_default_no); fi
+    local pre=''
+    [ "$FANCY" != 1 ] || pre='  '
     while :; do
-        printf '%s' "$question$suffix"
+        printf '%s%s' "$pre" "$question$suffix"
         REPLY_LINE=''
         if ! IFS= read -r REPLY_LINE <&3 && [ -z "$REPLY_LINE" ]; then
             printf '\n'
@@ -1094,6 +1112,7 @@ list_frame() {
     cols=$(term_cols)
     FRAME_TEXT=()
     FRAME_COLOR=()
+    for head in ${M_HEADER[@]+"${M_HEADER[@]}"}; do frame_add "$(fit "  $head" $((cols - 1)))"; done
     i=0
     while [ "$i" -lt "$n" ]; do
         pointer='  '
@@ -1174,6 +1193,9 @@ menu_item() {
 # Sets M_CANCELLED (1/0), M_INDEX (entry Enter was pressed on, -1 for ticked
 # ones) and M_PICKED (indexes of the chosen entries that are not actions).
 # Returns 3, with nothing written, when the menu does not fit.
+# In the summary (FANCY=1) the header lines are part of the menu and all of it
+# goes once answered: the summary says the folders already. Otherwise the
+# header stays above it and the menu is replaced by a line with the choice.
 list_menu() {
     M_MULTI=$1
     shift
@@ -1182,8 +1204,10 @@ list_menu() {
     M_CANCELLED=0
     M_INDEX=-1
     M_PICKED=()
-    list_frame_fit || return 3
-    for i in ${1+"$@"}; do info "$i"; done
+    M_HEADER=()
+    [ "$FANCY" != 1 ] || M_HEADER=(${1+"$@"})
+    list_frame_fit || { M_HEADER=(); return 3; }
+    [ "$FANCY" = 1 ] || for i in ${1+"$@"}; do info "$i"; done
     DRAWN=0
     menu_enter
     while [ "$done" = 0 ]; do
@@ -1227,10 +1251,12 @@ list_menu() {
                 ;;
         esac
     done
-    # The menu is replaced by one line with the choice (nothing when cancelled).
+    # The menu is replaced by one line with the choice (nothing when cancelled
+    # or in the summary).
     FRAME_TEXT=()
     FRAME_COLOR=()
-    if [ "$M_CANCELLED" = 0 ]; then
+    M_HEADER=()
+    if [ "$M_CANCELLED" = 0 ] && [ "$FANCY" != 1 ]; then
         for i in ${M_PICKED[@]+"${M_PICKED[@]}"}; do summary="$summary${summary:+, }${M_SUMMARY[i]}"; done
         if [ "$M_INDEX" -ge 0 ]; then
             [ "${M_QUIT[M_INDEX]}" = 1 ] && summary=''
@@ -1251,7 +1277,7 @@ yesno_menu() {
     rows=$(term_rows)
     cols=$(term_cols)
     [ "$rows" -ge 3 ] || return 3
-    info "$question"
+    say "$question"
     DRAWN=0
     menu_enter
     while [ -z "$result" ]; do
@@ -1783,29 +1809,29 @@ read_record() {
         case $key in
             file)
                 if record_path_ok "$value"; then REC_FILES[${#REC_FILES[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             disabled | broken)
                 if pair_ok "$value"; then
                     if [ "$key" = disabled ]; then REC_DISABLED[${#REC_DISABLED[@]}]=$value; else REC_BROKEN[${#REC_BROKEN[@]}]=$value; fi
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             a4k_moved)
                 # shaders-desactivados/<file>|shaders/<file>: never anything else.
                 if pair_ok "$value" && [ "${value#"$SHADERS_DISABLED_DIR"/}" != "$value" ] &&
                     [ "${value#*|"$SHADERS_DIR"/}" != "$value" ]; then
                     REC_MOVED[${#REC_MOVED[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             a4k_commented | a4k_commented_mpv)
                 if recordable_line "$value"; then
                     if [ "$key" = a4k_commented ]; then REC_COMMENTED[${#REC_COMMENTED[@]}]=$value
                     else REC_COMMENTED_MPV[${#REC_COMMENTED_MPV[@]}]=$value; fi
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             sha256)
                 if sum_entry_ok "$value"; then REC_SUMS[${#REC_SUMS[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             *)
                 REC_KEYS[${#REC_KEYS[@]}]=$key
@@ -2268,7 +2294,7 @@ candidate_tags() {
     local dir=${C_DIR[$1]} tags='' f
     if read_record "$dir" 1; then
         rec_get hikari_version
-        tags=$(T tag_installed "$REC_VALUE")
+        tags=$(T tag_installed "$(clean_text "$REC_VALUE")")
     elif sosc_present "$dir"; then
         tags=$(T tag_sosc)
     else
@@ -2570,7 +2596,7 @@ anime4k_step() {
         [ "$choice" = no ] && install=0
         if [ -z "$choice" ]; then
             # Only when it is really asked (always in verbose mode).
-            if [ "$VERBOSE" = 1 ] || [ "$NONINTERACTIVE" != 1 ]; then info "$(T anime4k_intro)"; fi
+            if [ "$VERBOSE" = 1 ] || [ "$NONINTERACTIVE" != 1 ]; then say "$(T anime4k_intro)"; fi
             local def=yes
             [ "$prev" = declined ] && def=no
             confirm "$(T anime4k_confirm)" "$def" || install=0
@@ -2921,11 +2947,11 @@ migrate_sosc() {
         if [ ! -e "$CFG/$ORIGINALS_DIR" ] && [ ! -L "$CFG/$ORIGINALS_DIR" ]; then
             mv "$CFG/$SOSC_ORIGINALS_DIR" "$CFG/$ORIGINALS_DIR" || return 1
         elif [ -L "$CFG/$SOSC_ORIGINALS_DIR/script-opts" ]; then
-            warn "$(T sosc_link_left "$CFG/$SOSC_ORIGINALS_DIR/script-opts")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$SOSC_ORIGINALS_DIR/script-opts")")"
         elif [ -L "$CFG/$ORIGINALS_DIR" ]; then
-            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$ORIGINALS_DIR")")"
         elif [ -L "$CFG/$ORIGINALS_DIR/script-opts" ]; then
-            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR/script-opts")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$ORIGINALS_DIR/script-opts")")"
         else
             for f in "$CFG/$SOSC_ORIGINALS_DIR"/script-opts/*; do
                 [ -L "$f" ] && continue
@@ -2944,7 +2970,7 @@ migrate_sosc() {
     # writing it), that one has everything. Never written through a link
     # (broken or not).
     if [ "$has_rec" = 1 ] && [ -L "$CFG/$RECORD_NAME" ]; then
-        warn "$(T sosc_link_left "$CFG/$RECORD_NAME")"
+        warn "$(T sosc_link_left "$(clean_text "$CFG/$RECORD_NAME")")"
     elif [ "$has_rec" = 1 ] && [ ! -e "$CFG/$RECORD_NAME" ]; then
         {
             printf '%s\n' "$RECORD_HEADER"
@@ -2982,7 +3008,7 @@ migrate_sosc() {
     for f in "$CFG"-respaldo-sosc-*; do
         if [ -d "$f" ] && [ ! -L "$f" ]; then count=$((count + 1)); fi
     done
-    [ "$count" = 0 ] || notice "$(T sosc_old_backups "$count" "$CFG")"
+    [ "$count" = 0 ] || notice "$(T sosc_old_backups "$count" "$(clean_text "$CFG")")"
     return 0
 }
 
@@ -3003,8 +3029,8 @@ make_backup() {
     for name in "${BACKUP_ITEMS[@]}"; do
         p="$cfg/$name"
         [ -e "$p" ] || [ -L "$p" ] || continue
-        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$p")"; continue; fi
-        if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$p")"; continue; fi
+        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
+        if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         items[${#items[@]}]=$name
     done
     [ "${#items[@]}" -gt 0 ] || return 0
@@ -3056,9 +3082,9 @@ prune_backups() {
         [ -n "$protect" ] && [ "$(abs_path "$protect")" = "$(abs_path "$path")" ] && continue
         [ -f "$path/$BACKUP_ORIGINAL_MARK" ] && continue
         if is_inside "$path" "$parent" && rm -rf "$path"; then
-            detail "$(T backup_pruned "$path")"
+            detail "$(T backup_pruned "$(clean_text "$path")")"
         else
-            warn "$(T backup_prune_failed "$path")"
+            warn "$(T backup_prune_failed "$(clean_text "$path")")"
         fi
     done <<EOF
 $(printf '%s' "$list" | sort -k1,1r -k2,2nr)
@@ -3156,7 +3182,7 @@ move_to_disabled() {
     fi
     mv "$p" "$dest" || return 1
     MOVED_PAIR="$(rel_path "$dest" "$CFG")|$rel"
-    detail "$(T moved "$rel" "${MOVED_PAIR%%|*}")"
+    detail "$(T moved "$(clean_text "$rel")" "$(clean_text "${MOVED_PAIR%%|*}")")"
 }
 
 uosc_present() { [ -d "$1/scripts/uosc" ] || [ -f "$1/scripts/uosc.lua" ]; }
@@ -3208,7 +3234,7 @@ backup_step() {
         return 1
     fi
     if [ -n "$BACKUP" ]; then step_end ok; else step_end quiet; fi
-    [ -z "$BACKUP" ] || detail "$(T backup_done "$BACKUP")"
+    [ -z "$BACKUP" ] || detail "$(T backup_done "$(clean_text "$BACKUP")")"
 }
 
 # What to add to an error once the folder has been changed: where the backup
@@ -3222,14 +3248,14 @@ install_target() {
     CFG=${C_DIR[$1]}
     local kind=${C_KIND[$1]} exe=${C_EXE[$1]} had_record=0
     detail ''
-    detail "$(T installing_to "$CFG")"
+    detail "$(T installing_to "$(clean_text "$CFG")")"
     BACKUP=''
     if [ -d "$CFG" ]; then
         # A record of sosc counts too: its first backup, from before sosc, is the original.
         if [ -e "$CFG/$RECORD_NAME" ] || [ -e "$CFG/$SOSC_RECORD" ]; then had_record=1; fi
         backup_step || return 1
         if [ -n "$BACKUP" ] && [ "$had_record" = 0 ] && ! other_original_backup "$CFG" "$BACKUP"; then
-            printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$BACKUP/$BACKUP_ORIGINAL_MARK"
+            printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$(clean_text "$BACKUP/$BACKUP_ORIGINAL_MARK")"
         fi
     else
         mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
@@ -3241,7 +3267,7 @@ install_target() {
         return 1
     fi
     step_end ok
-    detail_ok "$(T install_ok "$CFG")"
+    detail_ok "$(T install_ok "$(clean_text "$CFG")")"
     ui_line ''
     ui_line "  $(paint 32 "$G_OK") $(T ui_installed "$SRC_VERSION" "$(folder_label "$1")")"
 }
@@ -3301,7 +3327,7 @@ install_steps() {
     find_conflicts "$CFG"
     if [ "${#CONFLICTS[@]}" -gt 0 ]; then
         warn "$(T conflicts_found)"
-        for c in "${CONFLICTS[@]}"; do warn "  - $(rel_path "$c" "$CFG")"; done
+        for c in "${CONFLICTS[@]}"; do warn "  - $(clean_text "$(rel_path "$c" "$CFG")")"; done
         if confirm "$(T conflicts_confirm "$DISABLED_DIR")" yes; then
             for c in "${CONFLICTS[@]}"; do
                 move_to_disabled "$c" || return 1
@@ -3319,7 +3345,7 @@ install_steps() {
     find_broken_scripts "$CFG"
     if [ "${#BROKEN[@]}" -gt 0 ]; then
         warn "$(T broken_found)"
-        for c in "${BROKEN[@]}"; do warn "  - $(rel_path "$c" "$CFG")"; done
+        for c in "${BROKEN[@]}"; do warn "  - $(clean_text "$(rel_path "$c" "$CFG")")"; done
         if confirm "$(T broken_confirm "$DISABLED_DIR")" yes; then
             for c in "${BROKEN[@]}"; do
                 move_to_disabled "$c" || return 1
@@ -3421,7 +3447,7 @@ install_steps() {
     if [ "$kind" = mpv ] && [ -n "$exe" ]; then
         set_conf_option "$CFG/script-opts/thumbfast.conf" mpv_path "$exe" \
             'Added by the hikari installer: mpv started from Finder or another app may not find mpv in its PATH.' || return 1
-        detail "$(T mpvpath_set "$exe")"
+        detail "$(T mpvpath_set "$(clean_text "$exe")")"
     fi
 
     # f. Managed blocks.
@@ -3477,10 +3503,10 @@ restore_pairs() {
     local entry from to
     RESTORED=0
     for entry in ${1+"$@"}; do
-        if ! pair_ok "$entry"; then warn "$(T record_bad "$entry")"; continue; fi
+        if ! pair_ok "$entry"; then warn "$(T record_bad "$(clean_text "$entry")")"; continue; fi
         from="$CFG/${entry%%|*}"
         to="$CFG/${entry#*|}"
-        if ! is_inside "$from" "$CFG" || ! is_inside "$to" "$CFG"; then warn "$(T outside_target "$from" "$CFG")"; continue; fi
+        if ! is_inside "$from" "$CFG" || ! is_inside "$to" "$CFG"; then warn "$(T outside_target "$(clean_text "$from")" "$(clean_text "$CFG")")"; continue; fi
         [ -e "$from" ] || [ -L "$from" ] || continue
         if [ -e "$to" ] || [ -L "$to" ]; then warn "$(T restore_skipped "${entry%%|*}" "${entry#*|}")"; continue; fi
         mkdir -p "${to%/*}" || return 1
@@ -3506,7 +3532,7 @@ was_there() {
 uninstall_target() {
     CFG=${C_DIR[$1]}
     detail ''
-    detail "$(T uninstalling_from "$CFG")"
+    detail "$(T uninstalling_from "$(clean_text "$CFG")")"
     BACKUP=''
     backup_step || return 1
     step_begin "$(T ui_removing)"
@@ -3516,7 +3542,7 @@ uninstall_target() {
         return 1
     fi
     step_end ok
-    detail_ok "$(T uninstall_ok "$CFG")"
+    detail_ok "$(T uninstall_ok "$(clean_text "$CFG")")"
     ui_line ''
     ui_line "  $(paint 32 "$G_OK") $(T ui_removed "$(folder_label "$1")")"
 }
@@ -3558,7 +3584,7 @@ uninstall_steps() {
             remove_item "$CFG/script-opts/$c" "$CFG" || return 1
         elif [ "$before" = yes ]; then
             rec_get first_backup
-            notice "$(T conf_left "script-opts/$c" "$REC_VALUE")"
+            notice "$(T conf_left "script-opts/$c" "$(clean_text "$REC_VALUE")")"
         elif [ -f "$CFG/script-opts/$c" ]; then
             notice "$(T conf_unknown "script-opts/$c")"
         fi
@@ -3704,8 +3730,8 @@ show_candidates() { # numbered list of the candidates in LIST
         idx=${LIST[i]}
         tags=$(candidate_tags "$idx")
         info " $((i + 1))) $(kind_label "${C_KIND[idx]}")  $tags"
-        [ -z "${C_EXE[idx]}" ] || info "$(T cand_exe "${C_EXE[idx]}")"
-        info "$(T cand_config "${C_DIR[idx]}")"
+        [ -z "${C_EXE[idx]}" ] || info "$(T cand_exe "$(clean_text "${C_EXE[idx]}")")"
+        info "$(T cand_config "$(clean_text "${C_DIR[idx]}")")"
         i=$((i + 1))
     done
 }
@@ -3747,11 +3773,11 @@ read_folder() {
         p=$TRIMMED
         p=${p#\"}; p=${p%\"}; p=${p#\'}; p=${p%\'}
         case $p in '' | 0) return 1 ;; esac
-        if ! p=$(abs_path "$p"); then warn "$(T path_bad "$REPLY_LINE")"; continue; fi
+        if ! p=$(abs_path "$p"); then warn "$(T path_bad "$(clean_text "$REPLY_LINE")")"; continue; fi
         parent=${p%/*}
         [ -n "$parent" ] || parent=/
         if [ -d "$p" ] || [ -d "$parent" ]; then PICKED_DIR=$p; return 0; fi
-        warn "$(T folder_missing "$p")"
+        warn "$(T folder_missing "$(clean_text "$p")")"
     done
 }
 
@@ -3778,7 +3804,7 @@ choose_targets() {
     CHOSEN=()
     if [ "${#OPT_TARGETS[@]}" -gt 0 ]; then
         for i in "${OPT_TARGETS[@]}"; do
-            if ! abs_path "$i" >/dev/null; then error "$(T path_bad "$i")"; REFUSED=1; continue; fi
+            if ! abs_path "$i" >/dev/null; then error "$(T path_bad "$(clean_text "$i")")"; REFUSED=1; continue; fi
             add_folder_candidate "$(abs_path "$i")"
         done
         return 0
@@ -3803,7 +3829,7 @@ choose_targets() {
     fi
     [ "${#LIST[@]}" -gt 0 ] || [ "$mode" != uninstall ] || warn "$(T nothing_to_uninstall)"
     if [ "$MENU" = 1 ]; then
-        local header='' other idx tags label
+        local header='' other idx tags label dir
         if [ "${#LIST[@]}" -gt 0 ]; then
             if [ "$mode" = uninstall ]; then header=$(T found_header_uninst); else header=$(T found_header); fi
         fi
@@ -3811,7 +3837,9 @@ choose_targets() {
         for idx in ${LIST[@]+"${LIST[@]}"}; do
             label=$(kind_label "${C_KIND[idx]}")
             tags=$(candidate_tags "$idx")
-            menu_item "$label${tags:+  $tags}" "${C_DIR[idx]}" 0 0 "$label ($(fit_middle "${C_DIR[idx]}" 40))"
+            # Only shown: without control characters (see clean_text).
+            dir=$(clean_text "${C_DIR[idx]}")
+            menu_item "$label${tags:+  $tags}" "$dir" 0 0 "$label ($(fit_middle "$dir" 40))"
         done
         other=${#M_LABEL[@]}
         local ol ql
@@ -3870,15 +3898,15 @@ check_targets() {
         dup=0
         for t in ${TARGETS[@]+"${TARGETS[@]}"}; do [ "$t" = "$i" ] && dup=1; done
         [ "$dup" = 0 ] || continue
-        if forbidden_target "${C_DIR[i]}"; then error "$(T target_root "${C_DIR[i]}")"; REFUSED=1; continue; fi
+        if forbidden_target "${C_DIR[i]}"; then error "$(T target_root "$(clean_text "${C_DIR[i]}")")"; REFUSED=1; continue; fi
         if ! looks_like_mpv_config "${C_DIR[i]}"; then
-            warn "$(T not_mpv_folder "${C_DIR[i]}")"
+            warn "$(T not_mpv_folder "$(clean_text "${C_DIR[i]}")")"
             if [ "$NONINTERACTIVE" = 1 ]; then error "$(T not_mpv_yes)"; REFUSED=1; continue; fi
-            if ! confirm "$(T not_mpv_confirm)" no; then warn "$(T readonly_skip "${C_DIR[i]}")"; continue; fi
+            if ! confirm "$(T not_mpv_confirm)" no; then warn "$(T readonly_skip "$(clean_text "${C_DIR[i]}")")"; continue; fi
         fi
         if [ "$mode" = install ] && ! dir_writable "${C_DIR[i]}"; then
-            warn "$(T readonly_warn "${C_DIR[i]}")"
-            warn "$(T readonly_skip "${C_DIR[i]}")"
+            warn "$(T readonly_warn "$(clean_text "${C_DIR[i]}")")"
+            warn "$(T readonly_skip "$(clean_text "${C_DIR[i]}")")"
             continue
         fi
         TARGETS[${#TARGETS[@]}]=$i
@@ -3889,7 +3917,7 @@ check_targets() {
 # Succeeds when mpv is there afterwards.
 ensure_mpv() {
     MPV_EXE=$(hikari_find_mpv)
-    if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
+    if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$(clean_text "$MPV_EXE")")"; return 0; fi
     if [ "$OS" != Darwin ] && { hikari_flatpak_mpv || hikari_snap_mpv; }; then return 0; fi
     warn "$(T none_found)"
     if [ "$OS" = Darwin ]; then
@@ -3900,7 +3928,7 @@ ensure_mpv() {
             code=$?
             [ "$code" = 0 ] || warn "$(T brew_failed "$code")"
             MPV_EXE=$(hikari_find_mpv)
-            if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
+            if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$(clean_text "$MPV_EXE")")"; return 0; fi
         fi
         printf '%b\n' "$(T none_mac_help)"
     else
@@ -3965,11 +3993,11 @@ show_versions() {
     MPV_EXE=$(hikari_find_mpv)
     find_candidates
     for t in ${OPT_TARGETS[@]+"${OPT_TARGETS[@]}"}; do
-        if abs_path "$t" >/dev/null; then add_candidate folder "$t" ''; else warn "$(T path_bad "$t")"; fi
+        if abs_path "$t" >/dev/null; then add_candidate folder "$t" ''; else warn "$(T path_bad "$(clean_text "$t")")"; fi
     done
     [ "${#C_DIR[@]}" -gt 0 ] || info "$(T version_nothing)"
     while [ "$i" -lt "${#C_DIR[@]}" ]; do
-        info "$(T version_folder "$(kind_label "${C_KIND[i]}")" "${C_DIR[i]}" "$(version_state "${C_DIR[i]}")")"
+        info "$(T version_folder "$(kind_label "${C_KIND[i]}")" "$(clean_text "${C_DIR[i]}")" "$(version_state "${C_DIR[i]}")")"
         i=$((i + 1))
     done
 }
@@ -4037,6 +4065,8 @@ main() {
     SPIN_HOLD=0
     BAR_ACTIVE=0
     STEP_LABEL=''
+    UI_BLANK=0
+    M_HEADER=()
     ui_setup
     SCRIPT_FILE=${BASH_SOURCE[0]:-}
     HIKARI_ERR=''
@@ -4088,7 +4118,7 @@ main() {
                     1) action=install ;;
                     2) action=uninstall ;;
                     3) show_versions; info '' ;;
-                    0) info "$(T cancelled)"; return 0 ;;
+                    0) say "$(T cancelled)"; return 0 ;;
                     *) warn "$(T invalid)" ;;
                 esac
             done
@@ -4098,7 +4128,7 @@ main() {
     if [ "$(id -u)" = 0 ]; then
         warn "$(T root_warn)"
         if [ "$NONINTERACTIVE" = 1 ]; then error "$(T root_refused)"; return 2; fi
-        confirm "$(T root_confirm)" no || { info "$(T cancelled)"; return 0; }
+        confirm "$(T root_confirm)" no || { say "$(T cancelled)"; return 0; }
     fi
 
     detail "$(T detecting)"
@@ -4108,35 +4138,37 @@ main() {
     else
         MPV_EXE=$(hikari_find_mpv)
     fi
-    [ -z "${MPV_HOME:-}" ] || detail "$(T mpv_home_note "$MPV_HOME")"
+    [ -z "${MPV_HOME:-}" ] || detail "$(T mpv_home_note "$(clean_text "$MPV_HOME")")"
     find_candidates
     choose_targets "$action"
     rc=$?
     if [ "$rc" != 0 ]; then
         [ "$USAGE_ERROR" = 1 ] && return 2
-        info "$(T cancelled)"
+        say "$(T cancelled)"
         return 0
     fi
     check_targets "$action"
     if [ "$REFUSED" = 1 ] && [ "$NONINTERACTIVE" = 1 ]; then return 2; fi
     if [ "${#TARGETS[@]}" -eq 0 ]; then
         if [ "$NONINTERACTIVE" = 1 ]; then error "$(T usage_none)"; return 2; fi
-        info "$(T cancelled)"
+        say "$(T cancelled)"
         return 0
     fi
 
     STAMP=$(date +%Y%m%d-%H%M%S)
     local done_count=0 t many=0 first=1
     [ "${#TARGETS[@]}" -le 1 ] || many=1
+    # Warnings or questions after the title: a blank line before the folders.
+    [ "$FANCY" != 1 ] || [ "$UI_BLANK" = 1 ] || ui_line ''
     # One folder: its name above the downloads. Several: above each block.
     if [ "$many" = 0 ]; then ui_folder "${TARGETS[0]}"; ui_line ''; fi
     if [ "$action" = install ]; then
         TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hikari-install.XXXXXX") || { error "$(T error_generic mktemp)"; return 1; }
-        if ! get_source; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
+        if ! get_source; then error "$(T error_generic "$(clean_text "$HIKARI_ERR")")"; return 1; fi
         # Only what some folder lacks is downloaded, all of it checked before
         # any folder is touched.
         plan_downloads
-        if ! get_artifacts; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
+        if ! get_artifacts; then error "$(T error_generic "$(clean_text "$HIKARI_ERR")")"; return 1; fi
         A4K_SRC=''
         A4K_ERROR=''
         A4K_SRC_SUMS=()
@@ -4155,9 +4187,9 @@ main() {
         fi
         first=0
         if [ "$action" = install ]; then
-            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
+            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "$(clean_text "${C_DIR[t]}")" "$(clean_text "$HIKARI_ERR")")"; fi
         else
-            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
+            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "$(clean_text "${C_DIR[t]}")" "$(clean_text "$HIKARI_ERR")")"; fi
         fi
     done
     hikari_cleanup
