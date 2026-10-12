@@ -26,7 +26,7 @@ If you use mpv's own `save-position-on-quit` (or start a file with `--start`), m
 
 ## The list
 
-`Alt+r`, or the button with the clock icon in the controls bar (it only shows when the list has something), opens *Continue watching*: the files you left half-watched, newest first, each with where you stopped, its length and when you watched it (*today*, *yesterday* or the date). Picking one opens it, and the question above comes up. A file that cannot be found right now (a network share that is not mounted, a file you deleted) shows greyed out as *Not available* and stays in the list until it comes back. *Clear history*, at the end, empties the list.
+`Alt+r`, or the button with the clock icon in the controls bar (it only shows when the list has something), opens *Continue watching*: the files you left half-watched, newest first, each with where you stopped, its length and when you watched it (*today*, *yesterday* or the date). Picking one opens it, and the question above comes up. A file that cannot be found right now (a network share that is not mounted, a file you deleted) shows greyed out as *Not available* and stays in the list until it comes back. *Clear history*, at the end, empties the list. The file playing at that moment is not saved again while it plays, only when you close it or move on, so it comes back then if you stopped halfway.
 
 The title of each row is the file name, without folder or extension.
 
