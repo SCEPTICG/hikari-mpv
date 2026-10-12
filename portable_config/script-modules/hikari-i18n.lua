@@ -404,6 +404,16 @@ local STRINGS = {
 		tr = 'Devam edilecek bir şey yok', uk = 'Немає чого продовжувати',
 		['zh-HK'] = '沒有未看完的影片', ['zh-hans'] = '没有未看完的视频',
 	},
+	-- Alt+r with enabled=no in script-opts/hikari-resume.conf.
+	resume_disabled = {
+		en = 'hikari: continue watching is off', es = 'hikari: seguir viendo está desactivado',
+		de = 'hikari: Weiterschauen ist ausgeschaltet', fr = 'hikari : la reprise de lecture est désactivée',
+		it = 'hikari: continua a guardare è disattivato', pl = 'hikari: oglądanie dalej jest wyłączone',
+		pt = 'hikari: continuar assistindo está desativado', ro = 'hikari: continuarea vizionării este dezactivată',
+		ru = 'hikari: продолжение просмотра отключено', tr = 'hikari: izlemeye devam etme kapalı',
+		uk = 'hikari: продовження перегляду вимкнено', ['zh-HK'] = 'hikari：繼續觀看已關閉',
+		['zh-hans'] = 'hikari：继续观看已关闭',
+	},
 	-- When a file of the list was last watched: today, yesterday, or a date
 	-- (`12 oct`, with the year only when it is not this year's). No "N days
 	-- ago": the plurals of Russian, Polish and Ukrainian would need rules.

@@ -31,7 +31,7 @@ https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 - **Subtitle styles**: *Dark box* (Netflix-like), *Thick outline* (Crunchyroll-like), *Classic yellow*, plus size and height (`Alt+t`).
 - **Anime4K upscaling**: an *Upscaling* menu and `Ctrl+0`–`Ctrl+7` for [Anime4K](https://github.com/bloc97/Anime4K)'s modes, including *Automatic*, which picks the mode from each video's resolution, with a quality that suits your graphics card.
 - **Readable titles**: `[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv` shows as `Sousou no Frieren · E05`, for local files and for links from Seanime and similar apps (with the access token kept out of the title bar). Seasons, specials and episode titles too.
-- **Continue watching**: open a file you left half-watched and hikari asks whether to continue where you were; `Alt+r` lists those files. Files only (streams from Seanime and similar apps keep their own place), and the list never leaves your computer.
+- **Continue watching**: open a file you left half-watched and hikari asks whether to continue where you were; `Alt+r` lists those files. Files only (streams from Seanime and similar apps keep their own place), and hikari never sends the list anywhere.
 - **Speed menu**: fixed speeds from 0.5× to 2× instead of a slider.
 - **A controls bar made for single episodes**: a filled timeline with the opening and ending marked, and hikari's own buttons.
 - **Update check**: a short notice and a button when a new hikari version is out. It never updates anything by itself, and it can be turned off.

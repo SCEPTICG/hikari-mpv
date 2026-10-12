@@ -28,13 +28,16 @@
 --   ending has started. The ending is the last chapter that
 --   script-modules/hikari-chapters.lua (shared with hikari-skip.lua) calls an
 --   ending (ED, Ending, Credits, エンディング...): the last one, so a file with
---   several episodes is not over at the first ending. The user's
---   extra_endings of hikari-skip.conf are not read. No known duration:
---   nothing is saved.
+--   several episodes is not over at the first ending, and only one that
+--   starts in the second half of the file (ENDING_SHARE), so "Opening
+--   Credits" at 0:00 is no ending. The user's extra_endings of
+--   hikari-skip.conf are not read. No known duration: nothing is saved.
 -- - When: every SAVE_INTERVAL seconds if mpv is not paused and the position
 --   moved by MOVED seconds or more since the last save, and at end-file
 --   (closing, next file of the playlist, quit) and shutdown, with the last
 --   time-pos, duration and chapters seen (mpv may have cleared them by then).
+--   After Clear history the file playing is only saved again when it ends,
+--   not by the timer, so it does not come straight back into the list.
 --   mpv.conf and save-position-on-quit are not touched.
 -- - The question: only with ask=yes, when mpv is still at the start
 --   (time-pos under START_TOLERANCE at file-loaded: with resume-playback or
@@ -52,7 +55,8 @@
 --   most history_size. One list per computer, never synchronised; this script
 --   makes no network connection at all. Read with a size cap and every field
 --   checked; a path must be an absolute file path (no URL), as it goes to
---   loadfile. A broken or unreadable file is an empty list and a warning,
+--   loadfile. Only the newest history_size entries are used, however many
+--   the file holds. A broken or unreadable file is an empty list and a warning,
 --   never an error, and it is only written again when there is something to
 --   save. Before each write the file is read again and only the entry of the
 --   file playing changes, so two mpv windows keep each other's entries.
@@ -66,9 +70,12 @@
 --   metadata's media-title is too often empty or junk), then `12:34 / 24:00 ·
 --   date` (today, yesterday or `12 oct`, the year only when it is not this
 --   year's). A file that cannot be found now (NAS not mounted, deleted) is a
---   grey row "Not available" that stays in the list. Whether each file exists
---   is checked once per opening of the menu, as a share that is offline can
---   make that slow.
+--   grey row "Not available" that stays in the list. Asking for a file on a
+--   share that is off can take tens of seconds on Windows, and mpv waits: so,
+--   once per opening of the menu, each root is checked first (\\host\share,
+--   the drive, /Volumes/<x>, /mnt/<x>, /media/<user>/<x>,
+--   /run/media/<user>/<x>, otherwise the file's folder), and only when it is
+--   there are its files checked, each once.
 --
 -- Options (script-opts/hikari-resume.conf): see that file.
 
@@ -106,6 +113,8 @@ local SAVE_INTERVAL = 10
 local MOVED = 1
 local MIN_POSITION = 30
 local WATCHED_SHARE = 0.95
+-- An ending chapter only counts when it starts at this share of the file or later.
+local ENDING_SHARE = 0.5
 local END_MARGIN = 10
 local START_TOLERANCE = 1
 local PROMPT_TIMEOUT = 3
@@ -320,6 +329,8 @@ local function read_list()
 	end
 	for _, entry in pairs(by_key) do entries[#entries + 1] = entry end
 	sort_entries(entries)
+	-- A list made by hand with thousands of entries: only the newest count.
+	for i = #entries, opts.history_size + 1, -1 do entries[i] = nil end
 	return entries
 end
 
@@ -411,7 +422,10 @@ local state = {
 	-- The question on screen: {token, position, title, paused_by_us, shown,
 	-- closed, restored, timer}; nil when none.
 	prompt = nil,
-	exists = nil, -- key -> file exists, for the list menu while it is open
+	-- For the list menu while it is open: key -> the file exists, root -> it
+	-- answers (see root_of).
+	exists = nil, roots = nil,
+	cleared = false, -- Clear history while this file plays: only end-file saves it
 }
 
 local function publish(entries)
@@ -447,13 +461,14 @@ local function format_date(t, now)
 	return i18n.t(date.year == today.year and 'resume_date' or 'resume_date_year', vars)
 end
 
--- Start of the last ending chapter, or nil.
+-- Start of the last ending chapter in the second half of a file of
+-- `duration` seconds, or nil.
 local KINDS = chapter_kinds.kinds()
-local function ending_start(chapters)
-	if type(chapters) ~= 'table' then return nil end
+local function ending_start(chapters, duration)
+	if type(chapters) ~= 'table' or not finite(duration) then return nil end
 	local start = nil
 	for _, chapter in ipairs(chapters) do
-		if type(chapter) == 'table' and finite(chapter.time) then
+		if type(chapter) == 'table' and finite(chapter.time) and chapter.time >= duration * ENDING_SHARE then
 			local kind = chapter_kinds.classify(KINDS, chapter.title)
 			if kind and kind.name == 'endings' and (not start or chapter.time > start) then start = chapter.time end
 		end
@@ -463,17 +478,50 @@ end
 
 local function is_watched(position, duration, chapters)
 	if position >= duration * WATCHED_SHARE then return true end
-	local ending = ending_start(chapters)
+	local ending = ending_start(chapters, duration)
 	return ending ~= nil and position >= ending
 end
 
 -- Menus ---------------------------------------------------------------------------
 
+-- Where a file lives, to ask once whether it answers: \\host\share\ or the
+-- drive on Windows; a mount point (/Volumes/<x>, /mnt/<x>, /media/<user>/<x>,
+-- /run/media/<user>/<x>) or else the file's folder elsewhere.
+local MOUNT_PATTERNS = {'^(/Volumes/[^/]+)/', '^(/mnt/[^/]+)/', '^(/media/[^/]+/[^/]+)/', '^(/run/media/[^/]+/[^/]+)/'}
+local function root_of(path, windows)
+	if windows then
+		local unc = path:match('^(\\\\[^\\]+\\[^\\]+)\\')
+		if unc then return unc .. '\\' end
+		local drive = path:match('^(%a:)\\')
+		return drive and drive .. '\\' or nil
+	end
+	for _, pattern in ipairs(MOUNT_PATTERNS) do
+		local root = path:match(pattern)
+		if root then return root end
+	end
+	local parent = path:match('^(.*)/[^/]*$')
+	if parent == '' then return '/' end
+	return parent
+end
+
+-- Does the file of `entry` exist? Its root first, once per opening of the
+-- menu: a root that is not there makes all its files unavailable without
+-- asking for each (a share that is off answers each question slowly).
 local function file_exists(entry, windows)
 	local key = path_key(entry.path, windows)
 	if state.exists[key] == nil then
-		local info = utils.file_info(entry.path)
-		state.exists[key] = info ~= nil and info.is_file == true
+		local root = root_of(entry.path, windows)
+		local root_key = root and path_key(root, windows)
+		if root_key and state.roots[root_key] == nil then
+			local info = utils.file_info(root)
+			state.roots[root_key] = info ~= nil and info.is_dir == true
+		end
+		if root_key and not state.roots[root_key] then
+			state.exists[key] = false
+		else
+			local info = utils.file_info(entry.path)
+			state.exists[key] = info ~= nil and info.is_file == true
+		end
 	end
 	return state.exists[key]
 end
@@ -482,7 +530,7 @@ end
 local function list_menu_data(entries)
 	entries = entries or read_list()
 	local windows, now = is_windows(), clock.now()
-	state.exists = state.exists or {}
+	state.exists, state.roots = state.exists or {}, state.roots or {}
 	local items = {}
 	for _, entry in ipairs(entries) do
 		local item = {title = clean(entry.title)}
@@ -538,10 +586,10 @@ end
 
 local function open_menu()
 	if not opts.enabled then
-		msg.verbose('Continue watching is off (hikari-resume.conf: enabled=no)')
+		mp.osd_message(i18n.t('resume_disabled'), 3)
 		return
 	end
-	state.exists = {}
+	state.exists, state.roots = {}, {}
 	local entries = read_list()
 	-- Keeps the button in step with a list another mpv window changed.
 	publish(entries)
@@ -592,7 +640,7 @@ local function save_position(position)
 end
 
 local function tick()
-	if not state.file or (state.prompt and not state.prompt.closed) then return end
+	if not state.file or state.cleared or (state.prompt and not state.prompt.closed) then return end
 	if mp.get_property_native('pause') ~= false then return end
 	local position = state.time
 	if not finite(position) then return end
@@ -667,7 +715,7 @@ end
 local function on_file_loaded()
 	state.serial = state.serial + 1
 	drop_prompt()
-	state.file, state.saved_at = nil, nil
+	state.file, state.saved_at, state.cleared = nil, nil, false
 	state.time = mp.get_property_number('time-pos')
 	state.duration = mp.get_property_number('duration')
 	state.chapters = mp.get_property_native('chapter-list')
@@ -735,7 +783,8 @@ local function clear_history()
 		msg.info('Continue watching: history cleared')
 	end
 	publish({})
-	state.saved_at = nil
+	-- The file playing comes back when it ends, not at the next tick.
+	state.saved_at, state.cleared = nil, true
 end
 
 mp.add_key_binding(nil, 'open-menu', open_menu)
@@ -761,7 +810,7 @@ end
 if HIKARI_RESUME_TEST then
 	return {
 		opts = opts, state = state, clock = clock,
-		file_path = file_path, normalize = normalize, path_key = path_key, title_of = title_of,
+		file_path = file_path, normalize = normalize, path_key = path_key, title_of = title_of, root_of = root_of,
 		read_list = read_list, write_list = write_list, list_menu_data = list_menu_data, prompt_data = prompt_data,
 		format_clock = format_clock, format_date = format_date, is_watched = is_watched, ending_start = ending_start,
 		tick = tick, save_position = save_position, open_menu = open_menu,

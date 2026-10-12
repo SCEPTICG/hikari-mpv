@@ -289,11 +289,12 @@ test('watched once the (last) ending chapter starts', function()
 	local s = load()
 	local chapters = {{time = 0, title = 'Prologue'}, {time = 90, title = 'Opening'}, {time = 180, title = 'Part A'},
 		{time = 1290, title = 'ED'}, {time = 1380, title = 'Preview'}}
-	eq(s.ending_start(chapters), 1290)
-	eq(s.ending_start({{time = 600, title = 'Ending'}, {time = 1200, title = 'エンディング'}}), 1200, 'the last one')
-	eq(s.ending_start({{time = 600, title = 'Credits Roll'}}), 600)
-	eq(s.ending_start({{time = 600, title = 'Edward'}}), nil)
-	eq(s.ending_start(nil), nil)
+	eq(s.ending_start(chapters, 1420), 1290)
+	eq(s.ending_start({{time = 900, title = 'Ending'}, {time = 1200, title = 'エンディング'}}, 1420), 1200, 'the last one')
+	eq(s.ending_start({{time = 800, title = 'Credits Roll'}}, 1420), 800)
+	eq(s.ending_start({{time = 900, title = 'Edward'}}, 1420), nil)
+	eq(s.ending_start(nil, 1420), nil)
+	eq(s.ending_start(chapters, nil), nil, 'no duration')
 	open(EP, {chapters = chapters})
 	play_to(1280)
 	eq(saved()[1].position, 1280)
@@ -462,6 +463,7 @@ test('list: newest first, title · time · date, then Clear history', function()
 		entry('/a/march.mkv', 3723, march, 5400), entry('/a/yesterday.mkv', 90, yesterday)}))
 	load(nil, true)
 	for _, p in ipairs({'/a/old.mkv', '/a/today.mkv', '/a/march.mkv', '/a/yesterday.mkv'}) do mock.files[p] = {is_file = true} end
+	mock.files['/a'] = {is_dir = true}
 	eq(mock.props[AVAILABLE], true, 'published at start-up')
 	mock.bindings['open-menu']()
 	local data, message = last_menu()
@@ -505,6 +507,7 @@ test('a file that cannot be found: grey row, Not available, kept', function()
 	write(LIST, list_json({entry('/nas/ep1.mkv', 100), entry('/a/ep2.mkv', 200, NOW - 120)}))
 	load(nil, true)
 	mock.files['/a/ep2.mkv'] = {is_file = true}
+	mock.files['/a'] = {is_dir = true}
 	mock.bindings['open-menu']()
 	local data = last_menu()
 	eq(data.items[1].title, 'ep1'); eq(data.items[1].hint, 'No disponible')
@@ -543,6 +546,7 @@ test('an open list is updated when a position is saved', function()
 	mock.bindings['open-menu']()
 	mock.set(MENU_TYPE_PROP, 'hikari-resume')
 	mock.files[EP] = {is_file = true}
+	mock.files['/mnt/anime'] = {is_dir = true}
 	open(EP)
 	play_to(100)
 	local data, message = last_menu()
@@ -734,6 +738,109 @@ test('enabled=no: nothing saved, nothing asked, no button, no menu', function()
 	mock.bindings['open-menu']()
 	eq(#mock.commands, 0)
 	eq(saved()[1].position, 754)
+end)
+
+test('an ending chapter in the first half of the file is no ending', function()
+	local s = load()
+	local chapters = {{time = 0, title = 'Opening Credits'}, {time = 90, title = 'Part A'}, {time = 700, title = 'Ending'},
+		{time = 720, title = 'Part B'}}
+	eq(s.ending_start(chapters, 1420), nil, 'both before the half')
+	eq(s.is_watched(100, 1420, chapters), false)
+	eq(s.ending_start(chapters, 1400), 700, 'exactly at the half counts')
+	open(EP, {chapters = chapters})
+	play_to(100)
+	eq(saved()[1].position, 100, 'saved, not taken as watched')
+	play_to(800)
+	eq(saved()[1].position, 800)
+end)
+
+test('a list with thousands of entries: only the newest history_size are used', function()
+	local list = {}
+	for i = 1, 3000 do list[i] = entry('/a/ep' .. i .. '.mkv', 100, NOW - 4000 + i) end
+	write(LIST, list_json(list))
+	local s = load({history_size = '5'}, true)
+	local read_back = s.read_list()
+	eq(#read_back, 5)
+	eq(read_back[1].path, '/a/ep3000.mkv'); eq(read_back[5].path, '/a/ep2996.mkv')
+	mock.bindings['open-menu']()
+	eq(#last_menu().items, 6, 'five rows and Clear history')
+	load(nil, true)
+	mock.bindings['open-menu']()
+	eq(#last_menu().items, 31, 'default size: thirty rows')
+end)
+
+test('roots: a share or mount that does not answer is asked once for all its files', function()
+	local s = load()
+	eq(s.root_of('\\\\NAS\\anime\\Frieren\\ep.mkv', true), '\\\\NAS\\anime\\')
+	eq(s.root_of('C:\\Anime\\ep.mkv', true), 'C:\\')
+	eq(s.root_of('/Volumes/data/anime/ep.mkv', false), '/Volumes/data')
+	eq(s.root_of('/mnt/nas/anime/ep.mkv', false), '/mnt/nas')
+	eq(s.root_of('/media/me/disk/ep.mkv', false), '/media/me/disk')
+	eq(s.root_of('/run/media/me/disk/a/ep.mkv', false), '/run/media/me/disk')
+	eq(s.root_of('/home/me/anime/ep.mkv', false), '/home/me/anime', 'otherwise the folder')
+	eq(s.root_of('/ep.mkv', false), '/')
+	local list = {}
+	for i = 1, 6 do list[i] = entry('/mnt/nas/anime/ep' .. i .. '.mkv', 100, NOW - i) end
+	list[7] = entry('/home/me/ep7.mkv', 100, NOW - 7)
+	write(LIST, list_json(list))
+	load(nil, true)
+	mock.files['/home/me'] = {is_dir = true}
+	mock.files['/home/me/ep7.mkv'] = {is_file = true}
+	local utils = package.loaded['mp.utils']
+	local real, asked = utils.file_info, {}
+	utils.file_info = function(path)
+		asked[#asked + 1] = path
+		return real(path)
+	end
+	mock.bindings['open-menu']()
+	local data = last_menu()
+	for i = 1, 6 do eq(data.items[i].hint, 'No disponible', 'row ' .. i); eq(data.items[i].selectable, false) end
+	eq(data.items[7].title, 'ep7'); eq(data.items[7].selectable, nil, 'a file that is there')
+	local nas = 0
+	for _, path in ipairs(asked) do if path:find('/mnt/nas', 1, true) then nas = nas + 1 end end
+	eq(nas, 1, 'one question for the six files of the share: ' .. table.concat(asked, ' '))
+	-- An update of the open menu asks nothing again; a new opening asks again.
+	mock.set(MENU_TYPE_PROP, 'hikari-resume')
+	local before = #asked
+	mock.set_script_opt('hikari-language', 'en')
+	eq(#asked, before, 'cached while open')
+	mock.bindings['open-menu']()
+	eq(#asked, before + 3, 'root of the share, folder and file of the other')
+	utils.file_info = real
+end)
+
+test('a root that answers: each file is checked', function()
+	write(LIST, list_json({entry('/mnt/nas/a.mkv', 100), entry('/mnt/nas/b.mkv', 100, NOW - 120)}))
+	load(nil, true)
+	mock.files['/mnt/nas'] = {is_dir = true}
+	mock.files['/mnt/nas/a.mkv'] = {is_file = true}
+	mock.bindings['open-menu']()
+	local data = last_menu()
+	eq(data.items[1].selectable, nil); eq(data.items[2].hint, 'No disponible')
+end)
+
+test('enabled=no: Alt+r says so on screen', function()
+	load({enabled = 'no'})
+	mock.bindings['open-menu']()
+	eq(mock.osd[1], 'hikari: seguir viendo está desactivado')
+	eq(#mock.commands, 0)
+end)
+
+test('after Clear history the file playing only comes back when it ends', function()
+	load()
+	open(EP)
+	play_to(100)
+	eq(#saved(), 1)
+	mock.messages['clear-history']()
+	play_to(200); play_to(300)
+	eq(#saved(), 0, 'not saved again while it plays')
+	eq(mock.props[AVAILABLE], false)
+	ends()
+	eq(saved()[1].position, 300, 'saved when it ends')
+	eq(mock.props[AVAILABLE], true)
+	open('/a/next.mkv')
+	play_to(100)
+	eq(#saved(), 2, 'the next file is saved as usual')
 end)
 
 test('the script makes no network connection and runs no program', function()

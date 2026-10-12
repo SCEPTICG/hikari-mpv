@@ -1,6 +1,6 @@
 ---
 title: "Continue watching in mpv with hikari"
-description: "hikari remembers where you left each video file and asks whether to continue from there. Files only, never streams; the list stays on your computer."
+description: "hikari remembers where you left each video file and asks whether to continue from there. Files only, never streams; hikari never sends the list anywhere."
 ---
 
 # Continue watching
@@ -20,6 +20,8 @@ A file counts as watched, and leaves the list, once you reach 95 % of it or the 
 
 It works with files on your disk or on a network share (`C:\Anime\...`, `\\NAS\anime\...`, `/Volumes/data/...`, `/mnt/...`). Anything mpv opens from a link (`https://`, `ytdl://` and the like) is left alone: nothing is saved and nothing is asked. Seanime and similar apps already keep your position for what they stream, and two players jumping to a position each would fight; their links also carry an access token, which hikari never writes down.
 
+This goes by how mpv opens the file, not by the app that started it: if an app such as Seanime hands mpv a file on your disk by its path (not by a link), hikari treats it as any other file and may ask on top of whatever that app does. If that bothers you, turn it off with `enabled=no` (see [Options](#options)).
+
 If you use mpv's own `save-position-on-quit` (or start a file with `--start`), mpv has already jumped when the file opens, and hikari does not ask again.
 
 ## The list
@@ -32,7 +34,7 @@ The title of each row is the file name, without folder or extension.
 
 The list is `hikari-resume.json`, in mpv's config folder. For each file: its full path, its name, where you stopped, its length and when. It keeps the 30 most recent files (the oldest go first), and only those started and not finished.
 
-It never leaves your computer: this script makes no network connection at all, and each computer has its own list. The installer does not copy it into its backups, and uninstalling hikari deletes it. Two mpv windows open at once each keep their own files in the same list.
+hikari never sends it anywhere: this script makes no network connection at all, and each computer has its own list. The one exception is up to you: if mpv's config folder is synchronised (your dotfiles in a repository, a `portable_config` in a cloud folder), the list travels with it, paths and all. The installer does not copy it into its backups, and uninstalling hikari deletes it. Two mpv windows open at once each keep their own files in the same list.
 
 ## Options
 
