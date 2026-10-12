@@ -1809,29 +1809,29 @@ read_record() {
         case $key in
             file)
                 if record_path_ok "$value"; then REC_FILES[${#REC_FILES[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             disabled | broken)
                 if pair_ok "$value"; then
                     if [ "$key" = disabled ]; then REC_DISABLED[${#REC_DISABLED[@]}]=$value; else REC_BROKEN[${#REC_BROKEN[@]}]=$value; fi
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             a4k_moved)
                 # shaders-desactivados/<file>|shaders/<file>: never anything else.
                 if pair_ok "$value" && [ "${value#"$SHADERS_DISABLED_DIR"/}" != "$value" ] &&
                     [ "${value#*|"$SHADERS_DIR"/}" != "$value" ]; then
                     REC_MOVED[${#REC_MOVED[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             a4k_commented | a4k_commented_mpv)
                 if recordable_line "$value"; then
                     if [ "$key" = a4k_commented ]; then REC_COMMENTED[${#REC_COMMENTED[@]}]=$value
                     else REC_COMMENTED_MPV[${#REC_COMMENTED_MPV[@]}]=$value; fi
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             sha256)
                 if sum_entry_ok "$value"; then REC_SUMS[${#REC_SUMS[@]}]=$value
-                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$line")"; fi
+                elif [ "$quiet" != 1 ]; then warn "$(T record_bad "$(clean_text "$line")")"; fi
                 ;;
             *)
                 REC_KEYS[${#REC_KEYS[@]}]=$key
@@ -2294,7 +2294,7 @@ candidate_tags() {
     local dir=${C_DIR[$1]} tags='' f
     if read_record "$dir" 1; then
         rec_get hikari_version
-        tags=$(T tag_installed "$REC_VALUE")
+        tags=$(T tag_installed "$(clean_text "$REC_VALUE")")
     elif sosc_present "$dir"; then
         tags=$(T tag_sosc)
     else
@@ -3503,7 +3503,7 @@ restore_pairs() {
     local entry from to
     RESTORED=0
     for entry in ${1+"$@"}; do
-        if ! pair_ok "$entry"; then warn "$(T record_bad "$entry")"; continue; fi
+        if ! pair_ok "$entry"; then warn "$(T record_bad "$(clean_text "$entry")")"; continue; fi
         from="$CFG/${entry%%|*}"
         to="$CFG/${entry#*|}"
         if ! is_inside "$from" "$CFG" || ! is_inside "$to" "$CFG"; then warn "$(T outside_target "$(clean_text "$from")" "$(clean_text "$CFG")")"; continue; fi
@@ -3584,7 +3584,7 @@ uninstall_steps() {
             remove_item "$CFG/script-opts/$c" "$CFG" || return 1
         elif [ "$before" = yes ]; then
             rec_get first_backup
-            notice "$(T conf_left "script-opts/$c" "$REC_VALUE")"
+            notice "$(T conf_left "script-opts/$c" "$(clean_text "$REC_VALUE")")"
         elif [ -f "$CFG/script-opts/$c" ]; then
             notice "$(T conf_unknown "script-opts/$c")"
         fi
