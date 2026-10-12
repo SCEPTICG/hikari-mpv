@@ -3472,6 +3472,56 @@ Test-Case 'summary on a console: with no player, the link to get mpv stays once 
     }
 }
 
+Test-Case 'folders with control characters: every message, list and menu entry shows them without' {
+    $d = New-TestDir 'ctlpath'
+    $e = New-FakeEnv $d
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    # A C1 CSI is allowed in a Windows folder name; ESC (CSI and OSC) only
+    # elsewhere. The OSC without its ';': -Target splits folders at ';'.
+    $seqs = @([string][char]0x9B)
+    if ([System.IO.Path]::DirectorySeparatorChar -ne '\') { $seqs += @(([string][char]27 + '['), ([string][char]27 + ']0PWNED' + [char]7)) }
+    $script:FakeEnvBase = $d
+    function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
+    try {
+        $n = 0
+        foreach ($seq in $seqs) {
+            $n++
+            $ro = P @($d, ('ro' + $n + $seq + '31mZQ'))
+            $nm = P @($d, ('nm' + $n + $seq + '31mZQ'))
+            $roShown = [regex]::Replace($ro, '\p{Cc}', '')
+            $nmShown = [regex]::Replace($nm, '\p{Cc}', '')
+            Set-TestFile (P @($ro, 'mpv.conf')) 'x'
+            Set-TestFile (P @($nm, 'letter.txt')) 'x'
+            $script:FakeReadOnly = @($ro)
+            # Without questions: read-only, not mpv's (refused), --version.
+            $script:HikariWarnings.Clear()
+            $text = Get-ShownText { [void](Invoke-HikariMain -Action 'install' -Target @($ro) -Yes $true) }
+            Assert-True (-not $text.Contains($seq)) ('-Yes, read-only: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains('Cannot write to ' + $roShown + '.')) ('read-only, said without it (' + $n + '): ' + $text)
+            $text = Get-ShownText { $script:CtlCode = Invoke-HikariMain -Action 'install' -Target @($nm) -Yes $true }
+            Assert-Equal $script:CtlCode 2 ('refused (' + $n + ')')
+            Assert-True (-not $text.Contains($seq)) ('-Yes, not mpv''s: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains($nmShown + ' does not look like')) ('not mpv''s, said without it (' + $n + '): ' + $text)
+            foreach ($w in $script:HikariWarnings) { Assert-True (-not $w.Contains($seq)) ('warning without it: ' + $w) }
+            Assert-Equal @(Get-ChildItem -LiteralPath $nm -Force).Count 1 ('nothing written (' + $n + ')')
+            $text = Get-ShownText { [void](Invoke-HikariMain -Action 'install' -Target @($ro) -Yes $true -ShowVersion $true) }
+            Assert-True (-not $text.Contains($seq) -and $text.Contains($roShown)) ('-ShowVersion without it (' + $n + '): ' + $text)
+            # The numbered list, the menu entry and the folder above its steps.
+            $cand = New-HikariCandidate -Env $e -Kind 'folder' -Exe '' -ConfigDir $ro -Portable $false
+            $text = Get-ShownText { Show-HikariCandidates @($cand); $script:HikariVerbose = $false; Write-HikariFolderHeader $cand }
+            Assert-True (-not $text.Contains($seq)) ('list and header: nothing with the sequence (' + $n + '): ' + $text)
+            Assert-True ($text.Contains('Config: ' + $roShown) -and $text.Contains(' ' + $roShown)) ('list and header without it (' + $n + '): ' + $text)
+            $item = New-HikariCandidateItem $cand
+            Assert-True (-not ([string]::Join('|', @($item.Details)) + $item.Summary).Contains($seq)) ('menu entry without it (' + $n + ')')
+            Assert-Equal $cand.ConfigDir $ro ('the folder itself is kept as it is (' + $n + ')')
+        }
+    }
+    finally {
+        Remove-Item Function:\New-HikariEnvironment
+        $script:FakeReadOnly = @()
+    }
+}
+
 Test-Case 'download: redirects only to HTTPS on GitHub; progress and size limit while copying' {
     $from = [System.Uri]'https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     Assert-Equal (Get-HikariRedirectUri -From $from -Location 'https://release-assets.githubusercontent.com/a?b=1').AbsoluteUri 'https://release-assets.githubusercontent.com/a?b=1' 'release assets'

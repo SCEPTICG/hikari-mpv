@@ -1819,6 +1819,44 @@ check 'terminal, MPV_HOME with an escape sequence: installs into it' test "$rc" 
 check 'terminal, MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mstom"
 # shellcheck disable=SC2088 # a ~ as shown, not to expand.
 check 'terminal, MPV_HOME with an escape sequence: shown without it' has "$out" '~/cu[31mstom'
+# Every message that names such a folder shows it without control characters
+# too: read-only, not mpv's, the numbered list, --version; with the menus,
+# with --no-menu and with no terminal.
+h=$(newhome ctl-ro)
+ro_dir="$h/ro${esc}[31mZQ"
+mkdir -p "$ro_dir"
+: >"$ro_dir/mpv.conf"
+chmod 555 "$ro_dir"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ro_dir" pty_run "$h" '\r' '\r'
+check 'terminal, read-only MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mZQ"
+check 'terminal, read-only MPV_HOME with an escape sequence: said without it' \
+    has "$out" "Cannot write to $h/ro[31mZQ."
+LC_ALL=C PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$ro_dir" pty_run "$h" '1\r' '1\r'
+check '--no-menu, read-only MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mZQ"
+check '--no-menu, read-only MPV_HOME with an escape sequence: listed and said without it' \
+    test -n "$(grep -F "Config: $h/ro[31mZQ" "$out")" -a -n "$(grep -F "Skipping $h/ro[31mZQ." "$out")"
+T_MPV_HOME="$ro_dir" run "$h" --yes --anime4k no
+check 'no tty, read-only MPV_HOME with an escape sequence: not written out' hasnt "$out" "${esc}[31mZQ"
+check 'no tty, read-only MPV_HOME with an escape sequence: said without it' has "$out" "Cannot write to $h/ro[31mZQ."
+T_MPV_HOME="$ro_dir" run "$h" --version
+check '--version, MPV_HOME with an escape sequence: not written out' hasnt "$out" "${esc}[31mZQ"
+check '--version, MPV_HOME with an escape sequence: shown without it' has "$out" "$h/ro[31mZQ"
+chmod 755 "$ro_dir"
+h=$(newhome ctl-notmpv)
+nm_dir="$h/nm${esc}]0;PWNED${esc}\\x"
+mkdir -p "$nm_dir"
+printf 'x' >"$nm_dir/letter.txt"
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$nm_dir" pty_run "$h" '\r' '\r' 'n'
+check 'terminal, MPV_HOME not mpv'"'"'s with an escape sequence: not written to the terminal' \
+    test "$(count_of "$out" "${esc}]")" = 0 -a "$(ls "$nm_dir")" = letter.txt
+check 'terminal, MPV_HOME not mpv'"'"'s with an escape sequence: said without it' \
+    has "$out" "$h/nm]0;PWNED\\x does not look like an mpv config folder"
+LC_ALL=C PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$nm_dir" pty_run "$h" '1\r' '1\r' 'n\r'
+check '--no-menu, MPV_HOME not mpv'"'"'s with an escape sequence: not written to the terminal' \
+    test "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "Config: $h/nm]0;PWNED\\x" "$out")"
+T_MPV_HOME="$nm_dir" run "$h" --yes --anime4k no
+check 'no tty, MPV_HOME not mpv'"'"'s with an escape sequence: refused, not written out' \
+    test "$rc" = 2 -a "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "$h/nm]0;PWNED\\x does not look" "$out")"
 # Typed answers in the summary are indented as it is: the folder of "Other
 # folder..." and a yes/no asked in writing.
 sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \

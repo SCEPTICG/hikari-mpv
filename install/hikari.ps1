@@ -720,11 +720,21 @@ function Set-HikariLanguage {
     }
 }
 
+# Text arguments go in without control characters (C0, DEL and C1: \p{Cc}):
+# a message only shows them, and a folder (from MPV_HOME, typed or found) or
+# what an error says must not send escape sequences to the console.
 function T {
     param([string]$Key, [object[]]$FormatArgs = @())
     $text = $script:HikariStrings[$Key]
     if ($null -eq $text) { $text = $Key }
-    if (@($FormatArgs).Count -gt 0) { return ($text -f $FormatArgs) }
+    if (@($FormatArgs).Count -gt 0) {
+        # A copy: the caller's array stays as it is.
+        $shown = [object[]]$FormatArgs.Clone()
+        for ($i = 0; $i -lt $shown.Length; $i++) {
+            if ($shown[$i] -is [string]) { $shown[$i] = [regex]::Replace($shown[$i], '\p{Cc}', '') }
+        }
+        return ($text -f $shown)
+    }
     return $text
 }
 
@@ -4250,18 +4260,20 @@ function Get-HikariRestoreMessage {
 # The name of a folder in the summary: its player, or the folder itself.
 function Get-HikariFolderLabel {
     param($Candidate)
-    if ($Candidate.Kind -eq 'folder') { return [string]$Candidate.ConfigDir }
+    if ($Candidate.Kind -eq 'folder') { return (Get-HikariCleanText $Candidate.ConfigDir 0) }
     return (Get-HikariKindLabel $Candidate.Kind)
 }
 
 # "  > AnimeJaNai  C:\...\portable_config", above the steps of a folder.
 function Write-HikariFolderHeader {
     param($Candidate)
+    # Only shown: without control characters (see Get-HikariCleanText).
+    $dir = Get-HikariCleanText $Candidate.ConfigDir 0
     if ($Candidate.Kind -eq 'folder') {
-        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + $Candidate.ConfigDir), '')
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + $dir), '')
     }
     else {
-        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + (Get-HikariKindLabel $Candidate.Kind) + '  '), '', $Candidate.ConfigDir, 'DarkGray')
+        Write-HikariUi @('  ', '', $script:GlyphArrow, 'Cyan', (' ' + (Get-HikariKindLabel $Candidate.Kind) + '  '), '', $dir, 'DarkGray')
     }
 }
 
@@ -4562,8 +4574,10 @@ function New-HikariCandidateItem {
     $label = $kind
     $tags = Get-HikariCandidateTags $Candidate
     if ($tags) { $label += '  ' + $tags }
-    $summary = $kind + ' (' + (Format-HikariFit -Text $Candidate.ConfigDir -Max 40 -Middle) + ')'
-    return (New-HikariMenuItem -Label $label -Details @($Candidate.ConfigDir) -Summary $summary)
+    # Only shown: without control characters (see Get-HikariCleanText).
+    $dir = Get-HikariCleanText $Candidate.ConfigDir 0
+    $summary = $kind + ' (' + (Format-HikariFit -Text $dir -Max 40 -Middle) + ')'
+    return (New-HikariMenuItem -Label $label -Details @($dir) -Summary $summary)
 }
 
 # Which folders to work on: Indexes (into $List), Other (type a folder) and

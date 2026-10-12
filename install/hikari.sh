@@ -2947,11 +2947,11 @@ migrate_sosc() {
         if [ ! -e "$CFG/$ORIGINALS_DIR" ] && [ ! -L "$CFG/$ORIGINALS_DIR" ]; then
             mv "$CFG/$SOSC_ORIGINALS_DIR" "$CFG/$ORIGINALS_DIR" || return 1
         elif [ -L "$CFG/$SOSC_ORIGINALS_DIR/script-opts" ]; then
-            warn "$(T sosc_link_left "$CFG/$SOSC_ORIGINALS_DIR/script-opts")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$SOSC_ORIGINALS_DIR/script-opts")")"
         elif [ -L "$CFG/$ORIGINALS_DIR" ]; then
-            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$ORIGINALS_DIR")")"
         elif [ -L "$CFG/$ORIGINALS_DIR/script-opts" ]; then
-            warn "$(T sosc_link_left "$CFG/$ORIGINALS_DIR/script-opts")"
+            warn "$(T sosc_link_left "$(clean_text "$CFG/$ORIGINALS_DIR/script-opts")")"
         else
             for f in "$CFG/$SOSC_ORIGINALS_DIR"/script-opts/*; do
                 [ -L "$f" ] && continue
@@ -2970,7 +2970,7 @@ migrate_sosc() {
     # writing it), that one has everything. Never written through a link
     # (broken or not).
     if [ "$has_rec" = 1 ] && [ -L "$CFG/$RECORD_NAME" ]; then
-        warn "$(T sosc_link_left "$CFG/$RECORD_NAME")"
+        warn "$(T sosc_link_left "$(clean_text "$CFG/$RECORD_NAME")")"
     elif [ "$has_rec" = 1 ] && [ ! -e "$CFG/$RECORD_NAME" ]; then
         {
             printf '%s\n' "$RECORD_HEADER"
@@ -3008,7 +3008,7 @@ migrate_sosc() {
     for f in "$CFG"-respaldo-sosc-*; do
         if [ -d "$f" ] && [ ! -L "$f" ]; then count=$((count + 1)); fi
     done
-    [ "$count" = 0 ] || notice "$(T sosc_old_backups "$count" "$CFG")"
+    [ "$count" = 0 ] || notice "$(T sosc_old_backups "$count" "$(clean_text "$CFG")")"
     return 0
 }
 
@@ -3029,8 +3029,8 @@ make_backup() {
     for name in "${BACKUP_ITEMS[@]}"; do
         p="$cfg/$name"
         [ -e "$p" ] || [ -L "$p" ] || continue
-        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$p")"; continue; fi
-        if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$p")"; continue; fi
+        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
+        if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         items[${#items[@]}]=$name
     done
     [ "${#items[@]}" -gt 0 ] || return 0
@@ -3082,9 +3082,9 @@ prune_backups() {
         [ -n "$protect" ] && [ "$(abs_path "$protect")" = "$(abs_path "$path")" ] && continue
         [ -f "$path/$BACKUP_ORIGINAL_MARK" ] && continue
         if is_inside "$path" "$parent" && rm -rf "$path"; then
-            detail "$(T backup_pruned "$path")"
+            detail "$(T backup_pruned "$(clean_text "$path")")"
         else
-            warn "$(T backup_prune_failed "$path")"
+            warn "$(T backup_prune_failed "$(clean_text "$path")")"
         fi
     done <<EOF
 $(printf '%s' "$list" | sort -k1,1r -k2,2nr)
@@ -3182,7 +3182,7 @@ move_to_disabled() {
     fi
     mv "$p" "$dest" || return 1
     MOVED_PAIR="$(rel_path "$dest" "$CFG")|$rel"
-    detail "$(T moved "$rel" "${MOVED_PAIR%%|*}")"
+    detail "$(T moved "$(clean_text "$rel")" "$(clean_text "${MOVED_PAIR%%|*}")")"
 }
 
 uosc_present() { [ -d "$1/scripts/uosc" ] || [ -f "$1/scripts/uosc.lua" ]; }
@@ -3234,7 +3234,7 @@ backup_step() {
         return 1
     fi
     if [ -n "$BACKUP" ]; then step_end ok; else step_end quiet; fi
-    [ -z "$BACKUP" ] || detail "$(T backup_done "$BACKUP")"
+    [ -z "$BACKUP" ] || detail "$(T backup_done "$(clean_text "$BACKUP")")"
 }
 
 # What to add to an error once the folder has been changed: where the backup
@@ -3248,14 +3248,14 @@ install_target() {
     CFG=${C_DIR[$1]}
     local kind=${C_KIND[$1]} exe=${C_EXE[$1]} had_record=0
     detail ''
-    detail "$(T installing_to "$CFG")"
+    detail "$(T installing_to "$(clean_text "$CFG")")"
     BACKUP=''
     if [ -d "$CFG" ]; then
         # A record of sosc counts too: its first backup, from before sosc, is the original.
         if [ -e "$CFG/$RECORD_NAME" ] || [ -e "$CFG/$SOSC_RECORD" ]; then had_record=1; fi
         backup_step || return 1
         if [ -n "$BACKUP" ] && [ "$had_record" = 0 ] && ! other_original_backup "$CFG" "$BACKUP"; then
-            printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$BACKUP/$BACKUP_ORIGINAL_MARK"
+            printf '%s\n' "$(T backup_original_note)" >"$BACKUP/$BACKUP_ORIGINAL_MARK" || warn "$(clean_text "$BACKUP/$BACKUP_ORIGINAL_MARK")"
         fi
     else
         mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
@@ -3267,7 +3267,7 @@ install_target() {
         return 1
     fi
     step_end ok
-    detail_ok "$(T install_ok "$CFG")"
+    detail_ok "$(T install_ok "$(clean_text "$CFG")")"
     ui_line ''
     ui_line "  $(paint 32 "$G_OK") $(T ui_installed "$SRC_VERSION" "$(folder_label "$1")")"
 }
@@ -3327,7 +3327,7 @@ install_steps() {
     find_conflicts "$CFG"
     if [ "${#CONFLICTS[@]}" -gt 0 ]; then
         warn "$(T conflicts_found)"
-        for c in "${CONFLICTS[@]}"; do warn "  - $(rel_path "$c" "$CFG")"; done
+        for c in "${CONFLICTS[@]}"; do warn "  - $(clean_text "$(rel_path "$c" "$CFG")")"; done
         if confirm "$(T conflicts_confirm "$DISABLED_DIR")" yes; then
             for c in "${CONFLICTS[@]}"; do
                 move_to_disabled "$c" || return 1
@@ -3345,7 +3345,7 @@ install_steps() {
     find_broken_scripts "$CFG"
     if [ "${#BROKEN[@]}" -gt 0 ]; then
         warn "$(T broken_found)"
-        for c in "${BROKEN[@]}"; do warn "  - $(rel_path "$c" "$CFG")"; done
+        for c in "${BROKEN[@]}"; do warn "  - $(clean_text "$(rel_path "$c" "$CFG")")"; done
         if confirm "$(T broken_confirm "$DISABLED_DIR")" yes; then
             for c in "${BROKEN[@]}"; do
                 move_to_disabled "$c" || return 1
@@ -3447,7 +3447,7 @@ install_steps() {
     if [ "$kind" = mpv ] && [ -n "$exe" ]; then
         set_conf_option "$CFG/script-opts/thumbfast.conf" mpv_path "$exe" \
             'Added by the hikari installer: mpv started from Finder or another app may not find mpv in its PATH.' || return 1
-        detail "$(T mpvpath_set "$exe")"
+        detail "$(T mpvpath_set "$(clean_text "$exe")")"
     fi
 
     # f. Managed blocks.
@@ -3506,7 +3506,7 @@ restore_pairs() {
         if ! pair_ok "$entry"; then warn "$(T record_bad "$entry")"; continue; fi
         from="$CFG/${entry%%|*}"
         to="$CFG/${entry#*|}"
-        if ! is_inside "$from" "$CFG" || ! is_inside "$to" "$CFG"; then warn "$(T outside_target "$from" "$CFG")"; continue; fi
+        if ! is_inside "$from" "$CFG" || ! is_inside "$to" "$CFG"; then warn "$(T outside_target "$(clean_text "$from")" "$(clean_text "$CFG")")"; continue; fi
         [ -e "$from" ] || [ -L "$from" ] || continue
         if [ -e "$to" ] || [ -L "$to" ]; then warn "$(T restore_skipped "${entry%%|*}" "${entry#*|}")"; continue; fi
         mkdir -p "${to%/*}" || return 1
@@ -3532,7 +3532,7 @@ was_there() {
 uninstall_target() {
     CFG=${C_DIR[$1]}
     detail ''
-    detail "$(T uninstalling_from "$CFG")"
+    detail "$(T uninstalling_from "$(clean_text "$CFG")")"
     BACKUP=''
     backup_step || return 1
     step_begin "$(T ui_removing)"
@@ -3542,7 +3542,7 @@ uninstall_target() {
         return 1
     fi
     step_end ok
-    detail_ok "$(T uninstall_ok "$CFG")"
+    detail_ok "$(T uninstall_ok "$(clean_text "$CFG")")"
     ui_line ''
     ui_line "  $(paint 32 "$G_OK") $(T ui_removed "$(folder_label "$1")")"
 }
@@ -3730,8 +3730,8 @@ show_candidates() { # numbered list of the candidates in LIST
         idx=${LIST[i]}
         tags=$(candidate_tags "$idx")
         info " $((i + 1))) $(kind_label "${C_KIND[idx]}")  $tags"
-        [ -z "${C_EXE[idx]}" ] || info "$(T cand_exe "${C_EXE[idx]}")"
-        info "$(T cand_config "${C_DIR[idx]}")"
+        [ -z "${C_EXE[idx]}" ] || info "$(T cand_exe "$(clean_text "${C_EXE[idx]}")")"
+        info "$(T cand_config "$(clean_text "${C_DIR[idx]}")")"
         i=$((i + 1))
     done
 }
@@ -3773,11 +3773,11 @@ read_folder() {
         p=$TRIMMED
         p=${p#\"}; p=${p%\"}; p=${p#\'}; p=${p%\'}
         case $p in '' | 0) return 1 ;; esac
-        if ! p=$(abs_path "$p"); then warn "$(T path_bad "$REPLY_LINE")"; continue; fi
+        if ! p=$(abs_path "$p"); then warn "$(T path_bad "$(clean_text "$REPLY_LINE")")"; continue; fi
         parent=${p%/*}
         [ -n "$parent" ] || parent=/
         if [ -d "$p" ] || [ -d "$parent" ]; then PICKED_DIR=$p; return 0; fi
-        warn "$(T folder_missing "$p")"
+        warn "$(T folder_missing "$(clean_text "$p")")"
     done
 }
 
@@ -3804,7 +3804,7 @@ choose_targets() {
     CHOSEN=()
     if [ "${#OPT_TARGETS[@]}" -gt 0 ]; then
         for i in "${OPT_TARGETS[@]}"; do
-            if ! abs_path "$i" >/dev/null; then error "$(T path_bad "$i")"; REFUSED=1; continue; fi
+            if ! abs_path "$i" >/dev/null; then error "$(T path_bad "$(clean_text "$i")")"; REFUSED=1; continue; fi
             add_folder_candidate "$(abs_path "$i")"
         done
         return 0
@@ -3898,15 +3898,15 @@ check_targets() {
         dup=0
         for t in ${TARGETS[@]+"${TARGETS[@]}"}; do [ "$t" = "$i" ] && dup=1; done
         [ "$dup" = 0 ] || continue
-        if forbidden_target "${C_DIR[i]}"; then error "$(T target_root "${C_DIR[i]}")"; REFUSED=1; continue; fi
+        if forbidden_target "${C_DIR[i]}"; then error "$(T target_root "$(clean_text "${C_DIR[i]}")")"; REFUSED=1; continue; fi
         if ! looks_like_mpv_config "${C_DIR[i]}"; then
-            warn "$(T not_mpv_folder "${C_DIR[i]}")"
+            warn "$(T not_mpv_folder "$(clean_text "${C_DIR[i]}")")"
             if [ "$NONINTERACTIVE" = 1 ]; then error "$(T not_mpv_yes)"; REFUSED=1; continue; fi
-            if ! confirm "$(T not_mpv_confirm)" no; then warn "$(T readonly_skip "${C_DIR[i]}")"; continue; fi
+            if ! confirm "$(T not_mpv_confirm)" no; then warn "$(T readonly_skip "$(clean_text "${C_DIR[i]}")")"; continue; fi
         fi
         if [ "$mode" = install ] && ! dir_writable "${C_DIR[i]}"; then
-            warn "$(T readonly_warn "${C_DIR[i]}")"
-            warn "$(T readonly_skip "${C_DIR[i]}")"
+            warn "$(T readonly_warn "$(clean_text "${C_DIR[i]}")")"
+            warn "$(T readonly_skip "$(clean_text "${C_DIR[i]}")")"
             continue
         fi
         TARGETS[${#TARGETS[@]}]=$i
@@ -3917,7 +3917,7 @@ check_targets() {
 # Succeeds when mpv is there afterwards.
 ensure_mpv() {
     MPV_EXE=$(hikari_find_mpv)
-    if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
+    if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$(clean_text "$MPV_EXE")")"; return 0; fi
     if [ "$OS" != Darwin ] && { hikari_flatpak_mpv || hikari_snap_mpv; }; then return 0; fi
     warn "$(T none_found)"
     if [ "$OS" = Darwin ]; then
@@ -3928,7 +3928,7 @@ ensure_mpv() {
             code=$?
             [ "$code" = 0 ] || warn "$(T brew_failed "$code")"
             MPV_EXE=$(hikari_find_mpv)
-            if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$MPV_EXE")"; return 0; fi
+            if [ -n "$MPV_EXE" ]; then detail "$(T mpv_found "$(clean_text "$MPV_EXE")")"; return 0; fi
         fi
         printf '%b\n' "$(T none_mac_help)"
     else
@@ -3993,11 +3993,11 @@ show_versions() {
     MPV_EXE=$(hikari_find_mpv)
     find_candidates
     for t in ${OPT_TARGETS[@]+"${OPT_TARGETS[@]}"}; do
-        if abs_path "$t" >/dev/null; then add_candidate folder "$t" ''; else warn "$(T path_bad "$t")"; fi
+        if abs_path "$t" >/dev/null; then add_candidate folder "$t" ''; else warn "$(T path_bad "$(clean_text "$t")")"; fi
     done
     [ "${#C_DIR[@]}" -gt 0 ] || info "$(T version_nothing)"
     while [ "$i" -lt "${#C_DIR[@]}" ]; do
-        info "$(T version_folder "$(kind_label "${C_KIND[i]}")" "${C_DIR[i]}" "$(version_state "${C_DIR[i]}")")"
+        info "$(T version_folder "$(kind_label "${C_KIND[i]}")" "$(clean_text "${C_DIR[i]}")" "$(version_state "${C_DIR[i]}")")"
         i=$((i + 1))
     done
 }
@@ -4138,7 +4138,7 @@ main() {
     else
         MPV_EXE=$(hikari_find_mpv)
     fi
-    [ -z "${MPV_HOME:-}" ] || detail "$(T mpv_home_note "$MPV_HOME")"
+    [ -z "${MPV_HOME:-}" ] || detail "$(T mpv_home_note "$(clean_text "$MPV_HOME")")"
     find_candidates
     choose_targets "$action"
     rc=$?
@@ -4164,11 +4164,11 @@ main() {
     if [ "$many" = 0 ]; then ui_folder "${TARGETS[0]}"; ui_line ''; fi
     if [ "$action" = install ]; then
         TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/hikari-install.XXXXXX") || { error "$(T error_generic mktemp)"; return 1; }
-        if ! get_source; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
+        if ! get_source; then error "$(T error_generic "$(clean_text "$HIKARI_ERR")")"; return 1; fi
         # Only what some folder lacks is downloaded, all of it checked before
         # any folder is touched.
         plan_downloads
-        if ! get_artifacts; then error "$(T error_generic "$HIKARI_ERR")"; return 1; fi
+        if ! get_artifacts; then error "$(T error_generic "$(clean_text "$HIKARI_ERR")")"; return 1; fi
         A4K_SRC=''
         A4K_ERROR=''
         A4K_SRC_SUMS=()
@@ -4187,9 +4187,9 @@ main() {
         fi
         first=0
         if [ "$action" = install ]; then
-            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
+            if install_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "$(clean_text "${C_DIR[t]}")" "$(clean_text "$HIKARI_ERR")")"; fi
         else
-            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "${C_DIR[t]}" "$HIKARI_ERR")"; fi
+            if uninstall_target "$t"; then done_count=$((done_count + 1)); else error "$(T target_failed "$(clean_text "${C_DIR[t]}")" "$(clean_text "$HIKARI_ERR")")"; fi
         fi
     done
     hikari_cleanup
