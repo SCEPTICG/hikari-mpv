@@ -105,7 +105,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![The player](images/player.jpg)
 
-    A filled timeline with the opening and ending marked, readable titles for local files and streams, a speed menu and an update notice.
+    A filled timeline with the opening and ending marked, readable titles for local files and streams, a speed menu, [continue watching](features/resume.md) for your files and an update notice.
 
     [:octicons-arrow-right-24: Keys and configuration](usage.md)
 

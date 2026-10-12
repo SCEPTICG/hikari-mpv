@@ -74,6 +74,7 @@ nav:
       - Keys and configuration: usage.md
       - Palettes: features/palettes.md
       - Skip openings and endings: features/skip.md
+      - Continue watching: features/resume.md
       - Thumbnails: features/thumbnails.md
       - Subtitle styles: features/subtitles.md
       - Anime4K upscaling: features/anime4k.md
