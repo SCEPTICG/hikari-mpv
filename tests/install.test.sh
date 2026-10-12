@@ -264,6 +264,7 @@ cat >"$tmp/want-input.conf" <<'EOF'
 Alt+p  script-binding hikari_palettes/open-menu
 Alt+s  script-binding hikari_skip/skip
 Alt+t  script-binding hikari_subs/open-menu
+Alt+r  script-binding hikari_resume/open-menu
 Alt+u  script-binding hikari_update/open-menu
 Alt+l  script-binding hikari_language/open-menu
 Ctrl+1  script-message-to hikari_upscale set-mode a
@@ -277,6 +278,11 @@ Ctrl+0  script-message-to hikari_upscale set-mode off
 # <<< hikari <<<
 EOF
 check 'clean install: input.conf is exactly the block, with Ctrl+7' same "$tmp/want-input.conf" "$cfg/input.conf"
+check 'clean install: continue watching: script, options and chapters module' \
+    test -f "$cfg/scripts/hikari-resume.lua" -a -f "$cfg/script-opts/hikari-resume.conf" -a -f "$cfg/script-modules/hikari-chapters.lua"
+check 'clean install: continue watching: in the record' \
+    test "$(grep -cxE 'file=(scripts/hikari-resume\.lua|script-opts/hikari-resume\.conf|script-modules/hikari-chapters\.lua)' "$cfg/hikari-installed.txt")" = 3
+check 'clean install: continue watching: no list created by the installer' test ! -e "$cfg/hikari-resume.json"
 check 'clean install: the repository input.conf has the same bindings' bash -c "grep -v '^#' '$tmp/want-input.conf' | while IFS= read -r l; do grep -qxF \"\$l\" '$repo/portable_config/input.conf' || exit 1; done"
 count_glob() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
 check "clean install: the $a4k_count Anime4K shaders" test "$(count_glob "$cfg"/shaders/Anime4K_*.glsl)" = "$a4k_count"
@@ -304,6 +310,10 @@ printf 'last_check=1800000000\nlatest=9.9.9\ndismissed=9.9.9\n' >"$cfg/hikari-up
 cp "$cfg/hikari-update.txt" "$tmp/update-state-before"
 printf '{"version":1,"titles":{},"episodes":{}}\n' >"$cfg/hikari-aniskip.json"
 cp "$cfg/hikari-aniskip.json" "$tmp/aniskip-cache-before"
+printf '{"version":1,"entries":[{"path":"/nas/anime/ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}\n' >"$cfg/hikari-resume.json"
+cp "$cfg/hikari-resume.json" "$tmp/resume-list-before"
+printf 'enabled=yes\nask=no\nhistory_size=5\n' >"$cfg/script-opts/hikari-resume.conf"
+cp "$cfg/script-opts/hikari-resume.conf" "$tmp/resume-conf-before"
 cp "$cfg/input.conf" "$tmp/input-before-update"
 : >"$fake/downloads.log"
 run "$h" --yes --verbose
@@ -312,6 +322,12 @@ check 'update: upscale mode kept' test "$(head -n 1 "$cfg/hikari-upscale.conf")"
 check 'update: palette kept' test "$(cat "$cfg/hikari-palette.conf")" = mine
 check 'update: update check state kept as it was' same "$tmp/update-state-before" "$cfg/hikari-update.txt"
 check 'update: AniSkip cache kept as it was' same "$tmp/aniskip-cache-before" "$cfg/hikari-aniskip.json"
+check 'update: continue watching list kept as it was' same "$tmp/resume-list-before" "$cfg/hikari-resume.json"
+check 'update: your hikari-resume.conf kept' same "$tmp/resume-conf-before" "$cfg/script-opts/hikari-resume.conf"
+check 'update: said hikari-resume.conf was kept' has "$out" 'script-opts/hikari-resume.conf already exists: kept'
+check 'update: hikari-resume.conf still in the record' grep -qx 'file=script-opts/hikari-resume.conf' "$cfg/hikari-installed.txt"
+check 'update: the continue watching list is not in the backup' \
+    test -z "$(ls "$h"/.config/mpv-respaldo-hikari-*/hikari-resume.json 2>/dev/null)" -a -n "$(ls -d "$h"/.config/mpv-respaldo-hikari-*/script-opts 2>/dev/null)"
 check 'update: Anime4K up to date, not copied again' has "$out" 'Anime4K 4.0.1 is already installed'
 check 'update: blocks not repeated' same "$tmp/input-before-update" "$cfg/input.conf"
 check 'update: mpv.conf block still once' test "$(count_of "$cfg/mpv.conf" '# >>> hikari')" = 1
@@ -362,7 +378,14 @@ printf 'last_check=1800000000\n' >"$cfg/hikari-update.txt"
 printf 'x' >"$cfg/hikari-update.txt.tmp"
 printf '{"version":1}\n' >"$cfg/hikari-aniskip.json"
 printf 'x' >"$cfg/hikari-aniskip.json.tmp"
+printf '{"version":1,"entries":[]}\n' >"$cfg/hikari-resume.json"
+printf 'x' >"$cfg/hikari-resume.json.4242-1.tmp"
+printf 'mine' >"$cfg/hikari-resume.json.bak"
 run "$h" --uninstall --yes
+check 'created by hikari: continue watching list and its temporary files removed' \
+    test ! -e "$cfg/hikari-resume.json" -a ! -e "$cfg/hikari-resume.json.4242-1.tmp" -a ! -e "$cfg/scripts/hikari-resume.lua" -a ! -e "$cfg/script-opts/hikari-resume.conf" -a ! -e "$cfg/script-modules/hikari-chapters.lua"
+check 'created by hikari: a file of the user named like the list stays' test "$(cat "$cfg/hikari-resume.json.bak")" = mine
+rm -f "$cfg/hikari-resume.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
 check 'created by hikari: AniSkip cache removed (no question)' test ! -e "$cfg/hikari-aniskip.json" -a ! -e "$cfg/hikari-aniskip.json.tmp" -a ! -e "$cfg/script-modules/hikari-aniskip.lua"
 check 'created by hikari: mpv.conf and input.conf removed' test ! -e "$cfg/mpv.conf" -a ! -e "$cfg/input.conf"

@@ -100,6 +100,7 @@ hikari_defaults() {
         'Alt+p|script-binding hikari_palettes/open-menu'
         'Alt+s|script-binding hikari_skip/skip'
         'Alt+t|script-binding hikari_subs/open-menu'
+        'Alt+r|script-binding hikari_resume/open-menu'
         'Alt+u|script-binding hikari_update/open-menu'
         'Alt+l|script-binding hikari_language/open-menu'
     )
@@ -133,6 +134,9 @@ hikari_defaults() {
     USER_CHOICE_FILES=('hikari-palette.conf' 'hikari-subs.conf' 'hikari-upscale.conf' 'hikari-language.conf')
     # script-opts not named hikari-*: removed on uninstall only if hikari put them there.
     SHARED_CONFS=('uosc.conf' 'thumbfast.conf')
+    # script-opts of hikari that hold the user's own settings: only copied when
+    # missing, so an update keeps them (removed on uninstall like the others).
+    KEPT_CONFS=('hikari-resume.conf')
     RECORD_NAME='hikari-installed.txt'
     # What hikari-update.lua saves (last check, latest version, dismissed one):
     # state, not a choice. Kept on update, removed on uninstall like the record.
@@ -140,6 +144,11 @@ hikari_defaults() {
     # What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
     # uninstall like the update state.
     ANISKIP_CACHE='hikari-aniskip.json'
+    # The files left half-watched that hikari-resume.lua remembers (paths and
+    # positions): never in a backup, removed on uninstall with the temporary
+    # files of its writes (<list>.<pid>-<n>.tmp, RESUME_TMP_RE).
+    RESUME_LIST='hikari-resume.json'
+    RESUME_TMP_RE='^hikari-resume\.json\.[0-9]+-[0-9]+\.tmp$'
     DISABLED_DIR='scripts-desactivados'
     ORIGINALS_DIR='hikari-originales'
     # What the backup copies: only what the installer can change (and the files
@@ -3376,7 +3385,7 @@ install_steps() {
     fi
 
     # e. hikari files.
-    local installed shared s
+    local installed shared kept s
     installed=()
     for f in "$SRC_CONFIG"/scripts/hikari-*.lua; do
         [ -f "$f" ] || continue
@@ -3400,6 +3409,13 @@ install_steps() {
         name=${f##*/}
         shared=0
         for s in "${SHARED_CONFS[@]}"; do [ "$s" = "$name" ] && shared=1; done
+        kept=0
+        for s in "${KEPT_CONFS[@]}"; do [ "$s" = "$name" ] && kept=1; done
+        if [ "$kept" = 1 ] && { [ -e "$CFG/script-opts/$name" ] || [ -L "$CFG/script-opts/$name" ]; }; then
+            detail "$(T kept_user_file "script-opts/$name")"
+            installed[${#installed[@]}]="script-opts/$name"
+            continue
+        fi
         if [ "$FIRST" = 1 ] && [ "$shared" = 1 ] && [ -f "$CFG/script-opts/$name" ]; then
             mkdir -p "$CFG/$ORIGINALS_DIR/script-opts" || return 1
             cp -p "$CFG/script-opts/$name" "$CFG/$ORIGINALS_DIR/script-opts/$name" || return 1
@@ -3709,8 +3725,12 @@ uninstall_steps() {
     done
     remove_item "$CFG/$ORIGINALS_DIR" "$CFG" || return 1
     remove_item "$CFG/$RECORD_NAME" "$CFG" || return 1
-    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp"; do
+    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp" "$RESUME_LIST"; do
         if [ -f "$CFG/$f" ] || [ -L "$CFG/$f" ]; then remove_item "$CFG/$f" "$CFG" || return 1; fi
+    done
+    for f in "$CFG/$RESUME_LIST".*.tmp; do
+        [[ ${f##*/} =~ $RESUME_TMP_RE ]] || continue
+        if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do
         if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" -type f -print 2>/dev/null | head -n 1)" ]; then

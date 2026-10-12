@@ -159,6 +159,12 @@ local STRINGS = {
 		pt = 'Velocidade', ro = 'Viteză', ru = 'Скорость', tr = 'Hız', uk = 'Швидкість',
 		['zh-HK'] = '播放速度', ['zh-hans'] = '播放速度',
 	},
+	tooltip_resume = {
+		en = 'Continue watching', es = 'Seguir viendo', de = 'Weiterschauen', fr = 'Reprendre la lecture',
+		it = 'Continua a guardare', pl = 'Oglądaj dalej', pt = 'Continuar assistindo', ro = 'Continuă vizionarea',
+		ru = 'Продолжить просмотр', tr = 'İzlemeye devam et', uk = 'Продовжити перегляд',
+		['zh-HK'] = '繼續觀看', ['zh-hans'] = '继续观看',
+	},
 	tooltip_palettes = {
 		en = 'Palettes', es = 'Paletas', de = 'Farbpaletten', fr = 'Palettes', it = 'Palette', pl = 'Palety',
 		pt = 'Paletas', ro = 'Palete', ru = 'Палитры', tr = 'Paletler', uk = 'Палітри',
@@ -356,6 +362,131 @@ local STRINGS = {
 		it = '{speed} (normale)', pl = '{speed} (normalna)', pt = '{speed} (normal)', ro = '{speed} (normală)',
 		ru = '{speed} (обычная)', tr = '{speed} (normal)', uk = '{speed} (звичайна)',
 		['zh-HK'] = '{speed}（正常）', ['zh-hans'] = '{speed}（正常）',
+	},
+
+	-- Continue watching (hikari-resume.lua) ----------------------------------
+	resume_title = {
+		en = 'Continue watching', es = 'Seguir viendo', de = 'Weiterschauen', fr = 'Reprendre la lecture',
+		it = 'Continua a guardare', pl = 'Oglądaj dalej', pt = 'Continuar assistindo', ro = 'Continuă vizionarea',
+		ru = 'Продолжить просмотр', tr = 'İzlemeye devam et', uk = 'Продовжити перегляд',
+		['zh-HK'] = '繼續觀看', ['zh-hans'] = '继续观看',
+	},
+	-- {time}: where it was left, `12:34` or `1:02:03`.
+	resume_continue = {
+		en = 'Continue from {time}', es = 'Continuar desde {time}', de = 'Fortsetzen ab {time}',
+		fr = 'Reprendre à {time}', it = 'Riprendi da {time}', pl = 'Wznów od {time}', pt = 'Continuar de {time}',
+		ro = 'Continuă de la {time}', ru = 'Продолжить с {time}', tr = '{time} noktasından devam et',
+		uk = 'Продовжити з {time}', ['zh-HK'] = '從 {time} 繼續', ['zh-hans'] = '从 {time} 继续',
+	},
+	resume_start_over = {
+		en = 'Start from the beginning', es = 'Empezar desde el principio', de = 'Von vorne beginnen',
+		fr = 'Recommencer depuis le début', it = 'Ricomincia dall’inizio', pl = 'Zacznij od początku',
+		pt = 'Começar do início', ro = 'Începe de la început', ru = 'Начать сначала', tr = 'Baştan başla',
+		uk = 'Почати спочатку', ['zh-HK'] = '從頭開始', ['zh-hans'] = '从头开始',
+	},
+	-- A file of the list that cannot be found now (a NAS not mounted, deleted).
+	resume_unavailable = {
+		en = 'Not available', es = 'No disponible', de = 'Nicht verfügbar', fr = 'Indisponible',
+		it = 'Non disponibile', pl = 'Niedostępny', pt = 'Indisponível', ro = 'Indisponibil', ru = 'Недоступен',
+		tr = 'Erişilemiyor', uk = 'Недоступний', ['zh-HK'] = '無法存取', ['zh-hans'] = '无法访问',
+	},
+	resume_clear = {
+		en = 'Clear history', es = 'Borrar historial', de = 'Verlauf löschen', fr = 'Effacer l’historique',
+		it = 'Cancella cronologia', pl = 'Wyczyść historię', pt = 'Limpar histórico', ro = 'Șterge istoricul',
+		ru = 'Очистить историю', tr = 'Geçmişi temizle', uk = 'Очистити історію',
+		['zh-HK'] = '清除記錄', ['zh-hans'] = '清除记录',
+	},
+	-- The menu opened (Alt+r) with nothing in the list.
+	resume_empty = {
+		en = 'Nothing to continue', es = 'No hay nada a medias', de = 'Nichts zum Weiterschauen',
+		fr = 'Rien à reprendre', it = 'Niente da riprendere', pl = 'Nie ma nic do dokończenia',
+		pt = 'Nada para continuar', ro = 'Nimic de continuat', ru = 'Нечего продолжать',
+		tr = 'Devam edilecek bir şey yok', uk = 'Немає чого продовжувати',
+		['zh-HK'] = '沒有未看完的影片', ['zh-hans'] = '没有未看完的视频',
+	},
+	-- Alt+r with enabled=no in script-opts/hikari-resume.conf.
+	resume_disabled = {
+		en = 'hikari: continue watching is off', es = 'hikari: seguir viendo está desactivado',
+		de = 'hikari: Weiterschauen ist ausgeschaltet', fr = 'hikari : la reprise de lecture est désactivée',
+		it = 'hikari: continua a guardare è disattivato', pl = 'hikari: oglądanie dalej jest wyłączone',
+		pt = 'hikari: continuar assistindo está desativado', ro = 'hikari: continuarea vizionării este dezactivată',
+		ru = 'hikari: продолжение просмотра отключено', tr = 'hikari: izlemeye devam etme kapalı',
+		uk = 'hikari: продовження перегляду вимкнено', ['zh-HK'] = 'hikari：繼續觀看已關閉',
+		['zh-hans'] = 'hikari：继续观看已关闭',
+	},
+	-- When a file of the list was last watched: today, yesterday, or a date
+	-- (`12 oct`, with the year only when it is not this year's). No "N days
+	-- ago": the plurals of Russian, Polish and Ukrainian would need rules.
+	resume_today = {
+		en = 'today', es = 'hoy', de = 'heute', fr = 'aujourd’hui', it = 'oggi', pl = 'dzisiaj', pt = 'hoje',
+		ro = 'azi', ru = 'сегодня', tr = 'bugün', uk = 'сьогодні', ['zh-HK'] = '今日', ['zh-hans'] = '今天',
+	},
+	resume_yesterday = {
+		en = 'yesterday', es = 'ayer', de = 'gestern', fr = 'hier', it = 'ieri', pl = 'wczoraj', pt = 'ontem',
+		ro = 'ieri', ru = 'вчера', tr = 'dün', uk = 'учора', ['zh-HK'] = '昨日', ['zh-hans'] = '昨天',
+	},
+	resume_date = {
+		en = '{month} {day}', es = '{day} {month}', de = '{day}. {month}', fr = '{day} {month}',
+		it = '{day} {month}', pl = '{day} {month}', pt = '{day} {month}', ro = '{day} {month}',
+		ru = '{day} {month}', tr = '{day} {month}', uk = '{day} {month}',
+		['zh-HK'] = '{month}{day}日', ['zh-hans'] = '{month}{day}日',
+	},
+	resume_date_year = {
+		en = '{month} {day}, {year}', es = '{day} {month} {year}', de = '{day}. {month} {year}',
+		fr = '{day} {month} {year}', it = '{day} {month} {year}', pl = '{day} {month} {year}',
+		pt = '{day} {month} {year}', ro = '{day} {month} {year}', ru = '{day} {month} {year}',
+		tr = '{day} {month} {year}', uk = '{day} {month} {year}',
+		['zh-HK'] = '{year}年{month}{day}日', ['zh-hans'] = '{year}年{month}{day}日',
+	},
+	-- Abbreviated months for resume_date, as each language writes them after a
+	-- day number (genitive in Polish, Russian and Ukrainian).
+	resume_month_1 = {
+		en = 'Jan', es = 'ene', de = 'Jan.', fr = 'janv.', it = 'gen', pl = 'sty',
+		pt = 'jan', ro = 'ian.', ru = 'янв.', tr = 'Oca', uk = 'січ.', ['zh-HK'] = '1月', ['zh-hans'] = '1月',
+	},
+	resume_month_2 = {
+		en = 'Feb', es = 'feb', de = 'Feb.', fr = 'févr.', it = 'feb', pl = 'lut',
+		pt = 'fev', ro = 'feb.', ru = 'февр.', tr = 'Şub', uk = 'лют.', ['zh-HK'] = '2月', ['zh-hans'] = '2月',
+	},
+	resume_month_3 = {
+		en = 'Mar', es = 'mar', de = 'März', fr = 'mars', it = 'mar', pl = 'mar',
+		pt = 'mar', ro = 'mar.', ru = 'мар.', tr = 'Mar', uk = 'бер.', ['zh-HK'] = '3月', ['zh-hans'] = '3月',
+	},
+	resume_month_4 = {
+		en = 'Apr', es = 'abr', de = 'Apr.', fr = 'avr.', it = 'apr', pl = 'kwi',
+		pt = 'abr', ro = 'apr.', ru = 'апр.', tr = 'Nis', uk = 'квіт.', ['zh-HK'] = '4月', ['zh-hans'] = '4月',
+	},
+	resume_month_5 = {
+		en = 'May', es = 'may', de = 'Mai', fr = 'mai', it = 'mag', pl = 'maj',
+		pt = 'mai', ro = 'mai', ru = 'мая', tr = 'May', uk = 'трав.', ['zh-HK'] = '5月', ['zh-hans'] = '5月',
+	},
+	resume_month_6 = {
+		en = 'Jun', es = 'jun', de = 'Juni', fr = 'juin', it = 'giu', pl = 'cze',
+		pt = 'jun', ro = 'iun.', ru = 'июн.', tr = 'Haz', uk = 'черв.', ['zh-HK'] = '6月', ['zh-hans'] = '6月',
+	},
+	resume_month_7 = {
+		en = 'Jul', es = 'jul', de = 'Juli', fr = 'juil.', it = 'lug', pl = 'lip',
+		pt = 'jul', ro = 'iul.', ru = 'июл.', tr = 'Tem', uk = 'лип.', ['zh-HK'] = '7月', ['zh-hans'] = '7月',
+	},
+	resume_month_8 = {
+		en = 'Aug', es = 'ago', de = 'Aug.', fr = 'août', it = 'ago', pl = 'sie',
+		pt = 'ago', ro = 'aug.', ru = 'авг.', tr = 'Ağu', uk = 'серп.', ['zh-HK'] = '8月', ['zh-hans'] = '8月',
+	},
+	resume_month_9 = {
+		en = 'Sep', es = 'sept', de = 'Sept.', fr = 'sept.', it = 'set', pl = 'wrz',
+		pt = 'set', ro = 'sept.', ru = 'сент.', tr = 'Eyl', uk = 'вер.', ['zh-HK'] = '9月', ['zh-hans'] = '9月',
+	},
+	resume_month_10 = {
+		en = 'Oct', es = 'oct', de = 'Okt.', fr = 'oct.', it = 'ott', pl = 'paź',
+		pt = 'out', ro = 'oct.', ru = 'окт.', tr = 'Eki', uk = 'жовт.', ['zh-HK'] = '10月', ['zh-hans'] = '10月',
+	},
+	resume_month_11 = {
+		en = 'Nov', es = 'nov', de = 'Nov.', fr = 'nov.', it = 'nov', pl = 'lis',
+		pt = 'nov', ro = 'nov.', ru = 'нояб.', tr = 'Kas', uk = 'лист.', ['zh-HK'] = '11月', ['zh-hans'] = '11月',
+	},
+	resume_month_12 = {
+		en = 'Dec', es = 'dic', de = 'Dez.', fr = 'déc.', it = 'dic', pl = 'gru',
+		pt = 'dez', ro = 'dec.', ru = 'дек.', tr = 'Ara', uk = 'груд.', ['zh-HK'] = '12月', ['zh-hans'] = '12月',
 	},
 
 	-- Upscaling (hikari-upscale.lua) -----------------------------------------
