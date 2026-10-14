@@ -520,8 +520,13 @@ Test-Case 'incomplete or repeated block is refused' {
 
 Test-Case 'mpv.conf block: options, includes last, [default] after a profile' {
     $b = Get-HikariMpvConfBlock "sub-font=Arial`n"
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|include="~~/hikari-palette.conf"|include="~~/hikari-subs.conf"|include="~~/hikari-upscale.conf"|include="~~/hikari-language.conf"' 'lines'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'osc=no|osd-bar=no|directory-filter-types=video,audio|include="~~/hikari-palette.conf"|include="~~/hikari-subs.conf"|include="~~/hikari-upscale.conf"|include="~~/hikari-language.conf"' 'lines'
     Assert-True (-not ($b.Lines -contains 'border=no')) 'no border=no'
+    $b = Get-HikariMpvConfBlock "directory-filter-types=video,audio,image`n"
+    Assert-True (-not ($b.Lines -contains 'directory-filter-types=video,audio')) 'own directory-filter-types left out'
+    Assert-True $b.OwnFilter 'own directory-filter-types seen'
+    $b = Get-HikariMpvConfBlock ("# directory-filter-types=video`n" + $BlockB + "`ndirectory-filter-types=video,audio`n" + $BlockE + "`n")
+    Assert-True ($b.Lines -contains 'directory-filter-types=video,audio') 'a comment or the old block do not count'
     $b = Get-HikariMpvConfBlock "vo=gpu`n[anime]`nprofile-cond=1`n"
     Assert-Equal $b.Lines[0] '[default]' 'default section'
     $b = Get-HikariMpvConfBlock "[anime]`nx=1`n[default]`ny=2`n"

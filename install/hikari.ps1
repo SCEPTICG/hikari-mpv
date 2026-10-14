@@ -215,6 +215,7 @@ $script:BlockEnd = '# <<< hikari <<<'
 $script:MpvConfLines = @(
     'osc=no',
     'osd-bar=no',
+    'directory-filter-types=video,audio',
     'include="~~/hikari-palette.conf"',
     'include="~~/hikari-subs.conf"',
     'include="~~/hikari-upscale.conf"',
@@ -409,6 +410,7 @@ $script:HikariStringsEn = @{
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
     block_updated         = '{0}: hikari block written.'
     default_section       = '{0} ends inside a [profile]: the hikari block starts with [default] so its options apply to every file.'
+    option_yours          = '{0} already sets {1}: hikari leaves yours.'
     key_taken             = '{0} is already bound in input.conf ({1}). hikari leaves it alone; bind another key to "{2}" if you want.'
     key_same              = '{0} already runs "{1}" in your input.conf: left as it is.'
     install_ok            = 'hikari installed in {0}.'
@@ -590,6 +592,7 @@ $script:HikariStringsEs = @{
     mpvpath_set           = 'thumbfast.conf: mpv_path={0}'
     block_updated         = '{0}: bloque de hikari escrito.'
     default_section       = '{0} termina dentro de un [perfil]: el bloque de hikari empieza con [default] para que sus opciones valgan siempre.'
+    option_yours          = '{0} ya tiene {1}: hikari deja la tuya.'
     key_taken             = '{0} ya est\u00e1 asignada en input.conf ({1}). hikari no la toca; si quieres, asigna otra tecla a "{2}".'
     key_same              = '{0} ya ejecuta "{1}" en tu input.conf: se deja como est\u00e1.'
     install_ok            = 'hikari instalado en {0}.'
@@ -2244,15 +2247,21 @@ function Get-HikariProfileHeader {
 function Get-HikariMpvConfBlock {
     param([string]$Text)
     $lastHeader = $null
+    $ownFilter = $false
     foreach ($line in @(Get-HikariOutsideLines -Text $Text -Name 'mpv.conf')) {
         $h = Get-HikariProfileHeader $line.Content
         if ($null -ne $h) { $lastHeader = $h }
+        if ($line.Content -cmatch '^\s*(--)?directory-filter-types\s*=') { $ownFilter = $true }
     }
     $needsDefault = ($null -ne $lastHeader -and $lastHeader -cne 'default' -and $lastHeader -ne '')
     $lines = @()
     if ($needsDefault) { $lines += '[default]' }
-    $lines += $script:MpvConfLines
-    return [pscustomobject]@{ Lines = $lines; NeedsDefault = $needsDefault }
+    # The block goes last and would win: an option the user set is left out.
+    foreach ($l in $script:MpvConfLines) {
+        if ($ownFilter -and $l.StartsWith('directory-filter-types=')) { continue }
+        $lines += $l
+    }
+    return [pscustomobject]@{ Lines = $lines; NeedsDefault = $needsDefault; OwnFilter = $ownFilter }
 }
 
 function ConvertTo-HikariKeyName {
@@ -2318,6 +2327,7 @@ function Update-HikariManagedFile {
         $without = Remove-HikariBlockText -Text $file.Text -Name $name
         $block = Get-HikariMpvConfBlock $without
         if ($block.NeedsDefault) { Write-HikariDetail (T 'default_section' @($name)) }
+        if ($block.OwnFilter) { Write-HikariDetail (T 'option_yours' @($name, 'directory-filter-types')) }
         $newText = Set-HikariBlockText -Text $without -BlockLines $block.Lines -Name $name -Eol (Get-HikariEol $file.Text)
     }
     else {

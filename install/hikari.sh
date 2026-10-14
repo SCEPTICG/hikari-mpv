@@ -107,6 +107,7 @@ hikari_defaults() {
     MPV_CONF_LINES=(
         'osc=no'
         'osd-bar=no'
+        'directory-filter-types=video,audio'
         'include="~~/hikari-palette.conf"'
         'include="~~/hikari-subs.conf"'
         'include="~~/hikari-upscale.conf"'
@@ -264,6 +265,7 @@ hikari_text_en() {
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
         block_updated) s='%s: hikari block written.' ;;
         default_section) s='%s ends inside a [profile]: the hikari block starts with [default] so its options apply to every file.' ;;
+        option_yours) s='%s already sets %s: hikari leaves yours.' ;;
         key_taken) s='%s is already bound in input.conf (%s). hikari leaves it alone; bind another key to "%s" if you want.' ;;
         key_same) s='%s already runs "%s" in your input.conf: left as it is.' ;;
         install_ok) s='hikari installed in %s.' ;;
@@ -446,6 +448,7 @@ hikari_text_es() {
         mpvpath_set) s='thumbfast.conf: mpv_path=%s' ;;
         block_updated) s='%s: bloque de hikari escrito.' ;;
         default_section) s='%s termina dentro de un [perfil]: el bloque de hikari empieza con [default] para que sus opciones valgan siempre.' ;;
+        option_yours) s='%s ya tiene %s: hikari deja la tuya.' ;;
         key_taken) s='%s ya está asignada en input.conf (%s). hikari no la toca; si quieres, asigna otra tecla a "%s".' ;;
         key_same) s='%s ya ejecuta "%s" en tu input.conf: se deja como está.' ;;
         install_ok) s='hikari instalado en %s.' ;;
@@ -1594,12 +1597,14 @@ profile_header() {
 # Writes the hikari block at the end of mpv.conf (created when missing),
 # starting with [default] when the file ends inside a [profile].
 update_mpv_conf() {
-    local path=$1 eol last='' found=0 i=0
+    local path=$1 eol last='' found=0 i=0 own_filter=0 line
+    local filter_re='^[[:space:]]*(--)?directory-filter-types[[:space:]]*='
     load_file "$path"
     eol=$(file_eol)
     remove_block mpv.conf 0 || return 1
     while [ "$i" -lt "$F_COUNT" ]; do
         if profile_header "${F_LINE[i]}"; then last=$PROFILE_NAME; found=1; fi
+        [[ ${F_LINE[i]} =~ $filter_re ]] && own_filter=1
         i=$((i + 1))
     done
     local block
@@ -1608,7 +1613,14 @@ update_mpv_conf() {
         block=('[default]')
         detail "$(T default_section mpv.conf)"
     fi
-    block=(${block[@]+"${block[@]}"} "${MPV_CONF_LINES[@]}")
+    # The block goes last and would win: an option the user set is left out.
+    for line in "${MPV_CONF_LINES[@]}"; do
+        if [ "$own_filter" = 1 ] && [ "${line%%=*}" = directory-filter-types ]; then
+            detail "$(T option_yours mpv.conf directory-filter-types)"
+            continue
+        fi
+        block=(${block[@]+"${block[@]}"} "$line")
+    done
     set_block mpv.conf "$eol" "${block[@]}" || return 1
     save_file "$path" || return 1
     detail "$(T block_updated mpv.conf)"
