@@ -917,24 +917,9 @@ end
 
 -- Events --------------------------------------------------------------------------
 
-local function on_file_loaded()
-	state.serial = state.serial + 1
-	drop_prompt()
-	state.file, state.saved_at, state.cleared = nil, nil, false
-	state.time = mp.get_property_number('time-pos')
-	state.duration = mp.get_property_number('duration')
-	state.chapters = mp.get_property_native('chapter-list')
-	local windows = is_windows()
-	local path = file_path(mp.get_property_native('path'), mp.get_property_native('working-directory'), windows)
-	if not path then return end
-	state.file = {path = path, key = path_key(path, windows), title = title_of(path), episode = episode_at(path)}
-	if state.file.episode then
-		-- The folder of the file playing is there: no root to check first.
-		local next_path = next_in(path, folder_names(split_file(path), windows))
-		publish_next(mp.get_property_native('path'), next_path)
-		queue_next(next_path, windows)
-	end
-	-- What to ask about: a single file, or a series half-watched at this file.
+-- Asks about the file playing, or seeks, when the list has it half-watched:
+-- a single file, or a series half-watched at this very file.
+local function maybe_ask(windows)
 	local entry
 	for _, e in ipairs(read_list()) do
 		if path_key(e.path, windows) == state.file.key and e.state ~= 'watched' then entry = e break end
@@ -952,6 +937,27 @@ local function on_file_loaded()
 		ask(entry)
 	else
 		seek_to(entry.position)
+	end
+end
+
+local function on_file_loaded()
+	state.serial = state.serial + 1
+	drop_prompt()
+	state.file, state.saved_at, state.cleared = nil, nil, false
+	state.time = mp.get_property_number('time-pos')
+	state.duration = mp.get_property_number('duration')
+	state.chapters = mp.get_property_native('chapter-list')
+	local windows = is_windows()
+	local path = file_path(mp.get_property_native('path'), mp.get_property_native('working-directory'), windows)
+	if not path then return end
+	state.file = {path = path, key = path_key(path, windows), title = title_of(path), episode = episode_at(path)}
+	maybe_ask(windows)
+	-- After the question, so a slow share does not hold back the pause. The
+	-- folder of the file playing is there: no root to check first.
+	if state.file.episode then
+		local next_path = next_in(path, folder_names(split_file(path), windows))
+		publish_next(mp.get_property_native('path'), next_path)
+		queue_next(next_path, windows)
 	end
 end
 
