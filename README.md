@@ -3,6 +3,7 @@
 <img src="docs/images/banner.png" alt="hikari, a modern theme for the mpv video player built on uosc" width="100%">
 
 [![Latest release](https://img.shields.io/github/v/release/SCEPTICG/hikari-mpv?color=5ad4e6&labelColor=0b0d12&label=release)](https://github.com/SCEPTICG/hikari-mpv/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/SCEPTICG/hikari-mpv/total?color=5ad4e6&labelColor=0b0d12&label=downloads)](https://github.com/SCEPTICG/hikari-mpv/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-5ad4e6?labelColor=0b0d12)](LICENSE)
 [![Windows · macOS · Linux](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-one%20command-5ad4e6?labelColor=0b0d12)](#quick-install)
 [![Documentation](https://img.shields.io/badge/docs-scepticg.github.io-5ad4e6?labelColor=0b0d12)](https://scepticg.github.io/hikari-mpv/)
