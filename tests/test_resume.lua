@@ -845,6 +845,383 @@ test('after Clear history the file playing only comes back when it ends', functi
 	eq(#saved(), 2, 'the next file is saved as usual')
 end)
 
+-- Series -------------------------------------------------------------------------
+
+local FDIR = '/mnt/anime/Frieren/'
+local function frieren(n, group)
+	return FDIR .. '[' .. (group or 'SubsPlease') .. '] Sousou no Frieren - ' .. string.format('%02d', n) .. ' (1080p).mkv'
+end
+local function names_of(paths)
+	local out = {}
+	for i, p in ipairs(paths) do out[i] = p:match('[^/]+$') end
+	return out
+end
+-- The Frieren folder holds `paths`, and its share answers.
+local function folder(paths)
+	mock.dirs[FDIR] = names_of(paths)
+	mock.files['/mnt/anime'] = {is_dir = true}
+	for _, p in ipairs(paths) do mock.files[p] = {is_file = true} end
+end
+local function series_entry(path, position, state, updated, extra)
+	local e = entry(path, position, updated)
+	e.state = state
+	for k, v in pairs(extra or {}) do e[k] = v end
+	return e
+end
+local function list_json2(entries) return mock.format_json({version = 2, entries = entries}) end
+
+test('series: `- 05` and `S01E06` are one series; another season is another', function()
+	load()
+	open(FDIR .. 'Sousou no Frieren - 05.mkv')
+	play_to(100)
+	ends()
+	open(FDIR .. 'Sousou.no.Frieren.S01E06.1080p.WEB-DL.mkv')
+	play_to(200)
+	ends()
+	local e = saved()
+	eq(#e, 1, 'one entry for the series')
+	eq(e[1].path, FDIR .. 'Sousou.no.Frieren.S01E06.1080p.WEB-DL.mkv'); eq(e[1].episode, 6); eq(e[1].season, 1)
+	eq(e[1].series, 'sousou no frieren|1'); eq(e[1].state, 'progress'); eq(e[1].position, 200)
+	eq(e[1].title, 'Sousou no Frieren')
+	open(FDIR .. 'Sousou no Frieren S02E01.mkv')
+	play_to(100)
+	ends()
+	e = saved()
+	eq(#e, 2, 'season 2 is another series')
+	eq(e[1].series, 'sousou no frieren|2'); eq(e[1].season, 2)
+end)
+
+test('series: specials, OVAs, ranges and half episodes are single files', function()
+	load()
+	for _, name in ipairs({'Sousou no Frieren - 12.5.mkv', 'Sousou no Frieren - OVA.mkv', 'Sousou no Frieren SP01.mkv',
+		'Sousou no Frieren S01E01-E02.mkv', 'Sousou no Frieren S00E03.mkv'}) do
+		open(FDIR .. name)
+		play_to(100)
+		ends()
+	end
+	local e = saved()
+	eq(#e, 5, 'one row each')
+	for _, item in ipairs(e) do eq(item.series, nil, item.path); eq(item.state, nil) end
+end)
+
+test('series: a watched episode stays as watched; the timer does not write it again', function()
+	load()
+	open(frieren(5))
+	play_to(700)
+	play_to(1349)
+	local e = saved()
+	eq(#e, 1); eq(e[1].state, 'watched'); eq(e[1].position, 1349)
+	play_to(1400)
+	ends()
+	eq(saved()[1].position, 1349, 'already watched at this file: not written again')
+	-- Next time: from zero, not asked.
+	write(LIST, list_json2({series_entry(frieren(5), 1349, 'watched')}))
+	mock.commands = {}
+	open(frieren(5))
+	eq(#commands_named('open-menu'), 0, 'not asked')
+end)
+
+test('series: watched at the ending chapter too; under 30 s nothing changes', function()
+	load()
+	write(LIST, list_json2({series_entry(frieren(4), 1400, 'watched')}))
+	open(frieren(5), {chapters = {{time = 0, title = 'A'}, {time = 1290, title = 'ED'}}})
+	play_to(20)
+	ends()
+	eq(saved()[1].path, frieren(4), 'peeking at the next one changes nothing')
+	open(frieren(5), {chapters = {{time = 0, title = 'A'}, {time = 1290, title = 'ED'}}})
+	play_to(1291)
+	local e = saved()
+	eq(#e, 1); eq(e[1].path, frieren(5)); eq(e[1].state, 'watched')
+end)
+
+test('series: another episode replaces the entry; only the episode left half-watched asks', function()
+	write(LIST, list_json2({series_entry(frieren(5), 754, 'progress')}))
+	load(nil, true)
+	open(frieren(6))
+	eq(#commands_named('open-menu'), 0, 'another episode: not asked')
+	play_to(100)
+	local e = saved()
+	eq(#e, 1); eq(e[1].path, frieren(6)); eq(e[1].position, 100)
+	ends()
+	mock.commands = {}
+	open(frieren(6))
+	eq(#commands_named('open-menu'), 1, 'asked')
+	eq(last_menu().items[1].title, 'Continuar desde 1:40')
+end)
+
+test('series rows: half-watched, Next, Up to date, Not available', function()
+	write(LIST, list_json2({
+		series_entry(frieren(5), 754, 'progress', NOW - 60),
+		series_entry('/mnt/anime/Dandadan/Dandadan S02E03.mkv', 1400, 'watched', NOW - 120),
+		series_entry('/mnt/anime/Kusuriya/Kusuriya no Hitorigoto S02E24.mkv', 1400, 'watched', NOW - 180),
+		series_entry('/mnt/nas/anime/Show - 01.mkv', 1400, 'watched', NOW - 240),
+		series_entry('/mnt/anime/Gone/Gone - 01.mkv', 1400, 'watched', NOW - 300),
+	}))
+	load(nil, true)
+	folder({frieren(5)})
+	mock.dirs['/mnt/anime/Dandadan/'] = {'Dandadan S02E03.mkv', 'Dandadan S02E04.mkv', 'notes.txt'}
+	mock.dirs['/mnt/anime/Kusuriya/'] = {'Kusuriya no Hitorigoto S02E24.mkv'}
+	mock.bindings['open-menu']()
+	local data = last_menu()
+	eq(#data.items, 6)
+	eq(data.items[1].title, 'Sousou no Frieren · E05'); eq(data.items[1].hint, '12:34 / 23:40 · hoy')
+	eq(data.items[1].value[4], frieren(5))
+	eq(data.items[2].title, 'Dandadan · T2 E04', 'the next one'); eq(data.items[2].hint, 'Siguiente · hoy')
+	eq(data.items[2].value[3], 'open-file'); eq(data.items[2].value[4], '/mnt/anime/Dandadan/Dandadan S02E04.mkv')
+	eq(data.items[2].muted, nil)
+	eq(data.items[3].title, 'Kusuriya no Hitorigoto · T2 E24'); eq(data.items[3].hint, 'Al día · hoy')
+	eq(data.items[3].muted, true); eq(data.items[3].selectable, false); eq(data.items[3].value, nil)
+	eq(data.items[4].hint, 'No disponible', 'the share is off'); eq(data.items[4].selectable, false)
+	eq(data.items[5].hint, 'No disponible', 'the folder cannot be read')
+	eq(data.items[6].title, 'Borrar historial')
+	-- In English, the labels follow.
+	mock.set_script_opt('hikari-language', 'en')
+	mock.bindings['open-menu']()
+	data = last_menu()
+	eq(data.items[2].title, 'Dandadan · S2 E04'); eq(data.items[2].hint, 'Next · today')
+	eq(data.items[3].hint, 'Up to date · today')
+end)
+
+test('series rows: Up to date turns into Next once the episode is in the folder', function()
+	write(LIST, list_json2({series_entry(frieren(5), 1400, 'watched')}))
+	load(nil, true)
+	folder({frieren(5)})
+	mock.bindings['open-menu']()
+	eq(last_menu().items[1].hint, 'Al día · hoy')
+	folder({frieren(5), frieren(6)})
+	mock.bindings['open-menu']()
+	local item = last_menu().items[1]
+	eq(item.title, 'Sousou no Frieren · E06'); eq(item.hint, 'Siguiente · hoy'); eq(item.value[4], frieren(6))
+end)
+
+test('series rows: a share that is off is asked once, its folders never read', function()
+	local list = {}
+	for i = 1, 4 do list[i] = series_entry('/mnt/nas/s' .. i .. '/Show' .. i .. ' - 01.mkv', 1400, 'watched', NOW - i) end
+	write(LIST, list_json2(list))
+	load(nil, true)
+	local utils = package.loaded['mp.utils']
+	local asked, read_dirs = 0, 0
+	local real_info, real_dir = utils.file_info, utils.readdir
+	utils.file_info = function(p) asked = asked + 1 return real_info(p) end
+	utils.readdir = function(p) read_dirs = read_dirs + 1 return real_dir(p) end
+	mock.bindings['open-menu']()
+	utils.file_info, utils.readdir = real_info, real_dir
+	eq(asked, 1, 'the root, once'); eq(read_dirs, 0, 'no folder read')
+	for i = 1, 4 do eq(last_menu().items[i].hint, 'No disponible') end
+end)
+
+test('series rows: each folder is read once per opening of the menu', function()
+	write(LIST, list_json2({series_entry(frieren(5), 1400, 'watched')}))
+	load(nil, true)
+	folder({frieren(5), frieren(6)})
+	local utils = package.loaded['mp.utils']
+	local real, reads = utils.readdir, 0
+	utils.readdir = function(p) reads = reads + 1 return real(p) end
+	mock.bindings['open-menu']()
+	mock.set(MENU_TYPE_PROP, 'hikari-resume')
+	mock.set_script_opt('hikari-language', 'en')
+	eq(reads, 1, 'cached while open')
+	mock.bindings['open-menu']()
+	eq(reads, 2, 'read again on a new opening')
+	utils.readdir = real
+end)
+
+test('series: picking Next opens it; other files of the folder are refused', function()
+	write(LIST, list_json2({series_entry(frieren(5), 1400, 'watched')}))
+	load(nil, true)
+	folder({frieren(5), frieren(6), frieren(7), FDIR .. 'secret.mkv'})
+	mock.messages['open-file'](frieren(6))
+	local c = last_command()
+	eq(c[1], 'loadfile'); eq(c[2], frieren(6)); eq(c[3], 'replace')
+	local count = #mock.commands
+	mock.messages['open-file'](frieren(7))
+	mock.messages['open-file'](FDIR .. 'secret.mkv')
+	mock.messages['open-file']('/mnt/anime/Other/Sousou no Frieren - 06 (1080p).mkv')
+	eq(#mock.commands, count, 'nothing else loaded')
+end)
+
+test('series: history_size counts rows, a series is one', function()
+	local s = load({history_size = '2'})
+	for i = 1, 6 do
+		s.clock.now = function() return NOW + i end
+		open(frieren(i))
+		play_to(100)
+		ends()
+	end
+	s.clock.now = function() return NOW + 10 end
+	open('/a/film.mkv')
+	play_to(100)
+	ends()
+	local e = saved()
+	eq(#e, 2); eq(e[1].path, '/a/film.mkv'); eq(e[2].path, frieren(6))
+end)
+
+test('version 1 lists: episodes become their series (the newest), written as version 2', function()
+	write(LIST, list_json({entry(frieren(3), 300, NOW - 300), entry(frieren(4), 400, NOW - 200),
+		entry('/a/film.mkv', 500, NOW - 100), entry('/mnt/anime/Frieren/Sousou no Frieren S02E01.mkv', 100, NOW - 400)}))
+	local s = load(nil, true)
+	local list = s.read_list()
+	eq(#list, 3)
+	eq(list[1].path, '/a/film.mkv'); eq(list[1].series, nil)
+	eq(list[2].path, frieren(4)); eq(list[2].series, 'sousou no frieren|1'); eq(list[2].state, 'progress')
+	eq(list[2].episode, 4)
+	eq(list[3].series, 'sousou no frieren|2')
+	eq(read(LIST):find('"version":1', 1, true) ~= nil, true, 'not written just by reading')
+	open('/b/other.mkv')
+	play_to(100)
+	local content = read(LIST)
+	assert(content:find('"version":2', 1, true), 'version 2 now')
+	eq(#saved(), 4)
+end)
+
+test('a list of a newer hikari: empty, a warning, left alone until there is something to save', function()
+	local newer = '{"version":3,"entries":[{"path":"/a/x.mkv","position":1,"duration":2,"updated":3,"shiny":true}]}'
+	write(LIST, newer)
+	local s = load(nil, true)
+	eq(#s.read_list(), 0)
+	assert(mock.logs.warn[1]:find('newer hikari', 1, true), 'warned: ' .. tostring(mock.logs.warn[1]))
+	eq(mock.props[AVAILABLE], false)
+	open('/a/film.mkv')
+	play_to(20)
+	ends()
+	eq(read(LIST), newer, 'not rewritten')
+	open('/a/film.mkv')
+	play_to(100)
+	eq(saved()[1].position, 100, 'written once there is something to save')
+end)
+
+test('version 2: the series, season, episode and title come from the path; junk states are progress', function()
+	write(LIST, list_json2({
+		series_entry(frieren(5), 754, 'shiny', NOW - 60, {series = 'evil', episode = 99, season = 7, title = 'Evil'}),
+		series_entry('/a/film.mkv', 100, 'watched', NOW - 120),
+	}))
+	local s = load(nil, true)
+	local list = s.read_list()
+	eq(list[1].series, 'sousou no frieren|1'); eq(list[1].episode, 5); eq(list[1].season, 1)
+	eq(list[1].title, 'Sousou no Frieren'); eq(list[1].state, 'progress')
+	eq(list[2].series, nil, 'a single file stays one'); eq(list[2].state, nil)
+end)
+
+test('two mpv at once: entries are merged by series key', function()
+	load()
+	open(frieren(5))
+	play_to(100)
+	local list = saved()
+	list[#list + 1] = series_entry('/x/Dandadan - 01.mkv', 500, 'progress', NOW - 5,
+		{series = 'dandadan|1', season = 1, episode = 1})
+	list[#list + 1] = series_entry(frieren(4), 500, 'watched', NOW - 6, {series = 'sousou no frieren|1', season = 1, episode = 4})
+	write(LIST, list_json2(list))
+	play_to(200)
+	local e = saved()
+	eq(#e, 2)
+	eq(e[1].path, frieren(5)); eq(e[1].position, 200)
+	eq(e[2].path, '/x/Dandadan - 01.mkv')
+end)
+
+test('Windows: series keys ignore case, the next path uses the folder as written', function()
+	local s = load()
+	mock.props.platform = 'windows'
+	local dir = '\\\\NAS\\anime\\Frieren\\'
+	mock.dirs[dir] = {'Sousou no Frieren - 05.mkv', 'SOUSOU NO FRIEREN - 06.mkv'}
+	open('//NAS/anime/Frieren/sousou no frieren - 05.mkv', {wd = 'C:\\'})
+	eq(mock.props[s.NEXT_PROP].next, dir .. 'SOUSOU NO FRIEREN - 06.mkv')
+	play_to(100)
+	ends()
+	open('\\\\NAS\\anime\\Frieren\\SOUSOU NO FRIEREN - 06.mkv', {wd = 'C:\\'})
+	play_to(100)
+	eq(#saved(), 1, 'one series')
+end)
+
+-- Next episode: autoplay and user-data/hikari_resume/next -----------------------------
+
+-- Opens `path` as the entry `pos` (0-based) of a playlist of `paths`.
+local function open_in_playlist(paths, pos, props)
+	local list = {}
+	for i, p in ipairs(paths) do list[i] = {filename = p} end
+	mock.props.playlist = list
+	mock.props['playlist-pos'] = pos
+	mock.props['playlist-count'] = #paths
+	open(paths[pos + 1], props)
+end
+
+local function appended()
+	local out = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'loadfile' and c[3] == 'append' then out[#out + 1] = c[2] end
+	end
+	return out
+end
+
+test('autoplay: the last entry of the playlist gets the next episode behind it', function()
+	local s = load()
+	folder({frieren(5), frieren(6)})
+	open_in_playlist({frieren(5)}, 0)
+	local a = appended()
+	eq(#a, 1); eq(a[1], frieren(6))
+	local published = mock.props[s.NEXT_PROP]
+	eq(published.path, frieren(5)); eq(published.next, frieren(6))
+	ends()
+	eq(next(mock.props[s.NEXT_PROP]), nil, 'cleared at end-file')
+end)
+
+test('autoplay: nothing when something is behind, when already queued, or with no next', function()
+	load()
+	folder({frieren(5), frieren(6)})
+	open_in_playlist({frieren(5), '/a/other.mkv'}, 0)
+	eq(#appended(), 0, 'something behind')
+	ends()
+	open_in_playlist({frieren(6), frieren(5)}, 1)
+	eq(#appended(), 0, 'already in the playlist')
+	ends()
+	open_in_playlist({'/mnt/anime/Frieren/./' .. frieren(6):match('[^/]+$'), frieren(5)}, 1)
+	eq(#appended(), 0, 'already in the playlist, written otherwise')
+	ends()
+	open_in_playlist({frieren(6)}, 0)
+	eq(#appended(), 0, 'no episode after it')
+	ends()
+	open_in_playlist({'/a/film.mkv'}, 0)
+	eq(#appended(), 0, 'a single file')
+end)
+
+test('autoplay: never for streams; autoplay_next=no and enabled=no add nothing', function()
+	local s = load()
+	folder({frieren(5), frieren(6)})
+	open_in_playlist({'https://host/stream?token=x&filename=Sousou%20no%20Frieren%20-%2005.mkv'}, 0)
+	eq(#appended(), 0, 'stream')
+	eq(next(mock.props[s.NEXT_PROP]), nil, 'nothing published for a stream')
+	s = load({autoplay_next = 'no'})
+	folder({frieren(5), frieren(6)})
+	open_in_playlist({frieren(5)}, 0)
+	eq(#appended(), 0, 'autoplay_next=no')
+	eq(mock.props[s.NEXT_PROP].next, frieren(6), 'the next one is still published for the skip button')
+	s = load({enabled = 'no'})
+	eq(mock.events['file-loaded'], nil, 'enabled=no: no events at all')
+	eq(next(mock.props[s.NEXT_PROP]), nil)
+end)
+
+test('next episode: gaps, versions, other series, huge and unreadable folders', function()
+	local s = load()
+	local dirs = {
+		{'Show - 05.mkv', 'Show - 08.mkv', 'Show - 07.mkv', 'Other - 06.mkv', 'Show - 06.txt'},
+	}
+	eq(s.next_in('/a/Show - 05.mkv', dirs[1]), '/a/Show - 07.mkv', 'the smallest number above, other series apart')
+	eq(s.next_in('/a/[A] Show - 05.mkv', {'[B] Show - 06.mkv', '[A] Show - 06.mkv', '[A] Show - 07.mkv'}),
+		'/a/[A] Show - 06.mkv', 'same group')
+	eq(s.next_in('/a/[A] Show - 05.mkv', {'[C] Show - 06.mkv', '[B] Show - 06.mkv'}), '/a/[B] Show - 06.mkv',
+		'otherwise the first by name')
+	local huge = {}
+	for i = 1, s.MAX_FOLDER + 1 do huge[i] = 'x' .. i .. '.mkv' end
+	huge[#huge + 1] = 'Show - 06.mkv'
+	eq(s.next_in('/a/Show - 05.mkv', huge), nil, 'too many files')
+	eq(s.next_in('/a/Show - 05.mkv', nil), nil, 'unreadable')
+	-- An unreadable folder while playing: nothing published, nothing queued, nothing broken.
+	open_in_playlist({'/z/Show - 05.mkv'}, 0)
+	eq(#appended(), 0)
+	eq(next(mock.props[s.NEXT_PROP]), nil)
+	play_to(100)
+	eq(saved()[1].series, 'show|1', 'saved as usual')
+end)
+
 test('the script makes no network connection and runs no program', function()
 	local source = read(SCRIPT)
 	for _, word in ipairs({'subprocess', 'curl', 'http', 'io.popen', 'os.execute', 'socket'}) do
