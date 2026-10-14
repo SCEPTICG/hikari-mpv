@@ -17,9 +17,9 @@ For episodes of a series on your disk or a network share, [continue watching](re
 
 - instead of **Skip ending ›**, when the ending is the last chapter;
 - after an ending that [AniSkip](#aniskip) knows, when less than 10 seconds of the file are left after it: the button stays until the end;
-- for the last 5 % of an episode with no known ending (no ending chapter and nothing from AniSkip).
+- for the last 5 % of an episode with no known ending (no ending chapter and nothing from AniSkip). With `endings=no` the ending chapters do not count either, so the button shows there even in an episode that has one.
 
-Click or `Alt+s`, as always. Streams (Seanime and similar apps) are left as they were. To keep the button as it was, set `next_episode=no` in `script-opts/hikari-skip.conf` (or add `script-opts-append=hikari-skip-next_episode=no` to your own `mpv.conf`, since updating replaces that file).
+Click or `Alt+s`, as always. Streams (Seanime and similar apps) are left as they were. It needs continue watching: with `enabled=no` in `hikari-resume.conf` there is no *Next episode ›* button. To keep the button as it was, set `next_episode=no` in `script-opts/hikari-skip.conf` (or add `script-opts-append=hikari-skip-next_episode=no` to your own `mpv.conf`, since updating replaces that file).
 
 ## AniSkip
 

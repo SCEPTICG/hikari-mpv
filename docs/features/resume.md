@@ -45,9 +45,9 @@ Playing another episode of the series (from 30 seconds on, as always) makes it t
 
 When an episode is the last thing in mpv's playlist (you opened just that file), hikari adds the next episode of the folder behind it, so mpv moves on to it when the episode ends, and uosc's *next* button works. If something is already queued after it (mpv's `autoload`, a folder you opened, your own playlist), hikari leaves the playlist alone, and it never adds a file that is already in it. If the next episode was half-watched, the usual question comes up.
 
-To turn it off, set `autoplay_next=no`. Your copy of `hikari-resume.conf` is kept on update, so if it comes from hikari 0.8 the line is not there: the default, `yes`, applies.
+To turn it off, set `autoplay_next=no`. Do so too if others you do not fully trust can put files in that folder (a shared NAS folder, say): playing on this way opens the next file of the folder without you picking it. Your copy of `hikari-resume.conf` is kept on update, so if it comes from hikari 0.8 the line is not there: the default, `yes`, applies.
 
-The [skip button](skip.md#next-episode) reads *Next episode ›* at the end of an episode when the next one is queued.
+The [skip button](skip.md#next-episode) reads *Next episode ›* at the end of an episode when the next one is queued. Moving on from an episode straight to that next one (with that button, uosc's *next* button, or at the end of the file) counts the episode as watched, even if you left it before 95 %, for instance by skipping an ending that AniSkip knows.
 
 ## The list
 
@@ -57,7 +57,7 @@ The title of each row is the file name, without folder or extension; for a serie
 
 ## What is saved, and where
 
-The list is `hikari-resume.json`, in mpv's config folder. For each file: its full path, its name, where you stopped, its length and when; for a series, the same for its last episode, plus the series name, season, episode number and whether you finished it. It keeps the 30 most recent rows (the oldest go first): single files only while started and not finished, series also once watched. A list from hikari 0.8 is read and updated to the new format the next time something is saved.
+The list is `hikari-resume.json`, in mpv's config folder. For each file: its full path, its name, where you stopped, its length and when; for a series, the same for its last episode, plus the series name, season, episode number and whether you finished it. It keeps the 30 most recent rows (the oldest go first): single files only while started and not finished, series also once watched. A list from hikari 0.8 is read and updated to the new format the next time something is saved. Going back to a hikari older than 0.9.0 after that empties the list: those versions cannot read the new format.
 
 hikari never sends it anywhere: this script makes no network connection at all, and each computer has its own list. The one exception is up to you: if mpv's config folder is synchronised (your dotfiles in a repository, a `portable_config` in a cloud folder), the list travels with it, paths and all. The installer does not copy it into its backups, and uninstalling hikari deletes it. Two mpv windows open at once each keep their own files in the same list.
 
