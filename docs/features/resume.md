@@ -47,7 +47,7 @@ When an episode is the last thing in mpv's playlist (you opened just that file),
 
 To turn it off, set `autoplay_next=no`. Do so too if others you do not fully trust can put files in that folder (a shared NAS folder, say): playing on this way opens the next file of the folder without you picking it. Your copy of `hikari-resume.conf` is kept on update, so if it comes from hikari 0.8 the line is not there: the default, `yes`, applies.
 
-The [skip button](skip.md#next-episode) reads *Next episode ›* at the end of an episode when the next one is queued. Moving on from an episode straight to that next one (with that button, uosc's *next* button, or at the end of the file) counts the episode as watched, even if you left it before 95 %, for instance by skipping an ending that AniSkip knows.
+The [skip button](skip.md#next-episode) reads *Next episode ›* at the end of an episode when the next one is queued. Moving on from an episode straight to that next one (with that button, uosc's *next* button, or at the end of the file) in the second half of the episode counts it as watched, even before 95 %, for instance when you skip an ending that AniSkip knows. A peek of under 30 seconds, a jump from earlier in the episode or a file that stops on an error (the NAS went away) do not count: the episode stays as it was.
 
 ## The list
 

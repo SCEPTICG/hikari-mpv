@@ -29,9 +29,11 @@
 --   stays as it was). Watched (next time it starts from zero without asking):
 --   a single file leaves the list, an episode stays as `watched` (see
 --   Series). An episode also counts as watched when mpv moves on from it to
---   the very file published as its next one (below), wherever it was left:
---   the "Next episode" button may skip an ending at 91 %. Otherwise, watched
---   means at WATCHED_SHARE of the duration, or once the
+--   the very file published as its next one (below) from its second half
+--   (ENDING_SHARE) and past MIN_POSITION: the "Next episode" button may skip
+--   an ending at 91 %. Not after a peek, a jump from the middle or an
+--   end-file on an error. Otherwise, watched means at WATCHED_SHARE of the
+--   duration, or once the
 --   ending has started. The ending is the last chapter that
 --   script-modules/hikari-chapters.lua (shared with hikari-skip.lua) calls an
 --   ending (ED, Ending, Credits, エンディング...): the last one, so a file with
@@ -990,27 +992,32 @@ local function on_file_loaded()
 	end
 end
 
-local function on_end_file()
+local function on_end_file(event)
 	drop_prompt()
 	if state.file then save_position(state.time) end
 	if state.file and state.file.episode then publish_next() end
-	-- For on_start_file: the episode left, if it has a next one.
-	state.left = state.file and state.file.next and {file = state.file, position = state.time, duration = state.duration}
+	-- For on_start_file: the episode left, if it has a next one and did not
+	-- end on an error (a share that went away).
+	local failed = type(event) == 'table' and event.reason == 'error'
+	state.left = not failed and state.file and state.file.next
+		and {file = state.file, position = state.time, duration = state.duration}
 	state.file = nil
 end
 
 -- Moving on from an episode to the very file published as its next one (the
--- skip button's "Next episode", uosc's next button, the end of the file):
--- the episode left counts as watched, wherever it was left. Any other file
--- changes nothing.
+-- skip button's "Next episode", uosc's next button, the end of the file) in
+-- its second half (ENDING_SHARE) and past MIN_POSITION: the episode left
+-- counts as watched. A peek, a jump from the middle, an error or any other
+-- file change nothing: end-file already saved it as usual.
 local function on_start_file()
 	local left = state.left
 	state.left = nil
-	if not left or not finite(left.duration) or left.duration <= 0 then return end
+	if not left or not finite(left.duration) or left.duration <= 0 or not finite(left.position) then return end
+	if left.position < MIN_POSITION or left.position < left.duration * ENDING_SHARE then return end
 	local windows = is_windows()
 	local path = file_path(mp.get_property_native('path'), mp.get_property_native('working-directory'), windows)
 	if not path or path_key(path, windows) ~= path_key(left.file.next, windows) then return end
-	save_episode(left.file, finite(left.position) and left.position or 0, left.duration, true)
+	save_episode(left.file, left.position, left.duration, true)
 end
 
 local function on_menu_type(_, value)
