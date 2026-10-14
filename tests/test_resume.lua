@@ -1199,6 +1199,83 @@ test('autoplay: never for streams; autoplay_next=no and enabled=no add nothing',
 	eq(next(mock.props[s.NEXT_PROP]), nil)
 end)
 
+test('series: moving on to the published next episode counts the one left as watched', function()
+	load()
+	folder({frieren(5), frieren(6), frieren(7)})
+	open_in_playlist({frieren(5)}, 0)
+	eq(appended()[1], frieren(6))
+	play_to(1300) -- 91.5 %: an AniSkip ending skipped with "Next episode"
+	ends()
+	eq(saved()[1].state, 'progress', 'not watched by itself')
+	mock.props.path = frieren(6)
+	mock.events['start-file']()
+	open(frieren(6))
+	play_to(20)
+	ends()
+	local e = saved()
+	eq(#e, 1); eq(e[1].path, frieren(5)); eq(e[1].state, 'watched'); eq(e[1].position, 1300)
+	mock.bindings['open-menu']()
+	local item = last_menu().items[1]
+	eq(item.title, 'Sousou no Frieren · E06'); eq(item.hint, 'Siguiente · hoy')
+end)
+
+test('series: moving on to any other file leaves the episode as it was', function()
+	load()
+	folder({frieren(5), frieren(6), frieren(7)})
+	for _, other in ipairs({frieren(7), '/a/film.mkv', frieren(5)}) do
+		clean_dir()
+		open_in_playlist({frieren(5)}, 0)
+		play_to(1300)
+		ends()
+		mock.props.path = other
+		mock.events['start-file']()
+		eq(saved()[1].state, 'progress', other)
+	end
+	-- And a start-file long after (mpv idle, then another file) is the same thing.
+	clean_dir()
+	open_in_playlist({frieren(5)}, 0)
+	play_to(1300)
+	ends()
+	mock.props.path = '/a/film.mkv'
+	mock.events['start-file']()
+	mock.props.path = frieren(6)
+	mock.events['start-file']()
+	eq(saved()[1].state, 'progress', 'only the very next start-file counts')
+end)
+
+test('series rows: an open menu redrawn on each save reads no names again', function()
+	write(LIST, list_json2({series_entry(frieren(5), 1400, 'watched', NOW - 60)}))
+	load(nil, true)
+	folder({frieren(5), frieren(6)})
+	local release = package.loaded['hikari-release']
+	local real, calls = release.next_episode, 0
+	release.next_episode = function(...) calls = calls + 1 return real(...) end
+	mock.bindings['open-menu']()
+	mock.set(MENU_TYPE_PROP, 'hikari-resume')
+	eq(calls, 1)
+	open('/a/film.mkv')
+	play_to(100); play_to(200)
+	eq(last_menu().items[2].hint, 'Siguiente · hoy', 'redrawn')
+	eq(calls, 1, 'not looked for again while open')
+	mock.bindings['open-menu']()
+	eq(calls, 2, 'a new opening looks again')
+	release.next_episode = real
+end)
+
+test('reading: only the newest entries have their names read', function()
+	local list = {}
+	for i = 1, 3000 do list[i] = entry('/a/Show' .. i .. ' - 01.mkv', 100, NOW - 4000 + i) end
+	write(LIST, list_json2(list))
+	local s = load({history_size = '5'}, true)
+	local release = package.loaded['hikari-release']
+	local real, calls = release.episode_of, 0
+	release.episode_of = function(...) calls = calls + 1 return real(...) end
+	local read_back = s.read_list()
+	release.episode_of = real
+	eq(#read_back, 5); eq(read_back[1].path, '/a/Show3000 - 01.mkv'); eq(read_back[1].series, 'show3000|1')
+	eq(calls, 5, 'five names read, not 3000')
+end)
+
 test('next episode: gaps, versions, other series, huge and unreadable folders', function()
 	local s = load()
 	local dirs = {
