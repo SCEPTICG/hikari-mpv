@@ -278,10 +278,10 @@ Ctrl+0  script-message-to hikari_upscale set-mode off
 # <<< hikari <<<
 EOF
 check 'clean install: input.conf is exactly the block, with Ctrl+7' same "$tmp/want-input.conf" "$cfg/input.conf"
-check 'clean install: continue watching: script, options and chapters module' \
-    test -f "$cfg/scripts/hikari-resume.lua" -a -f "$cfg/script-opts/hikari-resume.conf" -a -f "$cfg/script-modules/hikari-chapters.lua"
+check 'clean install: continue watching: script, options, chapters and release names modules' \
+    test -f "$cfg/scripts/hikari-resume.lua" -a -f "$cfg/script-opts/hikari-resume.conf" -a -f "$cfg/script-modules/hikari-chapters.lua" -a -f "$cfg/script-modules/hikari-release.lua"
 check 'clean install: continue watching: in the record' \
-    test "$(grep -cxE 'file=(scripts/hikari-resume\.lua|script-opts/hikari-resume\.conf|script-modules/hikari-chapters\.lua)' "$cfg/hikari-installed.txt")" = 3
+    test "$(grep -cxE 'file=(scripts/hikari-resume\.lua|script-opts/hikari-resume\.conf|script-modules/hikari-chapters\.lua|script-modules/hikari-release\.lua)' "$cfg/hikari-installed.txt")" = 4
 check 'clean install: continue watching: no list created by the installer' test ! -e "$cfg/hikari-resume.json"
 check 'clean install: the repository input.conf has the same bindings' bash -c "grep -v '^#' '$tmp/want-input.conf' | while IFS= read -r l; do grep -qxF \"\$l\" '$repo/portable_config/input.conf' || exit 1; done"
 count_glob() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
@@ -383,7 +383,7 @@ printf 'x' >"$cfg/hikari-resume.json.4242-1.tmp"
 printf 'mine' >"$cfg/hikari-resume.json.bak"
 run "$h" --uninstall --yes
 check 'created by hikari: continue watching list and its temporary files removed' \
-    test ! -e "$cfg/hikari-resume.json" -a ! -e "$cfg/hikari-resume.json.4242-1.tmp" -a ! -e "$cfg/scripts/hikari-resume.lua" -a ! -e "$cfg/script-opts/hikari-resume.conf" -a ! -e "$cfg/script-modules/hikari-chapters.lua"
+    test ! -e "$cfg/hikari-resume.json" -a ! -e "$cfg/hikari-resume.json.4242-1.tmp" -a ! -e "$cfg/scripts/hikari-resume.lua" -a ! -e "$cfg/script-opts/hikari-resume.conf" -a ! -e "$cfg/script-modules/hikari-chapters.lua" -a ! -e "$cfg/script-modules/hikari-release.lua"
 check 'created by hikari: a file of the user named like the list stays' test "$(cat "$cfg/hikari-resume.json.bak")" = mine
 rm -f "$cfg/hikari-resume.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
