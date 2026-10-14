@@ -64,9 +64,10 @@ local NOW = os.time({year = 2026, month = 10, day = 12, hour = 20})
 
 -- Loads the script with fresh mocks and an empty list folder (unless `keep`).
 -- `opts` are hikari-resume options (enabled, ask, history_size).
-local function load(opts, keep)
+local function load(opts, keep, props)
 	if not keep then clean_dir() end
 	mock.install(SCRIPT_NAME)
+	for k, v in pairs(props or {}) do mock.props[k] = v end
 	mock.script_opts = {['hikari-language'] = 'es'}
 	for k, v in pairs(opts or {}) do mock.script_opts['hikari-resume-' .. k] = v end
 	mock.expand['~~/hikari-resume.json'] = LIST
@@ -1340,6 +1341,36 @@ test('next episode: gaps, versions, other series, huge and unreadable folders', 
 	eq(next(mock.props[s.NEXT_PROP]), nil)
 	play_to(100)
 	eq(saved()[1].series, 'show|1', 'saved as usual')
+end)
+
+local FILTER_DEFAULT = {'video', 'audio', 'image', 'archive', 'playlist'}
+local function filter_props(current)
+	return {
+		['option-info/directory-filter-types'] = {['default-value'] = FILTER_DEFAULT},
+		['directory-filter-types'] = current,
+	}
+end
+local function filter_sets()
+	local sets = {}
+	for _, s in ipairs(mock.native_sets) do
+		if s[1] == 'directory-filter-types' then sets[#sets + 1] = table.concat(s[2], ',') end
+	end
+	return table.concat(sets, '|')
+end
+
+test('folder playlists: images out while directory-filter-types is mpv\'s default', function()
+	load(nil, false, filter_props({'video', 'audio', 'image', 'archive', 'playlist'}))
+	eq(filter_sets(), 'video,audio,archive,playlist', 'image taken out, the rest kept in order')
+	load(nil, false, filter_props({'video', 'audio', 'image'}))
+	eq(filter_sets(), '', 'another value (the user\'s, or an older default) stays')
+	load(nil, false, filter_props({'video', 'audio'}))
+	eq(filter_sets(), '', 'the user\'s own list stays')
+	load(nil, false, {})
+	eq(filter_sets(), '', 'mpv before 0.39: no such option, nothing set')
+	load({folder_images = 'yes'}, false, filter_props({'video', 'audio', 'image', 'archive', 'playlist'}))
+	eq(filter_sets(), '', 'folder_images=yes: mpv\'s choice')
+	load({enabled = 'no'}, false, filter_props({'video', 'audio', 'image', 'archive', 'playlist'}))
+	eq(filter_sets(), '', 'enabled=no: nothing touched')
 end)
 
 test('the script makes no network connection and runs no program', function()

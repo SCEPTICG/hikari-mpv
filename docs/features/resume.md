@@ -45,6 +45,8 @@ Playing another episode of the series (from 30 seconds on, as always) makes it t
 
 When an episode is the last thing in mpv's playlist (you opened just that file), hikari adds the next episode of the folder behind it, so mpv moves on to it when the episode ends, and uosc's *next* button works. If something is already queued after it (mpv's `autoload`, a folder you opened, your own playlist), hikari leaves the playlist alone, and it never adds a file that is already in it. If the next episode was half-watched, the usual question comes up.
 
+Some players fill the playlist with the whole folder on their own (mpv's `autocreate-playlist`, which mpv.net and AnimeJaNai turn on). mpv would put the folder's images in too, such as the `-thumb.jpg` and posters that Jellyfin or Sonarr leave next to each episode, and they would show between episodes. So hikari takes images out of `directory-filter-types` when mpv starts, as long as your `mpv.conf` leaves that option as it is; if you set it yourself, yours stays. To keep the images, set `folder_images=yes`.
+
 To turn it off, set `autoplay_next=no`. Do so too if others you do not fully trust can put files in that folder (a shared NAS folder, say): playing on this way opens the next file of the folder without you picking it. Your copy of `hikari-resume.conf` is kept on update, so if it comes from hikari 0.8 the line is not there: the default, `yes`, applies.
 
 The [skip button](skip.md#next-episode) reads *Next episode ›* at the end of an episode when the next one is queued. Moving on from an episode straight to that next one (with that button, uosc's *next* button, or at the end of the file) in the second half of the episode counts it as watched, even before 95 %, for instance when you skip an ending that AniSkip knows. A peek of under 30 seconds, a jump from earlier in the episode or a file that stops on an error (the NAS went away) do not count: the episode stays as it was.
@@ -71,5 +73,6 @@ hikari never sends it anywhere: this script makes no network connection at all, 
 | `ask` | `yes` | `no` continues from where you were without asking. |
 | `history_size` | `30` | How many rows the list keeps (a series is one), from 1 to 100. |
 | `autoplay_next` | `yes` | `no`: hikari does not queue the next episode of a series. Missing from a copy of the file made by hikari 0.8: `yes`. |
+| `folder_images` | `no` | `yes`: when mpv fills the playlist with the folder, its images go in as well, as mpv does on its own. Missing from a copy of the file made by hikari 0.8: `no`. |
 
 To use another key, bind `script-binding hikari_resume/open-menu` in `input.conf`.
