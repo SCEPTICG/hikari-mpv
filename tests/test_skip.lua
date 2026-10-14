@@ -550,6 +550,111 @@ test('last ending with no next entry and unknown duration: no skip', function()
 	eq(s.is_visible(), true, 'button stays')
 end)
 
+-- Next episode ------------------------------------------------------------------
+
+local NEXT_PROP = 'user-data/hikari_resume/next'
+local FILE = '/anime/Show - 05.mkv'
+local NEXT = '/anime/Show - 06.mkv'
+
+-- The file playing is FILE, first of a playlist whose second entry is
+-- `entry`, and hikari-resume published `published` (default: NEXT for FILE).
+local function queue(entry, published)
+	mock.props.path = FILE
+	mock.props['playlist/1/filename'] = entry or NEXT
+	mock.set('playlist-pos', 0)
+	mock.set('playlist-count', 2)
+	mock.set(NEXT_PROP, published or {path = FILE, next = NEXT})
+end
+
+local function label(s) return s.layout() and s.layout().label end
+
+test('next episode: a last-chapter ending with the next episode next reads Next episode', function()
+	local s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	eq(label(s), 'Saltar ending ›')
+	queue()
+	eq(label(s), 'Siguiente episodio ›')
+	mock.bindings.skip()
+	eq(mock.commands[#mock.commands][1], 'playlist-next')
+	eq(s.is_visible(), false)
+end)
+
+test('next episode: another entry next, another path or nothing published: Skip ending', function()
+	local s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	queue('/anime/Other.mkv')
+	eq(label(s), 'Saltar ending ›', 'another file next')
+	s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	queue(nil, {path = '/anime/Show - 04.mkv', next = NEXT})
+	eq(label(s), 'Saltar ending ›', 'published for another file')
+	s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	queue(nil, {})
+	eq(label(s), 'Saltar ending ›', 'nothing published')
+	-- An ending followed by a preview chapter skips to the preview, as before.
+	s = play(1320, EPISODE)
+	queue()
+	eq(label(s), 'Saltar ending ›')
+end)
+
+test('next episode: without an ending, a button for the last 5 %', function()
+	local list = chapters({{0, 'Part A'}, {700, 'Part B'}})
+	local s = play(1340, list)
+	queue()
+	eq(s.is_visible(), false, 'before 95 %')
+	mock.set('time-pos', 1349)
+	eq(label(s), 'Siguiente episodio ›')
+	assert(s.overlay.visible, 'drawn')
+	mock.set('time-pos', 1419.9)
+	eq(s.is_visible(), false, 'gone at the very end')
+	mock.set('time-pos', 1400)
+	assert(s.skip(), 'skipped')
+	eq(mock.commands[#mock.commands][1], 'playlist-next')
+	-- Without the next episode next (the playlist changed), it goes.
+	s = play(1400, list)
+	queue()
+	eq(label(s), 'Siguiente episodio ›')
+	mock.set('playlist-count', 1)
+	eq(s.is_visible(), false, 'the next entry is gone')
+	-- A file with no chapters at all gets it too.
+	s = play(1400, {})
+	queue()
+	eq(label(s), 'Siguiente episodio ›')
+end)
+
+test('next episode: compared with one kind of separator, without case on Windows', function()
+	local s = load()
+	mock.props.platform = 'linux'
+	eq(s.same_path('/a//b/c.mkv', '/a/b/c.mkv'), true)
+	eq(s.same_path('/a/B.mkv', '/a/b.mkv'), false, 'case counts outside Windows')
+	mock.props.platform = 'windows'
+	eq(s.same_path('\\\\NAS\\anime\\Show - 06.mkv', '//nas/Anime/show - 06.mkv'), true)
+	eq(s.same_path('C:\\a\\b.mkv', 'C:\\a\\c.mkv'), false)
+	eq(s.same_path(nil, 'x'), false)
+end)
+
+test('next episode: next_episode=no leaves the button as before', function()
+	local s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}), {['hikari-skip-next_episode'] = 'no'})
+	queue()
+	eq(label(s), 'Saltar ending ›')
+	s = play(1400, chapters({{0, 'Part A'}, {700, 'Part B'}}), {['hikari-skip-next_episode'] = 'no'})
+	queue()
+	eq(s.is_visible(), false, 'no button without an ending')
+	eq(mock.observers[NEXT_PROP], nil, 'not even watched')
+end)
+
+test('next episode: streams are left as they were (hikari-resume publishes nothing for them)', function()
+	local s = play(1400, chapters({{0, 'Part A'}, {700, 'Part B'}}))
+	mock.props.path = 'https://host/stream?token=x&filename=Show%20-%2005.mkv'
+	mock.props['playlist/1/filename'] = 'https://host/stream?token=x&filename=Show%20-%2006.mkv'
+	mock.set('playlist-pos', 0)
+	mock.set('playlist-count', 2)
+	mock.set(NEXT_PROP, {})
+	eq(s.is_visible(), false)
+	s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	mock.props.path = 'https://host/stream?token=x'
+	mock.set('playlist-pos', 0)
+	mock.set('playlist-count', 2)
+	eq(label(s), 'Saltar ending ›')
+end)
+
 test('size options are clamped to finite ranges', function()
 	local s = load({['hikari-skip-margin_bottom'] = '1e999', ['hikari-skip-margin_right'] = '-5',
 		['hikari-skip-scale'] = '1e999', ['hikari-skip-scale_fullscreen'] = '0', ['hikari-skip-font_size'] = 'nan',

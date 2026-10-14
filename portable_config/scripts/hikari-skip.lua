@@ -58,6 +58,20 @@
 --   An answer that arrives once the opening is over changes nothing on
 --   screen; one that arrives after the file changed (end-file counts the
 --   files) is dropped.
+-- - Next episode (next_episode=yes, the default): hikari-resume.lua publishes
+--   the next episode of the file playing in user-data/hikari_resume/next
+--   ({path, next}; files only, never streams). When it is for this very path
+--   and the next entry of the playlist is that file (compared with one kind
+--   of separator, and without case on Windows), the button that would do
+--   `playlist-next` (a last-chapter ending, as before) reads "Next episode ›"
+--   instead of "Skip ending ›". With it queued, an AniSkip ending that ends
+--   less than FINAL_MARGIN seconds before the end of the file (as
+--   hikari-resume's END_MARGIN) counts as the last thing in it: the button
+--   stays to the end and goes to the next episode, with that label. A file
+--   with no ending range at all (no chapter, no AniSkip, or endings=no) gets
+--   the "Next episode ›" button from NEXT_SHARE of its duration to the end.
+--   It is checked again when the published value, playlist-pos or
+--   playlist-count changes. next_episode=no leaves all of it as in hikari 0.8.
 --
 -- Options (script-opts/hikari-skip.conf): see that file.
 
@@ -103,6 +117,12 @@ local MOUSE_SECTION = mp.get_script_name() .. '_button'
 local END_MARGIN = 0.25
 -- Average glyph width as a fraction of the font size, to size the box.
 local CHAR_WIDTH = 0.52
+-- Where hikari-resume.lua publishes the next episode of the file playing.
+local NEXT_PROP = 'user-data/hikari_resume/next'
+-- An AniSkip ending this close to the end of the file is its last part.
+local FINAL_MARGIN = 10
+-- Without an ending, the "Next episode" button shows from this share on.
+local NEXT_SHARE = 0.95
 
 local opts = {
 	openings = true,
@@ -122,6 +142,8 @@ local opts = {
 	scale_fullscreen = 1.3,
 	-- Opening and ending times from AniSkip for files without such chapters.
 	aniskip = true,
+	-- "Next episode ›" when the next episode is next in the playlist.
+	next_episode = true,
 }
 options.read_options(opts, OPTIONS_ID)
 
@@ -180,6 +202,8 @@ end
 
 local KIND_BY_NAME = {}
 for _, kind in ipairs(KINDS) do KIND_BY_NAME[kind.name] = kind end
+-- The range at the end of a file with no ending, when the next episode is queued.
+local NEXT_KIND = {name = 'next episode', label = 'skip_next_episode', enabled = true}
 
 -- Kind for a chapter title, or nil (see hikari-chapters.lua). With `all`,
 -- kinds turned off in the options count too.
@@ -232,15 +256,21 @@ end
 
 -- Ranges from AniSkip's results (see hikari-aniskip.lua) for a file of
 -- `duration` seconds, as build_ranges makes them. An ending that runs to the
--- end of the file skips like a last-chapter ending (next_time nil).
-local function aniskip_ranges(results, duration)
+-- end of the file skips like a last-chapter ending (next_time nil). With
+-- `next_queued`, so does one that ends within FINAL_MARGIN of the end, and its
+-- button stays to the end.
+local function aniskip_ranges(results, duration, next_queued)
 	local ranges = {}
 	if not aniskip or not results then return ranges end
 	for _, r in ipairs(aniskip.select(results, duration)) do
 		local kind = KIND_BY_NAME[r.kind == 'opening' and 'openings' or 'endings']
 		if kind.enabled then
 			local to_end = r.finish >= duration - 1
-			ranges[#ranges + 1] = {kind = kind, start = r.start, finish = r.finish,
+			local finish = r.finish
+			if not to_end and next_queued and r.kind ~= 'opening' and r.finish >= duration - FINAL_MARGIN then
+				to_end, finish = true, duration
+			end
+			ranges[#ranges + 1] = {kind = kind, start = r.start, finish = finish,
 				next_time = not to_end and r.finish or nil, aniskip = true}
 		end
 	end
@@ -342,6 +372,7 @@ local state = {
 	-- AniSkip: `file` counts the files played, so a late answer is dropped;
 	-- `asked` once per file; `results` the answer for this file.
 	file = 0, loaded = false, asked = false, results = nil,
+	next_queued = false, -- the next playlist entry is the next episode (see next_episode_queued)
 	guard_until = nil, guard_timer = nil, -- double-click guard after a mouse skip
 	idle = false, menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
@@ -369,10 +400,17 @@ local function current_scale()
 	return (state.hidpi > 0 and state.hidpi or 1) * base
 end
 
+-- The key of a range's label: "Next episode" for one that goes to the next
+-- entry of the playlist when that entry is the next episode.
+local function label_key(range)
+	if range.kind == NEXT_KIND or (not range.next_time and state.next_queued) then return NEXT_KIND.label end
+	return range.kind.label
+end
+
 -- Button rectangle in OSD pixels, or nil when hidden.
 local function layout()
 	if not is_visible() then return nil end
-	local label = i18n.t(state.ranges[state.current].kind.label)
+	local label = i18n.t(label_key(state.ranges[state.current]))
 	local s = current_scale()
 	local fs = round(opts.font_size * s)
 	local pad_x, pad_y = round(fs * 0.8), round(fs * 0.5)
@@ -507,8 +545,21 @@ local function rebuild()
 	local before = state.current and state.ranges[state.current]
 	state.ranges = build_ranges(state.chapters, state.duration)
 	if state.results and not has_skip_chapters(state.chapters) and type(state.duration) == 'number' then
-		for _, range in ipairs(aniskip_ranges(state.results, state.duration)) do state.ranges[#state.ranges + 1] = range end
+		for _, range in ipairs(aniskip_ranges(state.results, state.duration, state.next_queued)) do
+			state.ranges[#state.ranges + 1] = range
+		end
 		table.sort(state.ranges, function(a, b) return a.start < b.start end)
+	end
+	-- No ending at all, and the next episode is next: a button for the last 5 %.
+	local duration = state.duration
+	if state.next_queued and type(duration) == 'number' and duration > 0 and duration < math.huge then
+		local ending = false
+		for _, range in ipairs(state.ranges) do
+			if range.kind.name == 'endings' then ending = true end
+		end
+		if not ending then
+			state.ranges[#state.ranges + 1] = {kind = NEXT_KIND, start = duration * NEXT_SHARE, finish = duration}
+		end
 	end
 	state.current = nil
 	-- Keep a dismissal while its range still exists (a stream's duration
@@ -607,6 +658,46 @@ mp.set_key_bindings({
 	{'mbtn_left_dbl', 'ignore'},
 }, MOUSE_SECTION, 'force')
 
+-- 'windows' or not, from mpv when it says (as hikari-update.lua).
+local function is_windows()
+	local p = mp.get_property_native('platform')
+	if type(p) == 'string' and p ~= '' then return p == 'windows' end
+	return package.config:sub(1, 1) == '\\'
+end
+
+-- Two paths of the same file, as far as a light look tells: one kind of
+-- separator, without case on Windows.
+local function same_path(a, b)
+	if type(a) ~= 'string' or type(b) ~= 'string' then return false end
+	local windows = is_windows()
+	local function form(path)
+		path = path:gsub('\\', '/'):gsub('/+', '/')
+		return windows and path:lower() or path
+	end
+	return form(a) == form(b)
+end
+
+-- Is the next entry of the playlist the next episode hikari-resume found for
+-- the file playing?
+local function next_episode_queued()
+	if not opts.next_episode then return false end
+	local published = mp.get_property_native(NEXT_PROP)
+	if type(published) ~= 'table' or type(published.next) ~= 'string' then return false end
+	local path = mp.get_property_native('path')
+	if type(path) ~= 'string' or published.path ~= path then return false end
+	local pos = mp.get_property_number('playlist-pos', -1)
+	local count = mp.get_property_number('playlist-count', 0)
+	if not pos or not count or pos < 0 or pos + 1 >= count then return false end
+	return same_path(mp.get_property_native('playlist/' .. math.floor(pos + 1) .. '/filename'), published.next)
+end
+
+local function update_next()
+	local queued = next_episode_queued()
+	if queued == state.next_queued then return end
+	state.next_queued = queued
+	rebuild()
+end
+
 -- Forgets everything about the file that just ended. The double-click guard
 -- is about input, not the file, so it is left running: after a skip with
 -- playlist-next, end-file arrives before the second click does. Its timer
@@ -615,6 +706,7 @@ local function reset()
 	state.chapters, state.duration, state.time = nil, nil, nil
 	state.pressed, state.dismissed = false, nil
 	state.file, state.loaded, state.asked, state.results = state.file + 1, false, false, nil
+	state.next_queued = false
 	rebuild()
 end
 
@@ -691,6 +783,12 @@ mp.register_event('file-loaded', function()
 end)
 -- hikari-title may publish after file-loaded has been handled here.
 mp.observe_property(RELEASE_PROP, 'native', function() maybe_aniskip() end)
+-- The next episode: what hikari-resume published, and the playlist around it.
+if opts.next_episode then
+	mp.observe_property(NEXT_PROP, 'native', update_next)
+	mp.observe_property('playlist-pos', 'number', update_next)
+	mp.observe_property('playlist-count', 'number', update_next)
+end
 -- A seek that leaves playback far from where the skip went (the user going
 -- back into a last-chapter ending with keep-open, say) brings the button back.
 mp.register_event('playback-restart', function()
@@ -717,6 +815,6 @@ if HIKARI_SKIP_TEST then
 		layout = layout, text_width = text_width, is_visible = is_visible, skip = skip, format_time = format_time,
 		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN, guard_active = guard_active,
 		has_skip_chapters = has_skip_chapters, aniskip_ranges = aniskip_ranges, aniskip = aniskip,
-		RELEASE_PROP = RELEASE_PROP,
+		RELEASE_PROP = RELEASE_PROP, NEXT_PROP = NEXT_PROP, same_path = same_path,
 	}
 end

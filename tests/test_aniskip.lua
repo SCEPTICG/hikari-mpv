@@ -934,6 +934,32 @@ test('skip: options choose the kinds; an ending to the end of the file goes to t
 	eq(mock.commands[#mock.commands][1], 'playlist-next')
 end)
 
+test('skip: an AniSkip ending near the end goes to the next episode when it is next', function()
+	-- An ending to 1460 in a file of 1470 s.
+	os.remove(CACHE)
+	local s = play()
+	answer_all()
+	eq(s.state.ranges[2].next_time, 1460, 'skips to its end as before')
+	mock.props['playlist/1/filename'] = '/anime/[SubsPlease] Sousou no Frieren - 06 (1080p) [ABCD1234].mkv'
+	mock.set('playlist-pos', 0)
+	mock.set('playlist-count', 2)
+	mock.set('user-data/hikari_resume/next', {path = PATH, next = mock.props['playlist/1/filename']})
+	local ending = s.state.ranges[2]
+	eq(ending.next_time, nil, 'the last part of the file now'); eq(ending.finish, 1470, 'to the end')
+	mock.set('time-pos', 1465)
+	eq(label(s), 'Siguiente episodio ›', 'still there after the ending')
+	assert(s.skip())
+	eq(mock.commands[#mock.commands][1], 'playlist-next')
+	-- With next_episode=no, as before.
+	s = play({['hikari-skip-next_episode'] = 'no'})
+	mock.set('playlist-pos', 0)
+	mock.set('playlist-count', 2)
+	mock.set('user-data/hikari_resume/next', {path = PATH, next = mock.props['playlist/1/filename']})
+	eq(s.state.ranges[2].next_time, 1460)
+	mock.set('time-pos', 1380)
+	eq(label(s), 'Saltar ending ›')
+end)
+
 test('skip: AniSkip is asked for this file\'s length; times for another cut are not used', function()
 	os.remove(CACHE)
 	local s = play(nil, nil, nil, 1420.3)

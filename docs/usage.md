@@ -12,14 +12,14 @@ description: "Keyboard shortcuts and configuration files of hikari, a theme for 
 | `Alt+p` | Palette menu |
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
 | `Alt+t` | Subtitle menu (style, size, height) |
-| `Alt+r` | Continue watching: the files you left half-watched (see [Continue watching](features/resume.md)) |
+| `Alt+r` | Continue watching: the files you left half-watched, and your series with their next episode (see [Continue watching](features/resume.md)) |
 | `Alt+u` | New hikari version: release notes, update command (see [Update check](features/update-check.md)) |
 | `Alt+l` | Language of hikari (and of uosc after a restart) (see [Languages](features/language.md)) |
 | `Ctrl+1` … `Ctrl+6` | Anime4K modes A, B, C, A+A, B+B, C+A (when hikari installed Anime4K) |
 | `Ctrl+7` | Anime4K *Automatic*: the mode from each video's resolution |
 | `Ctrl+0` | Anime4K off |
 
-The controls bar has up to six hikari buttons before *fullscreen*: subtitle style (text icon), *Upscaling* (sparkles icon, only for videos and only when Anime4K is installed), speed, *Continue watching* (clock icon, only when its list has something), palettes and *Update hikari* (download icon, only when a new hikari version is out). Their tooltips, like every hikari text, are in your [language](features/language.md). The *Skip opening ›* button appears at the bottom right during openings, intros and endings; click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
+The controls bar has up to six hikari buttons before *fullscreen*: subtitle style (text icon), *Upscaling* (sparkles icon, only for videos and only when Anime4K is installed), speed, *Continue watching* (clock icon, only when its list has something), palettes and *Update hikari* (download icon, only when a new hikari version is out). Their tooltips, like every hikari text, are in your [language](features/language.md). The *Skip opening ›* button appears at the bottom right during openings, intros and endings (*Next episode ›* at the end of an episode whose next one is queued); click it or press `Alt+s`. A key you already use for something else is left to you: the installer says so, and you can bind another key to the same command (the commands are listed in each section below).
 
 ## Configuration
 
@@ -29,13 +29,13 @@ Everything lives in the player's config folder (the one the installer showed you
 | --- | --- |
 | `script-opts/uosc.conf` | uosc: timeline style and the buttons of the controls bar. |
 | `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
-| `script-opts/hikari-skip.conf` | Skip button: which chapters, extra title patterns, position, size, opacity. |
+| `script-opts/hikari-skip.conf` | Skip button: which chapters, extra title patterns, AniSkip, the *Next episode* button, position, size, opacity. |
 | `script-opts/hikari-title.conf` | Titles: on/off and tidying of release names. |
 | `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
-| `script-opts/hikari-resume.conf` | Continue watching: on/off, whether to ask, how many files. Kept on update. |
+| `script-opts/hikari-resume.conf` | Continue watching: on/off, whether to ask, how many rows, playing the next episode on its own. Kept on update. |
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf`, `hikari-language.conf` | Your chosen palette, subtitle style, Anime4K mode and quality, and language, saved by the menus. Kept on update. |
-| `hikari-resume.json` | The continue watching list: where you left each file. Not in the installer's backups; deleted on uninstall. |
-| `script-modules/hikari-i18n.lua`, `script-modules/hikari-chapters.lua` | hikari's texts in its 13 languages, and how chapter titles are read (openings, endings), shared by its scripts (replaced on update). |
+| `hikari-resume.json` | The continue watching list: where you left each file and series. Not in the installer's backups; deleted on uninstall. |
+| `script-modules/hikari-i18n.lua`, `script-modules/hikari-chapters.lua`, `script-modules/hikari-release.lua` | hikari's texts in its 13 languages, how chapter titles are read (openings, endings) and how release names are read (series, season, episode), shared by its scripts (replaced on update). |
 
 Updating hikari replaces the `script-opts` files above with hikari's, except `hikari-resume.conf` (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is.
 
