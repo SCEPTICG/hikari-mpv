@@ -252,7 +252,6 @@ cat >"$tmp/want-mpv.conf" <<'EOF'
 # >>> hikari (managed block, do not edit) >>>
 osc=no
 osd-bar=no
-directory-filter-types=video,audio
 include="~~/hikari-palette.conf"
 include="~~/hikari-subs.conf"
 include="~~/hikari-upscale.conf"
@@ -355,7 +354,7 @@ printf 'timeline_style=line\n' >"$cfg/script-opts/uosc.conf"
 cp "$cfg/mpv.conf" "$tmp/b-mpv"; cp "$cfg/input.conf" "$tmp/b-input"; cp "$cfg/script-opts/uosc.conf" "$tmp/b-uosc"
 run "$h" --yes
 check 'byte test: install exit 0' test "$rc" = 0
-check 'byte test: CRLF kept for the block' test "$(grep -c $'\r$' "$cfg/mpv.conf")" = 13
+check 'byte test: CRLF kept for the block' test "$(grep -c $'\r$' "$cfg/mpv.conf")" = 12
 check 'byte test: Alt+p of the user left alone and reported' test "$(count_of "$cfg/input.conf" 'Alt+p')" = 1 -a -n "$(grep 'Alt+p is already bound' "$out")"
 check 'byte test: original uosc.conf kept aside' same "$tmp/b-uosc" "$cfg/hikari-originales/script-opts/uosc.conf"
 check 'byte test: the first backup is marked as the original' test -f "$(rec "$cfg" first_backup)/hikari-backup-original.txt"
@@ -412,13 +411,6 @@ mkdir -p "$cfg"
 printf '[anime]\ndeband=yes\n[default]\nvolume=50\n' >"$cfg/mpv.conf"
 run "$h" --yes --anime4k no
 check 'profile: already back in [default]: no extra header' test "$(count_of "$cfg/mpv.conf" '[default]')" = 1
-h=$(newhome own-filter)
-cfg="$h/.config/mpv"
-mkdir -p "$cfg"
-printf 'directory-filter-types=video,audio,image\n' >"$cfg/mpv.conf"
-run "$h" --yes --anime4k no --verbose
-check 'own directory-filter-types: left out of the block' test "$(grep -c '^directory-filter-types=' "$cfg/mpv.conf")" = 1 -a "$(grep -cx 'directory-filter-types=video,audio,image' "$cfg/mpv.conf")" = 1
-check 'own directory-filter-types: said so' has "$out" 'already sets directory-filter-types'
 
 # --- the Mac of SCEPTICG ----------------------------------------------------
 
@@ -511,7 +503,7 @@ check_mac_installed() {
     check "$l: no Anime4K line left on in mpv.conf" test "$(grep -c '^glsl-shaders' "$c/mpv.conf")" = 0
     check "$l: the profiles otherwise untouched" test "$(grep -c '^profile-cond=get("height", 0)' "$c/mpv.conf")/$(grep -c '^profile-restore=copy$' "$c/mpv.conf")" = 3/3
     check "$l: user options untouched" bash -c "for l in 'hwdec=videotoolbox' 'target-trc=gamma2.2' 'deband=yes' 'alang=es,spa,es-ES,es-419,ja,jpn' 'osd-font=\"Helvetica Neue\"'; do grep -qxF \"\$l\" '$c/mpv.conf' || exit 1; done"
-    check "$l: block at the end, starting with [default]" test "$(tail -n 10 "$c/mpv.conf" | head -n 2 | tr '\n' '|')" = '# >>> hikari (managed block, do not edit) >>>|[default]|' -a "$(tail -n 1 "$c/mpv.conf")" = '# <<< hikari <<<'
+    check "$l: block at the end, starting with [default]" test "$(tail -n 9 "$c/mpv.conf" | head -n 2 | tr '\n' '|')" = '# >>> hikari (managed block, do not edit) >>>|[default]|' -a "$(tail -n 1 "$c/mpv.conf")" = '# <<< hikari <<<'
     check "$l: the 7 CTRL+0..6 lines turned off" test "$(grep -c '^# hikari: CTRL+[0-6] no-osd change-list glsl-shaders' "$c/input.conf")" = 7
     check "$l: CTRL+t and WHEEL_* untouched" test "$(grep -c '^CTRL+t cycle-values\|^WHEEL_' "$c/input.conf")" = 5
     check "$l: hikari binds Ctrl+0..7 (keys free now)" test "$(grep -c '^Ctrl+[0-7]  script-message-to hikari_upscale set-mode ' "$c/input.conf")" = 8
