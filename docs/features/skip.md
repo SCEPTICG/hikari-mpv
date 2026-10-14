@@ -11,6 +11,16 @@ Chapters are recognised by title, with the same rules uosc uses to colour its ch
 
 When the ending is the last chapter, skipping it moves on to the next playlist entry if there is one; otherwise it seeks to one second before the end, so the file finishes as it normally would.
 
+## Next episode
+
+For episodes of a series on your disk or a network share, [continue watching](resume.md#series) finds the next episode in the folder (and queues it, unless you turned that off). When that next episode is the next entry of mpv's playlist, the button at the end of the episode reads **Next episode ›** and plays it:
+
+- instead of **Skip ending ›**, when the ending is the last chapter;
+- after an ending that [AniSkip](#aniskip) knows, when less than 10 seconds of the file are left after it: the button stays until the end;
+- for the last 5 % of an episode with no known ending (no ending chapter and nothing from AniSkip).
+
+Click or `Alt+s`, as always. Streams (Seanime and similar apps) are left as they were. To keep the button as it was, set `next_episode=no` in `script-opts/hikari-skip.conf` (or add `script-opts-append=hikari-skip-next_episode=no` to your own `mpv.conf`, since updating replaces that file).
+
 ## AniSkip
 
 Many fansub releases have no chapters, or none named after the opening or the ending. For those, hikari asks [AniSkip](https://aniskip.com), a free, community-made database of opening and ending times, and the button shows at those times, the same as with chapters (same label, `Alt+s`, click). Openings and endings that AniSkip marks as mixed with scenes of the episode are offered for skipping too, as openings and endings. It is on by default, and only for files that:
