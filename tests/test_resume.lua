@@ -134,8 +134,10 @@ local function last_menu()
 	return nil
 end
 
-local EP = '/mnt/anime/Frieren/[SubsPlease] Sousou no Frieren - 05 (1080p).mkv'
-local EP_TITLE = '[SubsPlease] Sousou no Frieren - 05 (1080p)'
+-- A single file (no episode number): the rules of single files. Episodes of a
+-- series are kept by series (see the Series tests below).
+local EP = '/mnt/anime/Films/[Group] Kimi no Na wa (1080p).mkv'
+local EP_TITLE = '[Group] Kimi no Na wa (1080p)'
 
 local function entry(path, position, updated, duration)
 	return {path = path, title = path:match('([^/]+)%.%w+$'), position = position, duration = duration or 1420,

@@ -5,8 +5,11 @@
 -- start from the beginning. The `open-menu` binding, and a button in uosc's
 -- controls bar (uosc.conf shows it while user-data/hikari_resume/available is
 -- true, mpv 0.36+), list the files left half-watched, newest first; picking
--- one opens it, and the question comes up. Texts follow hikari's language
--- (hikari-i18n).
+-- one opens it, and the question comes up. Episodes of a series get one row
+-- per series instead: the episode left half-watched, or once it is watched
+-- the next one in its folder ("Next"), or "Up to date" when there is none
+-- yet. With autoplay_next, the next episode is queued behind the last one of
+-- the playlist. Texts follow hikari's language (hikari-i18n).
 --
 -- mpv turns this file name into the script name `hikari_resume`, so:
 --   input.conf:  <key> script-binding hikari_resume/open-menu
@@ -23,8 +26,9 @@
 --   resolved; on Windows without case (ASCII letters). mpv's `normalize-path`
 --   command does the same, but only from mpv 0.38.
 -- - What is saved: under MIN_POSITION seconds, nothing (an entry already there
---   stays as it was). Watched, so removed from the list (next time it starts
---   from zero without asking): at WATCHED_SHARE of the duration, or once the
+--   stays as it was). Watched (next time it starts from zero without asking):
+--   a single file leaves the list, an episode stays as `watched` (see
+--   Series). Watched means at WATCHED_SHARE of the duration, or once the
 --   ending has started. The ending is the last chapter that
 --   script-modules/hikari-chapters.lua (shared with hikari-skip.lua) calls an
 --   ending (ED, Ending, Credits, エンディング...): the last one, so a file with
@@ -50,16 +54,50 @@
 --   a "continue" that arrives after it still seeks (same file only). When the
 --   menu never shows (no uosc), the pause goes back after PROMPT_TIMEOUT.
 --   With ask=no it seeks without asking.
--- - The list: ~~/hikari-resume.json, {"version":1,"entries":[...]}, each entry
---   {path, title, position, duration, updated (unix time)}, newest first, at
---   most history_size. One list per computer, never synchronised; this script
---   makes no network connection at all. Read with a size cap and every field
---   checked; a path must be an absolute file path (no URL), as it goes to
---   loadfile. Only the newest history_size entries are used, however many
---   the file holds. A broken or unreadable file is an empty list and a warning,
---   never an error, and it is only written again when there is something to
---   save. Before each write the file is read again and only the entry of the
---   file playing changes, so two mpv windows keep each other's entries.
+-- - Series: a file whose name is an episode of a series (one plain episode
+--   number: `Show - 05`, `Show S01E05`; not a special, an OVA, a range or
+--   `12.5`) is kept by series, not by file, as script-modules/hikari-release.lua
+--   (shared with hikari-title.lua) reads it: one entry per series key (the
+--   normalised series name and the season, none being 1), with the last
+--   episode played. Playing another episode of the series replaces it, under
+--   the same rules as a file (MIN_POSITION, watched); a watched episode stays
+--   as `watched` instead of leaving the list. Any other file is a single file,
+--   as before.
+-- - The next episode of a file: in its own folder (utils.readdir, files with
+--   a video extension), the same series key with the smallest episode number
+--   above it; of several versions of that number, the one of the same release
+--   group, otherwise the first by name. A folder of more than MAX_FOLDER files,
+--   or one that cannot be read, has none. It is looked up when a file loads
+--   (its own folder, which is there) and for each watched row when the menu
+--   opens, so an episode downloaded later turns "Up to date" into "Next" on
+--   its own.
+-- - The next episode of the file playing goes to user-data/hikari_resume/next
+--   as {path (mpv's `path`), next (the next file's path)}, `{}` for anything
+--   else and after end-file, for hikari-skip's "Next episode" button. With
+--   autoplay_next (and enabled), when the file playing is the last entry of
+--   the playlist (playlist-pos + 1 == playlist-count), the next episode is
+--   added behind it (`loadfile <next> append`): mpv moves on to it at the end,
+--   and uosc shows its next button. Anything already behind it (autoload, an
+--   opened folder, the user's list) is left alone, and a file already in the
+--   playlist is never added again. Never for streams.
+-- - The list: ~~/hikari-resume.json, {"version":2,"entries":[...]}, newest
+--   first, at most history_size (rows: a series is one). A single file is
+--   {path, title, position, duration, updated (unix time)}; a series adds
+--   {series (its key), season, episode, state (`progress` or `watched`)},
+--   with `title` the series name. Series, season, episode and title are taken
+--   again from the path on reading, so they can never disagree with it. A
+--   version 1 list (hikari 0.8) is read: its episodes become `progress`
+--   entries of their series, the newest of each kept; it is written as
+--   version 2 on the next save. A newer version is treated as a broken file.
+--   One list per computer, never synchronised; this script makes no network
+--   connection at all. Read with a size cap and every field checked; a path
+--   must be an absolute file path (no URL), as it goes to loadfile. Only the
+--   newest history_size entries are used, however many the file holds. A
+--   broken or unreadable file is an empty list and a warning, never an
+--   error, and it is only written again when there is something to save.
+--   Before each write the file is read again and only the entry of the file
+--   playing changes (found by path for a file, by series key for an
+--   episode), so two mpv windows keep each other's entries.
 -- - Writing: a temporary file of this mpv next to the list (named after the
 --   pid, as script-modules/hikari-aniskip.lua does) renamed over it, so a link
 --   or junction with the list's name is replaced, never written through. On
@@ -69,13 +107,18 @@
 -- - Rows: the title is the file name without folder or extension (the
 --   metadata's media-title is too often empty or junk), then `12:34 / 24:00 ·
 --   date` (today, yesterday or `12 oct`, the year only when it is not this
---   year's). A file that cannot be found now (NAS not mounted, deleted) is a
---   grey row "Not available" that stays in the list. Asking for a file on a
+--   year's). A series row is `Series · E05` (`Series · S2 E05` from season 2
+--   on, labels in hikari's language as the tidy titles): half-watched, as a
+--   file; watched with a next episode, that episode and `Next · date`,
+--   opening it; watched without one, `Up to date · date`, grey and not
+--   selectable. A file that cannot be found now (NAS not mounted, deleted),
+--   or the folder of a watched series, is a grey row "Not available" that
+--   stays in the list. Asking for a file on a
 --   share that is off can take tens of seconds on Windows, and mpv waits: so,
 --   once per opening of the menu, each root is checked first (\\host\share,
 --   the drive, /Volumes/<x>, /mnt/<x>, /media/<user>/<x>,
 --   /run/media/<user>/<x>, otherwise the file's folder), and only when it is
---   there are its files checked, each once.
+--   there are its files (or folders, for the next episode) checked, each once.
 --
 -- Options (script-opts/hikari-resume.conf): see that file.
 
@@ -83,8 +126,9 @@ local msg = require('mp.msg')
 local options = require('mp.options')
 local utils = require('mp.utils')
 
--- hikari's modules in ~~/script-modules: the texts (hikari-i18n.lua) and the
--- chapter kinds (hikari-chapters.lua). Single-file scripts get no mpv folder
+-- hikari's modules in ~~/script-modules: the texts (hikari-i18n.lua), the
+-- chapter kinds (hikari-chapters.lua) and the release names
+-- (hikari-release.lua, which needs the texts first). Single-file scripts get no mpv folder
 -- in package.path, so the folder is added for each require and taken out
 -- again (see the header of hikari-i18n.lua).
 local function load_module(name)
@@ -101,11 +145,15 @@ local function load_module(name)
 end
 local i18n = load_module('hikari-i18n')
 local chapter_kinds = load_module('hikari-chapters')
+local release = load_module('hikari-release')
 
 local script_name = mp.get_script_name()
 local OPTIONS_ID = 'hikari-resume'
 local LIST_PATH = '~~/hikari-resume.json'
 local AVAILABLE_PROP = 'user-data/hikari_resume/available'
+-- The next episode of the file playing, for hikari-skip.
+local NEXT_PROP = 'user-data/hikari_resume/next'
+local LIST_VERSION = 2
 local MENU_TYPE = 'hikari-resume'
 local PROMPT_TYPE = 'hikari-resume-prompt'
 
@@ -124,11 +172,14 @@ local MAX_LIST_BYTES = 1024 * 1024
 local MAX_PATH = 4096
 local MAX_TITLE = 512
 local STALE_TMP_AGE = 24 * 3600
+-- A folder with more files than this has no next episode (not even read).
+local MAX_FOLDER = 2000
 
 local opts = {
 	enabled = true,
 	ask = true,
 	history_size = 30,
+	autoplay_next = true,
 }
 options.read_options(opts, OPTIONS_ID)
 do
@@ -239,6 +290,17 @@ local function path_key(path, windows)
 	return windows and path:lower() or path
 end
 
+-- The folder of `path` with its last separator, and the file name.
+local function split_file(path)
+	return path:match('^(.*[/\\])([^/\\]+)$')
+end
+
+-- The episode of a series that the file at `path` is (see hikari-release), or nil.
+local function episode_at(path)
+	local _, name = split_file(path)
+	return name and release.episode_of(name) or nil
+end
+
 -- The file name without folder or extension.
 local function title_of(path)
 	local name = path:match('[^/\\]+$') or path
@@ -258,18 +320,34 @@ local function list_path()
 	return path
 end
 
--- An entry read from the list, checked and in its normalised form, or nil.
-local function check_entry(entry, windows)
+-- An entry read from the list (of `version`), checked and in its normalised
+-- form, or nil. An episode of a series is a series entry, whatever the file
+-- says: its series, season, episode and title come from the path.
+local function check_entry(entry, windows, version)
 	if type(entry) ~= 'table' then return nil end
 	local path = file_path(entry.path, nil, windows)
 	if not path then return nil end
 	if not finite(entry.position) or entry.position < 0 then return nil end
 	if not finite(entry.duration) or entry.duration <= 0 then return nil end
 	if not finite(entry.updated) or entry.updated < 0 or entry.updated > 1e11 then return nil end
+	local episode = episode_at(path)
+	if episode then
+		-- Version 1 only kept what was half-watched.
+		local progress = version == 1 or entry.state ~= 'watched'
+		return {path = path, title = episode.series, series = episode.key, season = episode.season,
+			episode = episode.episode, position = entry.position, duration = entry.duration,
+			updated = math.floor(entry.updated), state = progress and 'progress' or 'watched'}
+	end
 	local title = entry.title
 	if type(title) ~= 'string' or title == '' or #title > MAX_TITLE then title = title_of(path) end
 	return {path = path, title = title, position = entry.position, duration = entry.duration,
 		updated = math.floor(entry.updated)}
+end
+
+-- What an entry is found by: its series key, or the path of a single file.
+local function entry_id(entry, windows)
+	if entry.series then return 's|' .. entry.series end
+	return 'f|' .. path_key(entry.path, windows)
 end
 
 -- Newest first; the same time, by path, so the order never depends on Lua.
@@ -311,7 +389,15 @@ local function read_list()
 		return {}
 	end
 	local ok, value = pcall(utils.parse_json, content)
-	if not ok or type(value) ~= 'table' or value.version ~= 1 or type(value.entries) ~= 'table' then
+	if not ok or type(value) ~= 'table' or not finite(value.version) or type(value.entries) ~= 'table' then
+		warn_broken('damaged')
+		return {}
+	end
+	if value.version > LIST_VERSION then
+		warn_broken('written by a newer hikari')
+		return {}
+	end
+	if value.version ~= 1 and value.version ~= LIST_VERSION then
 		warn_broken('damaged')
 		return {}
 	end
@@ -320,9 +406,9 @@ local function read_list()
 	local by_key, entries = {}, {}
 	-- pairs, not ipairs: a null in the array leaves a hole.
 	for _, raw in pairs(value.entries) do
-		local entry = check_entry(raw, windows)
+		local entry = check_entry(raw, windows, value.version)
 		if entry then
-			local key = path_key(entry.path, windows)
+			local key = entry_id(entry, windows)
 			local seen = by_key[key]
 			if not seen or entry.updated > seen.updated then by_key[key] = entry end
 		end
@@ -388,7 +474,7 @@ local function write_list(entries)
 	local path = list_path()
 	if not path then return false end
 	remove_stale_tmp(path)
-	local json, err = utils.format_json({version = 1, entries = entries})
+	local json, err = utils.format_json({version = LIST_VERSION, entries = entries})
 	local ok = false
 	if json then
 		local tmp = tmp_name(path)
@@ -414,7 +500,8 @@ end
 -- State ---------------------------------------------------------------------------
 
 local state = {
-	-- The file playing when it is one: {path, key, title}; nil otherwise.
+	-- The file playing when it is one: {path, key, title, episode (see
+	-- episode_at, nil for a single file)}; nil otherwise.
 	file = nil,
 	serial = 0, -- counts the files loaded, so an answer for an older one is dropped
 	time = nil, duration = nil, chapters = nil, -- last values seen for this file
@@ -423,8 +510,8 @@ local state = {
 	-- closed, restored, timer}; nil when none.
 	prompt = nil,
 	-- For the list menu while it is open: key -> the file exists, root -> it
-	-- answers (see root_of).
-	exists = nil, roots = nil,
+	-- answers (see root_of), folder -> its file names (false: unreadable).
+	exists = nil, roots = nil, folders = nil,
 	cleared = false, -- Clear history while this file plays: only end-file saves it
 }
 
@@ -504,19 +591,25 @@ local function root_of(path, windows)
 	return parent
 end
 
--- Does the file of `entry` exist? Its root first, once per opening of the
--- menu: a root that is not there makes all its files unavailable without
--- asking for each (a share that is off answers each question slowly).
+-- Does the root of `path` answer? Once per opening of the menu: a root that
+-- is not there makes all its files unavailable without asking for each (a
+-- share that is off answers each question slowly).
+local function root_answers(path, windows)
+	local root = root_of(path, windows)
+	local root_key = root and path_key(root, windows)
+	if not root_key then return true end
+	if state.roots[root_key] == nil then
+		local info = utils.file_info(root)
+		state.roots[root_key] = info ~= nil and info.is_dir == true
+	end
+	return state.roots[root_key]
+end
+
+-- Does the file of `entry` exist? Its root first (see root_answers).
 local function file_exists(entry, windows)
 	local key = path_key(entry.path, windows)
 	if state.exists[key] == nil then
-		local root = root_of(entry.path, windows)
-		local root_key = root and path_key(root, windows)
-		if root_key and state.roots[root_key] == nil then
-			local info = utils.file_info(root)
-			state.roots[root_key] = info ~= nil and info.is_dir == true
-		end
-		if root_key and not state.roots[root_key] then
+		if not root_answers(entry.path, windows) then
 			state.exists[key] = false
 		else
 			local info = utils.file_info(entry.path)
@@ -526,23 +619,82 @@ local function file_exists(entry, windows)
 	return state.exists[key]
 end
 
+-- The file names of folder `dir` (with its separator), or nil when it cannot
+-- be read; kept in `cache` (dir key -> names or false) when given.
+local function folder_names(dir, windows, cache)
+	local key = cache and path_key(dir, windows)
+	if cache and cache[key] ~= nil then return cache[key] or nil end
+	local names = utils.readdir(dir, 'files')
+	if type(names) ~= 'table' then names = nil end
+	if cache then cache[key] = names or false end
+	return names
+end
+
+-- The path of the next episode after the file at `path` among `names` (the
+-- file names of its folder), and that episode (see hikari-release); nil when
+-- there is none.
+local function next_in(path, names)
+	local dir, name = split_file(path)
+	if not dir or not names then return nil end
+	local next_name = release.next_episode(name, names, MAX_FOLDER)
+	if not next_name then return nil end
+	return dir .. next_name, release.episode_of(next_name)
+end
+
+-- `Series · E05`, `Series · S2 E05`: labels in hikari's language, as the tidy
+-- titles of hikari-title; the season only from 2 on.
+local function episode_title(entry, episode)
+	local label = i18n.t('title_episode', {episode = string.format('%02d', episode)})
+	if entry.season > 1 then label = i18n.t('title_season', {season = entry.season}) .. ' ' .. label end
+	return clean(entry.title) .. ' · ' .. label
+end
+
+local function unavailable(item)
+	item.hint = i18n.t('resume_unavailable')
+	item.selectable, item.muted = false, true
+	return item
+end
+
+-- The row of a single file, or of a series half-watched.
+local function progress_item(entry, windows, now)
+	local item = {title = entry.series and episode_title(entry, entry.episode) or clean(entry.title)}
+	if not file_exists(entry, windows) then return unavailable(item) end
+	item.hint = format_clock(entry.position) .. ' / ' .. format_clock(entry.duration)
+		.. ' · ' .. format_date(entry.updated, now)
+	item.value = {'script-message-to', script_name, 'open-file', entry.path}
+	return item
+end
+
+-- The row of a watched series: its next episode, or up to date.
+local function watched_item(entry, windows, now)
+	local item = {title = episode_title(entry, entry.episode)}
+	local dir = split_file(entry.path)
+	local names = dir and root_answers(entry.path, windows) and folder_names(dir, windows, state.folders)
+	if not names then return unavailable(item) end
+	local next_path, next_episode = next_in(entry.path, names)
+	if next_path then
+		item.title = episode_title(entry, next_episode.episode)
+		item.hint = i18n.t('resume_next') .. ' · ' .. format_date(entry.updated, now)
+		item.value = {'script-message-to', script_name, 'open-file', next_path}
+	else
+		item.hint = i18n.t('resume_up_to_date') .. ' · ' .. format_date(entry.updated, now)
+		item.selectable, item.muted = false, true
+	end
+	return item
+end
+
 -- The list menu for `entries` (read now when not given).
 local function list_menu_data(entries)
 	entries = entries or read_list()
 	local windows, now = is_windows(), clock.now()
-	state.exists, state.roots = state.exists or {}, state.roots or {}
+	state.exists, state.roots, state.folders = state.exists or {}, state.roots or {}, state.folders or {}
 	local items = {}
 	for _, entry in ipairs(entries) do
-		local item = {title = clean(entry.title)}
-		if file_exists(entry, windows) then
-			item.hint = format_clock(entry.position) .. ' / ' .. format_clock(entry.duration)
-				.. ' · ' .. format_date(entry.updated, now)
-			item.value = {'script-message-to', script_name, 'open-file', entry.path}
+		if entry.series and entry.state == 'watched' then
+			items[#items + 1] = watched_item(entry, windows, now)
 		else
-			item.hint = i18n.t('resume_unavailable')
-			item.selectable, item.muted = false, true
+			items[#items + 1] = progress_item(entry, windows, now)
 		end
-		items[#items + 1] = item
 	end
 	if #items == 0 then
 		items[1] = {title = i18n.t('resume_empty'), selectable = false, muted = true, italic = true}
@@ -589,7 +741,7 @@ local function open_menu()
 		mp.osd_message(i18n.t('resume_disabled'), 3)
 		return
 	end
-	state.exists, state.roots = {}, {}
+	state.exists, state.roots, state.folders = {}, {}, {}
 	local entries = read_list()
 	-- Keeps the button in step with a list another mpv window changed.
 	publish(entries)
@@ -610,17 +762,45 @@ local function update_list(change)
 	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu', list_menu_data(entries)) end
 end
 
+-- Records `position` for an episode of a series: the entry of its series
+-- becomes this episode, `watched` or `progress`; nothing under MIN_POSITION
+-- unless watched. An entry already watched at this very file is not written
+-- again.
+local function save_episode(position, duration, watched)
+	local file, windows = state.file, is_windows()
+	if not watched and position < MIN_POSITION then return end
+	local id = 's|' .. file.episode.key
+	update_list(function(entries)
+		for i = #entries, 1, -1 do
+			local entry = entries[i]
+			if entry_id(entry, windows) == id then
+				if watched and entry.state == 'watched' and path_key(entry.path, windows) == file.key then return false end
+				table.remove(entries, i)
+			end
+		end
+		local episode = file.episode
+		table.insert(entries, 1, {path = file.path, title = episode.series, series = episode.key,
+			season = episode.season, episode = episode.episode, position = position, duration = duration,
+			updated = clock.now(), state = watched and 'watched' or 'progress'})
+		return true
+	end)
+end
+
 -- Records `position` for the file playing: removed when watched, nothing
--- under MIN_POSITION, the entry updated otherwise.
+-- under MIN_POSITION, the entry updated otherwise. Episodes of a series go
+-- by series (save_episode).
 local function save_position(position)
 	local file, duration = state.file, state.duration
 	if not file or not finite(position) or not finite(duration) or duration <= 0 then return end
 	state.saved_at = position
 	local windows = is_windows()
-	if is_watched(position, duration, state.chapters) then
+	local id = 'f|' .. file.key
+	if file.episode then
+		save_episode(position, duration, is_watched(position, duration, state.chapters))
+	elseif is_watched(position, duration, state.chapters) then
 		update_list(function(entries)
 			for i, entry in ipairs(entries) do
-				if path_key(entry.path, windows) == file.key then
+				if entry_id(entry, windows) == id then
 					table.remove(entries, i)
 					return true
 				end
@@ -630,7 +810,7 @@ local function save_position(position)
 	elseif position >= MIN_POSITION then
 		update_list(function(entries)
 			for i = #entries, 1, -1 do
-				if path_key(entries[i].path, windows) == file.key then table.remove(entries, i) end
+				if entry_id(entries[i], windows) == id then table.remove(entries, i) end
 			end
 			table.insert(entries, 1, {path = file.path, title = file.title, position = position,
 				duration = duration, updated = clock.now()})
@@ -710,6 +890,31 @@ local function drop_prompt()
 	restore_pause(p)
 end
 
+-- Next episode -------------------------------------------------------------------
+
+-- Tells hikari-skip the next episode of the file playing: mpv's `path` for
+-- it and the next file's path, or `{}`.
+local function publish_next(path, next_path)
+	mp.set_property_native(NEXT_PROP, next_path and {path = path, next = next_path} or {})
+end
+
+-- With autoplay_next, adds `next_path` behind the file playing when it is the
+-- last entry of the playlist and the file is not in the playlist already.
+local function queue_next(next_path, windows)
+	if not opts.autoplay_next or not next_path then return end
+	local pos = mp.get_property_number('playlist-pos', -1)
+	local count = mp.get_property_number('playlist-count', 0)
+	if not pos or not count or pos < 0 or pos + 1 ~= count then return end
+	local key, wd = path_key(next_path, windows), mp.get_property_native('working-directory')
+	local playlist = mp.get_property_native('playlist')
+	for _, item in ipairs(type(playlist) == 'table' and playlist or {}) do
+		local p = type(item) == 'table' and file_path(item.filename, wd, windows)
+		if p and path_key(p, windows) == key then return end
+	end
+	msg.verbose('Queuing the next episode')
+	mp.commandv('loadfile', next_path, 'append')
+end
+
 -- Events --------------------------------------------------------------------------
 
 local function on_file_loaded()
@@ -722,10 +927,17 @@ local function on_file_loaded()
 	local windows = is_windows()
 	local path = file_path(mp.get_property_native('path'), mp.get_property_native('working-directory'), windows)
 	if not path then return end
-	state.file = {path = path, key = path_key(path, windows), title = title_of(path)}
+	state.file = {path = path, key = path_key(path, windows), title = title_of(path), episode = episode_at(path)}
+	if state.file.episode then
+		-- The folder of the file playing is there: no root to check first.
+		local next_path = next_in(path, folder_names(split_file(path), windows))
+		publish_next(mp.get_property_native('path'), next_path)
+		queue_next(next_path, windows)
+	end
+	-- What to ask about: a single file, or a series half-watched at this file.
 	local entry
 	for _, e in ipairs(read_list()) do
-		if path_key(e.path, windows) == state.file.key then entry = e break end
+		if path_key(e.path, windows) == state.file.key and e.state ~= 'watched' then entry = e break end
 	end
 	if not entry then return end
 	if finite(state.time) and state.time >= START_TOLERANCE then
@@ -746,6 +958,7 @@ end
 local function on_end_file()
 	drop_prompt()
 	if state.file then save_position(state.time) end
+	if state.file and state.file.episode then publish_next() end
 	state.file = nil
 end
 
@@ -766,13 +979,28 @@ local function keep(field)
 	end
 end
 
+-- Opens a file of the list, or the next episode of a watched series of it
+-- (looked up again in that folder: the row may be older than the folder).
 local function open_file(path)
+	if type(path) ~= 'string' then path = nil end
 	local windows = is_windows()
-	local key = type(path) == 'string' and path_key(path, windows)
-	for _, entry in ipairs(read_list()) do
+	local key = path and path_key(path, windows)
+	local entries = read_list()
+	for _, entry in ipairs(entries) do
 		if path_key(entry.path, windows) == key then
 			mp.commandv('loadfile', entry.path, 'replace')
 			return
+		end
+	end
+	local dir = path and split_file(path)
+	for _, entry in ipairs(dir and entries or {}) do
+		local entry_dir = entry.state == 'watched' and split_file(entry.path)
+		if entry_dir and path_key(entry_dir, windows) == path_key(dir, windows) then
+			local next_path = next_in(entry.path, folder_names(entry_dir, windows))
+			if next_path and path_key(next_path, windows) == key then
+				mp.commandv('loadfile', next_path, 'replace')
+				return
+			end
 		end
 	end
 	msg.warn('Ignoring a file that is not in the continue watching list')
@@ -806,6 +1034,7 @@ if opts.enabled then
 else
 	publish({})
 end
+publish_next()
 
 if HIKARI_RESUME_TEST then
 	return {
@@ -813,7 +1042,7 @@ if HIKARI_RESUME_TEST then
 		file_path = file_path, normalize = normalize, path_key = path_key, title_of = title_of, root_of = root_of,
 		read_list = read_list, write_list = write_list, list_menu_data = list_menu_data, prompt_data = prompt_data,
 		format_clock = format_clock, format_date = format_date, is_watched = is_watched, ending_start = ending_start,
-		tick = tick, save_position = save_position, open_menu = open_menu,
-		SAVE_INTERVAL = SAVE_INTERVAL, MIN_POSITION = MIN_POSITION, PROMPT_TIMEOUT = PROMPT_TIMEOUT,
+		tick = tick, save_position = save_position, open_menu = open_menu, next_in = next_in,
+		NEXT_PROP = NEXT_PROP, MAX_FOLDER = MAX_FOLDER, SAVE_INTERVAL = SAVE_INTERVAL, MIN_POSITION = MIN_POSITION, PROMPT_TIMEOUT = PROMPT_TIMEOUT,
 	}
 end

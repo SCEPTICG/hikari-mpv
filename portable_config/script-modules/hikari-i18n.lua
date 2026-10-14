@@ -390,6 +390,19 @@ local STRINGS = {
 		it = 'Non disponibile', pl = 'Niedostępny', pt = 'Indisponível', ro = 'Indisponibil', ru = 'Недоступен',
 		tr = 'Erişilemiyor', uk = 'Недоступний', ['zh-HK'] = '無法存取', ['zh-hans'] = '无法访问',
 	},
+	-- A series watched to the end whose next episode is in its folder: the row
+	-- opens that episode (`Next · today`).
+	resume_next = {
+		en = 'Next', es = 'Siguiente', de = 'Nächste Folge', fr = 'Suivant', it = 'Successivo', pl = 'Następny',
+		pt = 'Próximo', ro = 'Următorul', ru = 'Следующая', tr = 'Sıradaki', uk = 'Наступна',
+		['zh-HK'] = '下一集', ['zh-hans'] = '下一集',
+	},
+	-- A series watched to the end with no next episode yet (`Up to date · today`).
+	resume_up_to_date = {
+		en = 'Up to date', es = 'Al día', de = 'Alles gesehen', fr = 'À jour', it = 'In pari', pl = 'Na bieżąco',
+		pt = 'Em dia', ro = 'La zi', ru = 'Всё просмотрено', tr = 'Güncel', uk = 'Усе переглянуто',
+		['zh-HK'] = '已追上', ['zh-hans'] = '已追上',
+	},
 	resume_clear = {
 		en = 'Clear history', es = 'Borrar historial', de = 'Verlauf löschen', fr = 'Effacer l’historique',
 		it = 'Cancella cronologia', pl = 'Wyczyść historię', pt = 'Limpar histórico', ro = 'Șterge istoricul',
@@ -862,6 +875,13 @@ local STRINGS = {
 		it = 'Salta anteprima ›', pl = 'Pomiń zapowiedź ›', pt = 'Pular prévia ›', ro = 'Sari peste previzualizare ›',
 		ru = 'Пропустить превью ›', tr = 'Önizlemeyi atla ›', uk = 'Пропустити анонс ›',
 		['zh-HK'] = '跳過預告 ›', ['zh-hans'] = '跳过预告 ›',
+	},
+	-- The button at the end of an episode when the next one is next in the playlist.
+	skip_next_episode = {
+		en = 'Next episode ›', es = 'Siguiente episodio ›', de = 'Nächste Folge ›', fr = 'Épisode suivant ›',
+		it = 'Episodio successivo ›', pl = 'Następny odcinek ›', pt = 'Próximo episódio ›', ro = 'Episodul următor ›',
+		ru = 'Следующая серия ›', tr = 'Sonraki bölüm ›', uk = 'Наступна серія ›',
+		['zh-HK'] = '下一集 ›', ['zh-hans'] = '下一集 ›',
 	},
 
 	-- Titles (hikari-title.lua). `Show · S1 E05`: season and episode labels.
