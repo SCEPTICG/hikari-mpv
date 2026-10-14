@@ -30,8 +30,10 @@
 --   `Frieren S01E06` are the same series; `Frieren S02E01` is another. Lower
 --   case makes it the same on Windows, whose names ignore case.
 -- - The group of a release, to choose between two versions of the next
---   episode: the [Group] in front, or else a `-Group` at the end of the name
---   (`...WEB-DL.x264-GROUP`); lower case. nil when there is neither.
+--   episode: the [Group] in front, or else a `-Group` at the end of the name,
+--   after the technical tail and not a technical word itself
+--   (`...1080p.WEB-DL.x264-GROUP`, never the `DL` of a final `WEB-DL`, nor
+--   `Start` in `Show - 05 - Re-Start`); lower case. nil when there is neither.
 -- - The next episode (next_episode) is looked for among the names given (the
 --   folder of the file, read by the caller): same key, the smallest episode
 --   number above the current one; of several files with that number, the one
@@ -741,13 +743,18 @@ local function normalize(text)
 end
 
 -- The release group of a name (without extension), lower case, or nil: the
--- [Group] in front, or a `-Group` that ends the name.
+-- [Group] in front, or a `-Group` that ends the name after its technical tail
+-- (`.1080p.WEB-DL.x264-GRP`) and is not a technical word itself (the `DL` of
+-- `WEB-DL`). `Show - 05 - Re-Start` has none.
 local function group_of(name)
 	local tokens = tokenize(name)
 	if front_group(tokens) then return tokens[1].text:sub(2, -2):lower() end
-	local last = tokens[#tokens]
-	local group = last and not last.group and last.text:match('%-(%w+)$')
-	return group and group:lower() or nil
+	local last = #tokens
+	local t = tokens[last]
+	if not t or t.group or tail_start(tokens, 1) >= last then return nil end
+	local group = t.text:match('%-(%w+)$')
+	if not group or exact_tech(group:lower()) or exact_tech(t.text:lower()) then return nil end
+	return group:lower()
 end
 
 -- The episode of a series that the video file name `name` (no folder) is:
