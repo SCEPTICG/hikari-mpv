@@ -86,6 +86,15 @@
 --   and uosc shows its next button. Anything already behind it (autoload, an
 --   opened folder, the user's list) is left alone, and a file already in the
 --   playlist is never added again. Never for streams.
+-- - Folder playlists (mpv's autocreate-playlist, on by default in mpv.net
+--   and AnimeJaNai) take in images too, so the -thumb.jpg and posters that
+--   Jellyfin or Sonarr leave next to each episode would play between
+--   episodes and stand between an episode and the next one. With enabled and
+--   folder_images=no (the default), `image` is taken out of
+--   directory-filter-types at start-up, but only while it holds mpv's
+--   default (option-info's default-value): any other value is the user's.
+--   A value set at run time, not in mpv.conf, so mpv before 0.39 (no such
+--   option) logs no error.
 -- - The list: ~~/hikari-resume.json, {"version":2,"entries":[...]}, newest
 --   first, at most history_size (rows: a series is one). A single file is
 --   {path, title, position, duration, updated (unix time)}; a series adds
@@ -187,6 +196,7 @@ local opts = {
 	ask = true,
 	history_size = 30,
 	autoplay_next = true,
+	folder_images = false,
 }
 options.read_options(opts, OPTIONS_ID)
 do
@@ -1074,7 +1084,28 @@ local function clear_history()
 end
 
 mp.add_key_binding(nil, 'open-menu', open_menu)
+-- Folder playlists without the folder's images: while mpv's own
+-- directory-filter-types is untouched (its default), `image` is taken out of
+-- it, so the -thumb.jpg and posters next to each episode do not play between
+-- episodes when mpv (or mpv.net) fills the playlist with the folder. Any other
+-- value is the user's and stays. mpv before 0.39 has no such option: nothing.
+local function drop_folder_images()
+	local info = mp.get_property_native('option-info/directory-filter-types')
+	local current = mp.get_property_native('directory-filter-types')
+	local default = type(info) == 'table' and info['default-value']
+	if type(default) ~= 'table' or type(current) ~= 'table' or #current ~= #default then return end
+	for i, kind in ipairs(default) do
+		if current[i] ~= kind then return end
+	end
+	local kept = {}
+	for _, kind in ipairs(current) do
+		if kind ~= 'image' then kept[#kept + 1] = kind end
+	end
+	if #kept < #current then mp.set_property_native('directory-filter-types', kept) end
+end
+
 if opts.enabled then
+	if not opts.folder_images then drop_folder_images() end
 	mp.register_script_message('open-file', open_file)
 	mp.register_script_message('clear-history', clear_history)
 	mp.register_script_message('prompt-answer', prompt_answer)
@@ -1101,7 +1132,7 @@ if HIKARI_RESUME_TEST then
 		file_path = file_path, normalize = normalize, path_key = path_key, title_of = title_of, root_of = root_of,
 		read_list = read_list, write_list = write_list, list_menu_data = list_menu_data, prompt_data = prompt_data,
 		format_clock = format_clock, format_date = format_date, is_watched = is_watched, ending_start = ending_start,
-		tick = tick, save_position = save_position, open_menu = open_menu, next_in = next_in,
+		drop_folder_images = drop_folder_images, tick = tick, save_position = save_position, open_menu = open_menu, next_in = next_in,
 		NEXT_PROP = NEXT_PROP, MAX_FOLDER = MAX_FOLDER, SAVE_INTERVAL = SAVE_INTERVAL, MIN_POSITION = MIN_POSITION, PROMPT_TIMEOUT = PROMPT_TIMEOUT,
 	}
 end
