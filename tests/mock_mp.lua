@@ -195,6 +195,7 @@ function M.install(script_name)
 	package.loaded['hikari-i18n'] = nil
 	package.loaded['hikari-aniskip'] = nil
 	package.loaded['hikari-chapters'] = nil
+	package.loaded['hikari-release'] = nil
 	M.expand['~~/script-modules'] = M.expand['~~/script-modules'] or 'portable_config/script-modules'
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
