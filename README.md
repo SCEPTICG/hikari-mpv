@@ -2,12 +2,12 @@
 
 <img src="docs/images/banner.png" alt="hikari, a modern theme for the mpv video player built on uosc" width="100%">
 
-[![Latest release](https://img.shields.io/github/v/release/SCEPTICG/hikari-mpv?color=5ad4e6&labelColor=0b0d12&label=release)](https://github.com/SCEPTICG/hikari-mpv/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/SCEPTICG/hikari-mpv/total?color=5ad4e6&labelColor=0b0d12&label=downloads)](https://github.com/SCEPTICG/hikari-mpv/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-5ad4e6?labelColor=0b0d12)](LICENSE)
-[![Windows · macOS · Linux](https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-one%20command-5ad4e6?labelColor=0b0d12)](#quick-install)
-[![Documentation](https://img.shields.io/badge/docs-scepticg.github.io-5ad4e6?labelColor=0b0d12)](https://scepticg.github.io/hikari-mpv/)
-[![Built on uosc](https://img.shields.io/badge/built%20on-uosc%205.13-5ad4e6?labelColor=0b0d12)](https://github.com/tomasklaen/uosc)
+[![Latest release](https://img.shields.io/github/v/release/SCEPTICG/hikari-mpv?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&color=c6a0f6&label=release&logo=github)](https://github.com/SCEPTICG/hikari-mpv/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/SCEPTICG/hikari-mpv/total?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&color=f5bde6&label=downloads)](https://github.com/SCEPTICG/hikari-mpv/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-a6da95?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&logo=opensourceinitiative)](LICENSE)
+[![Windows · macOS · Linux](https://img.shields.io/badge/one%20command-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-8aadf4?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5)](#quick-install)
+[![Documentation](https://img.shields.io/badge/docs-scepticg.github.io-8bd5ca?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&logo=materialformkdocs)](https://scepticg.github.io/hikari-mpv/)
+[![Built on uosc](https://img.shields.io/badge/built%20on-uosc%205.13-f5a97f?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&logo=mpv)](https://github.com/tomasklaen/uosc)
 
 **A modern theme for the [mpv](https://mpv.io) video player, built on [uosc](https://github.com/tomasklaen/uosc).**<br>
 14 colour palettes · skip openings and endings · timeline thumbnails · subtitle styles · automatic Anime4K upscaling<br>
