@@ -283,6 +283,8 @@ check 'clean install: continue watching: script, options, chapters and release n
 check 'clean install: continue watching: in the record' \
     test "$(grep -cxE 'file=(scripts/hikari-resume\.lua|script-opts/hikari-resume\.conf|script-modules/hikari-chapters\.lua|script-modules/hikari-release\.lua)' "$cfg/hikari-installed.txt")" = 4
 check 'clean install: continue watching: no list created by the installer' test ! -e "$cfg/hikari-resume.json"
+check 'clean install: the menus module installed and recorded' \
+    test -f "$cfg/script-modules/hikari-menu.lua" -a "$(grep -cx 'file=script-modules/hikari-menu\.lua' "$cfg/hikari-installed.txt")" = 1
 check 'clean install: the repository input.conf has the same bindings' bash -c "grep -v '^#' '$tmp/want-input.conf' | while IFS= read -r l; do grep -qxF \"\$l\" '$repo/portable_config/input.conf' || exit 1; done"
 count_glob() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
 check "clean install: the $a4k_count Anime4K shaders" test "$(count_glob "$cfg"/shaders/Anime4K_*.glsl)" = "$a4k_count"
@@ -388,6 +390,7 @@ check 'created by hikari: a file of the user named like the list stays' test "$(
 rm -f "$cfg/hikari-resume.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
 check 'created by hikari: AniSkip cache removed (no question)' test ! -e "$cfg/hikari-aniskip.json" -a ! -e "$cfg/hikari-aniskip.json.tmp" -a ! -e "$cfg/script-modules/hikari-aniskip.lua"
+check 'uninstall: the menus module removed' test ! -e "$cfg/script-modules/hikari-menu.lua"
 check 'created by hikari: mpv.conf and input.conf removed' test ! -e "$cfg/mpv.conf" -a ! -e "$cfg/input.conf"
 
 # --- mpv.conf that ends inside a profile ------------------------------------

@@ -1174,6 +1174,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')) -PathType Leaf) 'continue watching options'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')) -PathType Leaf) 'chapters module'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-release.lua')) -PathType Leaf) 'release names module'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-menu.lua')) -PathType Leaf) 'menus module'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json')))) 'continue watching list not created by the installer'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'hikari-update.lua')) -PathType Leaf) 'update check script'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-update.conf')) -PathType Leaf) 'update check options'
@@ -1186,7 +1187,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-Equal $rec.Values['player_exe'] $exe 'record exe'
     Assert-Equal $rec.Values['hikari_commit'] $Source.Commit 'record commit'
     Assert-True (@($rec.Files) -contains 'scripts/hikari-skip.lua') 'record files'
-    foreach ($f in @('scripts/hikari-resume.lua', 'script-opts/hikari-resume.conf', 'script-modules/hikari-chapters.lua', 'script-modules/hikari-release.lua')) {
+    foreach ($f in @('scripts/hikari-resume.lua', 'script-opts/hikari-resume.conf', 'script-modules/hikari-chapters.lua', 'script-modules/hikari-release.lua', 'script-modules/hikari-menu.lua')) {
         Assert-True (@($rec.Files) -contains $f) ('record has ' + $f)
     }
     Assert-Equal @($rec.Disabled).Count 3 'record disabled'
@@ -1235,6 +1236,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')))) 'continue watching options gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')))) 'chapters module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-release.lua')))) 'release names module gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-menu.lua')))) 'menus module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update check state gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt.tmp')))) 'update check temporary file gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json')))) 'AniSkip cache gone'
