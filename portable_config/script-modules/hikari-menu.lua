@@ -40,7 +40,8 @@
 --   Items that cannot be chosen (selectable = false): headings and notes (no
 --   value, no hint) as `— title —`, disabled entries as `(title  ·  hint)`;
 --   choosing one does nothing (the menu comes back). Choosing any other item
---   runs its value, the very command uosc would run; with keep_open the menu
+--   runs its value (a command as a list of arguments, as uosc runs it; any
+--   other value is ignored with a warning); with keep_open the menu
 --   comes back, with the data of the latest update. uosc's separator, muted,
 --   italic, bold and align have no equivalent and are left out. Control
 --   characters become spaces (the console cuts a line at a newline).
@@ -156,11 +157,11 @@ local function lines_of(data, opts)
 end
 
 local function run(value)
-	if type(value) == 'table' then
-		mp.commandv(unpack(value))
-	elseif type(value) == 'string' then
-		mp.command(value)
+	if type(value) ~= 'table' then
+		msg.warn('Ignoring a menu value that is not a command list')
+		return
 	end
+	mp.commandv(unpack(value))
 end
 
 local function stop_open_timer()

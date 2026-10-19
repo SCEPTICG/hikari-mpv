@@ -419,6 +419,30 @@ test('the seven menu scripts load the module; nobody else talks to uosc directly
 	end
 end)
 
+test('no uosc: only command lists run; any other value is ignored with a warning', function()
+	local menu = fresh(false, true)
+	menu.open({type = 'hikari-test', title = 'T', items = {
+		{title = 'text', value = 'quit'}, {title = 'number', value = 7}, {title = 'list', value = command('ok')},
+	}})
+	for line = 1, 2 do
+		mock.console()
+		mock.commands = {}
+		mock.choose(line)
+		eq(#mock.commands, 0, 'nothing run for line ' .. line)
+		mock.advance(1)
+		menu.open({type = 'hikari-test', title = 'T', items = {
+			{title = 'text', value = 'quit'}, {title = 'number', value = 7}, {title = 'list', value = command('ok')},
+		}})
+	end
+	eq(#mock.logs.warn, 2, 'one warning each')
+	mock.console()
+	mock.commands = {}
+	mock.choose(3)
+	eq(table.concat(ran(), ';'), 'script-message-to hikari_test ok')
+	local src = read(MODULE)
+	assert(not src:find('mp.command(', 1, true), 'no mp.command with a string')
+end)
+
 test('the module avoids os.execute, io.popen, load* and file access', function()
 	local src = read(MODULE)
 	for _, bad in ipairs({'os.execute', 'io.popen', 'io.open', 'loadstring', 'loadfile', 'dofile', 'load('}) do
