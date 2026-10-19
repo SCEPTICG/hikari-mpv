@@ -46,13 +46,16 @@
 --   italic, bold and align have no equivalent and are left out. Control
 --   characters become spaces (the console cuts a line at a newline).
 -- - mpv's console shows one menu at a time and, in 0.39, ignores a request
---   while it is open. So new data for the menu on screen, or another menu,
---   first closes it (input.terminate) and asks again once `closed` comes,
---   never from inside that callback (input.lua drops the handlers right after
---   it). The menu comes back after REOPEN_DELAY: the value of the item chosen
---   is usually a message to the script itself, which arrives after `closed`,
---   and the update-menu it causes should make it into the menu that comes
---   back. A request with no `opened` (0.39 with the console busy, or the
+--   while it is open. So another menu, or the menu on screen in another
+--   language, first closes it (input.terminate) and asks again once `closed`
+--   comes, never from inside that callback (input.lua drops the handlers right
+--   after it). Any other update-menu (continue watching saves every few
+--   seconds while the video plays) only keeps the new data for the next time
+--   the menu opens: closing it would lose what was typed and the line the
+--   cursor is on. The menu comes back after REOPEN_DELAY: the value of the
+--   item chosen is usually a message to the script itself, which arrives after
+--   `closed`, and the update-menu it causes should make it into the menu that
+--   comes back. A request with no `opened` (0.39 with the console busy, or the
 --   console disabled) is given up after OPEN_TIMEOUT, so the next one is not
 --   stuck behind it. mpv 0.40's keep_open is not used: 0.39 and 0.40 work the
 --   same way.
@@ -75,16 +78,19 @@ local OPEN_TIMEOUT = 2
 
 local unpack = table.unpack or unpack
 
+-- i18n.variant() only follows the option once someone listens: the selector
+-- compares it to tell a language switch from any other update.
+i18n.on_change(function() end)
+
 local uosc_seen = false
 local uosc_callbacks = {}
 local observers = {}
 
 -- The selector. `want` is the menu that should be on screen ({type, data,
--- opts, version}), `session` the state of our console: nil, 'requested' (no
--- `opened` yet) or 'open'. `shown` is what the last request put on screen:
--- per line, the item it runs (false: nothing), the menu and its version.
+-- opts}), `session` the state of our console: nil, 'requested' (no `opened`
+-- yet) or 'open'. `shown` is what the last request put on screen: per line,
+-- the item it runs (false: nothing), the menu and the language it is in.
 local want, session, shown
-local version = 0
 -- Why the next `closed` comes: we asked for it, or an item was chosen.
 local closing, submitted = false, false
 local open_timer, reopen_timer
@@ -216,7 +222,7 @@ end
 
 local function request(input)
 	local lines, actions, default = lines_of(want.data, want.opts)
-	shown = {actions = actions, menu = want, version = want.version}
+	shown = {actions = actions, menu = want, variant = i18n.variant()}
 	session = 'requested'
 	open_timer = mp.add_timeout(OPEN_TIMEOUT, on_open_timeout)
 	local title = plain(want.data.title)
@@ -233,7 +239,8 @@ sync = function()
 	if not input then return end
 	if session == 'open' then
 		-- After a submit the console closes by itself.
-		if (not want or want ~= shown.menu or want.version ~= shown.version) and not closing and not submitted then
+		local stale = not want or want ~= shown.menu or i18n.variant() ~= shown.variant
+		if stale and not closing and not submitted then
 			closing = true
 			input.terminate()
 		end
@@ -243,9 +250,8 @@ sync = function()
 end
 
 local function open_select(data, opts)
-	version = version + 1
 	local changed = not want or want.type ~= data.type
-	want = {type = data.type, data = data, opts = opts, version = version}
+	want = {type = data.type, data = data, opts = opts}
 	if changed then emit(data.type) end
 	sync()
 end
@@ -266,11 +272,11 @@ function M.open(data, opts)
 end
 
 -- New data for a menu that may be open (uosc's update-menu). `opts` as for
--- open; the last ones stay when not given.
+-- open; the last ones stay when not given. The selector only shows it at
+-- once after a language switch (see the header).
 function M.update(data, opts)
 	if want and want.type == data.type then
-		version = version + 1
-		want.data, want.opts, want.version = data, opts or want.opts, version
+		want.data, want.opts = data, opts or want.opts
 		sync()
 		return
 	end

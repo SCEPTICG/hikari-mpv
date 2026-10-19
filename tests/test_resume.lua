@@ -1423,6 +1423,24 @@ test('without uosc: the question in mpv\'s selector, continue by default', funct
 	eq(#mock.logs.warn, 0)
 end)
 
+test('without uosc: the list stays on screen while the video plays and saves', function()
+	write(LIST, list_json({entry('/a/today.mkv', 754, NOW - 3600)}))
+	load_without_uosc()
+	mock.files['/a/today.mkv'] = {is_file = true}
+	mock.files['/a'] = {is_dir = true}
+	open('/a/other.mkv')
+	mock.bindings['open-menu']()
+	mock.console()
+	for t = 200, 260, 10 do
+		play_to(t)
+		mock.console()
+	end
+	assert(saved()[1].path == '/a/other.mkv', 'the file playing was saved meanwhile')
+	eq(mock.terminates, 0, 'never closed')
+	eq(#mock.selects, 1, 'never opened again')
+	assert(mock.on_screen == mock.selects[1], 'still on screen')
+end)
+
 test('without uosc: "from the beginning" in the selector', function()
 	write(LIST, list_json({entry(EP, 754)}))
 	load_without_uosc()
