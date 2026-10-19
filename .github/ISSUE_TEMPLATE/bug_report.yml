@@ -17,8 +17,8 @@ body:
 
         Windows (PowerShell): `& ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version`
       placeholder: |
-        This installer: hikari 0.7.0
-        mpv (/home/you/.config/mpv): hikari 0.7.0 (the same as this installer)
+        This installer: hikari X.Y.Z
+        mpv (/home/you/.config/mpv): hikari X.Y.Z (the same as this installer)
       render: text
     validations:
       required: true
