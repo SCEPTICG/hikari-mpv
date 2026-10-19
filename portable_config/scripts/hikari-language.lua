@@ -1,6 +1,6 @@
 -- hikari-language: the language of hikari's texts, and of uosc's.
 --
--- Opens a uosc menu with the 13 languages of uosc 5.13, each by its own name,
+-- Opens a menu with the 13 languages of uosc 5.13, each by its own name,
 -- Spanish and Portuguese once per regional variant: Español (España), Español
 -- (Latinoamérica), Português (Brasil), Português (Portugal). Both variants
 -- show the same texts; the variant decides which audio and subtitle tracks
@@ -53,9 +53,15 @@
 --   comments of input.conf, but a single `#!` line replaces uosc's whole
 --   default menu (lib/menus.lua, get_menu_items), and its title would be fixed
 --   text. Alt+l is listed in uosc's "Key bindings" menu like any other key.
+-- - Without uosc (script-modules/hikari-menu.lua): the menu opens in mpv's
+--   own selector, and hikari's texts switch the same. What is only for uosc
+--   is left out: no `uosc-controls`, no "restart mpv" notice. The saved file
+--   keeps its `uosc-languages` line all the same (the installers write the
+--   same bytes), ready for when uosc is back. Whether uosc is there comes
+--   from menu.uosc(); at start-up uosc may not have started yet, so the
+--   tooltips are also set when uosc announces itself (menu.on_uosc).
 
 local msg = require('mp.msg')
-local utils = require('mp.utils')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
 -- scripts get no mpv folder in package.path, so the folder is added for this
@@ -70,6 +76,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -268,16 +289,7 @@ local function menu_data()
 	return {type = MENU_TYPE, title = i18n.t('language_title'), keep_open = true, items = items}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the language menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
-local function open_menu() send_menu('open-menu') end
+local function open_menu() menu.open(menu_data()) end
 
 -- The language uosc started with (it does not change until mpv restarts).
 local uosc_language = (function()
@@ -308,7 +320,7 @@ local function select_language(code)
 	if code ~= i18n.variant() then
 		mp.commandv('change-list', 'script-opts', 'append', i18n.OPTION .. '=' .. code)
 	end
-	if save(code) and i18n.language_of(code) ~= uosc_language then
+	if save(code) and i18n.language_of(code) ~= uosc_language and menu.uosc() then
 		mp.osd_message(i18n.t('language_restart', nil, code), 4)
 	end
 end
@@ -316,10 +328,13 @@ end
 mp.register_script_message('select-language', select_language)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 i18n.on_change(function()
-	apply_tooltips()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if menu.uosc() then apply_tooltips() end
+	if menu.is_open(MENU_TYPE) then menu.update(menu_data()) end
 end)
-apply_tooltips()
+-- uosc's controls, only with uosc: now if it is already there, and when it
+-- announces itself (setting them twice changes nothing the second time).
+menu.on_uosc(apply_tooltips)
+if menu.uosc() then apply_tooltips() end
 
 if HIKARI_LANGUAGE_TEST then
 	return {

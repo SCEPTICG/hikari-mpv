@@ -1,15 +1,20 @@
 -- hikari-palettes: colour palette picker for uosc.
 --
--- Opens a uosc menu with the available palettes, applies the chosen one on the
+-- Opens a menu with the available palettes, applies the chosen one on the
 -- fly through the `uosc-color` and `uosc-opacity` script options and saves it to
 -- `~~/hikari-palette.conf`, which mpv.conf includes on the next start.
 --
 -- mpv turns this file name into the script name `hikari_palettes`, so:
 --   input.conf:  Alt+p script-binding hikari_palettes/open-menu
 --   options:     script-opts=hikari_palettes-palette=<id>
+--
+-- Without uosc (script-modules/hikari-menu.lua) the menu opens in mpv's own
+-- selector, with a first line saying that palettes colour uosc. A choice is
+-- still applied and saved, for when uosc is back: the two script options are
+-- what the saved file sets on the next start anyway, and hikari-skip's button
+-- takes its colours from `uosc-color`.
 
 local msg = require('mp.msg')
-local utils = require('mp.utils')
 local options = require('mp.options')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
@@ -25,6 +30,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -357,22 +377,16 @@ local function menu_data()
 	return {type = MENU_TYPE, title = i18n.t('palettes_title'), items = items}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the palette menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
+-- Only shown by mpv's selector, when uosc is not there to be coloured.
+local function menu_opts() return {note = i18n.t('palettes_need_uosc')} end
 
-local function open_menu() send_menu('open-menu') end
+local function open_menu() menu.open(menu_data(), menu_opts()) end
 
 mp.register_script_message('select-palette', select_palette)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open palette menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if menu.is_open(MENU_TYPE) then menu.update(menu_data(), menu_opts()) end
 end)
 
 -- Re-apply from the table at start-up so edits to a palette (e.g. SCEPTIC) take

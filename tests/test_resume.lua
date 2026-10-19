@@ -1381,6 +1381,160 @@ test('the script makes no network connection and runs no program', function()
 	end
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+-- Like load(opts, true), with no uosc loaded and, unless `no_input`, mpv
+-- 0.39+'s mp.input.
+local function load_without_uosc(opts, no_input)
+	local s = load(opts, true)
+	mock.uosc = false
+	if not no_input then mock.enable_input() end
+	return s
+end
+
+-- The answer the selector ran, delivered to the script as mpv would.
+local function deliver_answer()
+	local c = mock.commands[#mock.commands]
+	eq(c[3], 'prompt-answer')
+	mock.messages['prompt-answer'](c[4], c[5])
+	return c[4]
+end
+
+test('without uosc: the question in mpv\'s selector, continue by default', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_without_uosc()
+	open(EP)
+	eq(mock.props.pause, true, 'paused')
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.prompt, EP_TITLE .. ':')
+	eq(t.items[1], 'Continuar desde 12:34'); eq(t.items[2], 'Empezar desde el principio'); eq(#t.items, 2)
+	eq(t.default_item, 1)
+	mock.console()
+	mock.advance(30)
+	eq(saved()[1].position, 754, 'nothing saved while asking')
+	mock.choose(1)
+	-- The answer is a message the script handles next: the pause stays until then.
+	eq(mock.props.pause, true, 'still paused until the answer is handled')
+	eq(#commands_named('seek'), 0)
+	eq(deliver_answer(), 'continue')
+	local seek = commands_named('seek')[1]
+	eq(seek[2], '754.000'); eq(seek[3], 'absolute+exact')
+	eq(mock.props.pause, false, 'playing again')
+	mock.advance(1)
+	mock.console()
+	eq(mock.on_screen, nil, 'not back')
+	eq(#mock.logs.warn, 0)
+end)
+
+test('without uosc: the answer is handled before the menu reports it closed', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_without_uosc()
+	open(EP)
+	mock.console()
+	local order = {}
+	local native = mp.set_property_native
+	mp.set_property_native = function(name, value)
+		if name == 'pause' then order[#order + 1] = 'pause ' .. tostring(value) end
+		return native(name, value)
+	end
+	local commandv = mp.commandv
+	mp.commandv = function(...)
+		if (...) == 'seek' then order[#order + 1] = 'seek' end
+		return commandv(...)
+	end
+	mock.choose(1)
+	deliver_answer()
+	mock.advance(1)
+	mp.set_property_native, mp.commandv = native, commandv
+	eq(table.concat(order, ','), 'seek,pause false', 'seek first, then playing; once')
+end)
+
+test('without uosc: the list stays on screen while the video plays and saves', function()
+	write(LIST, list_json({entry('/a/today.mkv', 754, NOW - 3600)}))
+	load_without_uosc()
+	mock.files['/a/today.mkv'] = {is_file = true}
+	mock.files['/a'] = {is_dir = true}
+	open('/a/other.mkv')
+	mock.bindings['open-menu']()
+	mock.console()
+	for t = 200, 260, 10 do
+		play_to(t)
+		mock.console()
+	end
+	assert(saved()[1].path == '/a/other.mkv', 'the file playing was saved meanwhile')
+	eq(mock.terminates, 0, 'never closed')
+	eq(#mock.selects, 1, 'never opened again')
+	assert(mock.on_screen == mock.selects[1], 'still on screen')
+end)
+
+test('without uosc: "from the beginning" in the selector', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_without_uosc()
+	open(EP)
+	mock.console()
+	mock.choose(2)
+	eq(deliver_answer(), 'start')
+	eq(#commands_named('seek'), 0)
+	eq(mock.props.pause, false)
+end)
+
+test('without uosc: Esc on the selector starts from the beginning', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	local s = load_without_uosc()
+	open(EP)
+	mock.console()
+	mock.escape()
+	eq(#commands_named('seek'), 0)
+	eq(mock.props.pause, false, 'playing')
+	mock.advance(s.PROMPT_TIMEOUT)
+	eq(#mock.logs.warn, 0, 'it did show')
+	play_to(800)
+	eq(saved()[1].position, 800, 'saving goes on')
+end)
+
+test('without uosc: another file while asking: the selector closes, the pause comes back', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_without_uosc()
+	open(EP)
+	mock.console()
+	ends()
+	eq(mock.terminates, 1, 'closed')
+	eq(mock.props.pause, false)
+	eq(#commands_named('close-menu'), 0, 'nothing for uosc')
+end)
+
+test('without uosc on mpv before 0.39: as in hikari 0.9, no question, the pause comes back', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	local s = load_without_uosc(nil, true)
+	open(EP)
+	eq(#mock.osd, 0, 'no message on screen')
+	mock.advance(s.PROMPT_TIMEOUT)
+	eq(mock.props.pause, false)
+	eq(#commands_named('seek'), 0)
+	assert(mock.logs.warn[#mock.logs.warn]:find('uosc', 1, true), 'warned')
+	eq(#mock.logs.error, 0)
+end)
+
+test('without uosc: the list in mpv\'s selector; picking a row opens it', function()
+	write(LIST, list_json({entry('/a/today.mkv', 754, NOW - 3600), entry('/a/gone.mkv', 90, NOW - 7200)}))
+	load_without_uosc()
+	mock.files['/a/today.mkv'] = {is_file = true}
+	mock.files['/a'] = {is_dir = true}
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.prompt, 'Seguir viendo:')
+	eq(t.items[1], 'today  ·  12:34 / 23:40 · hoy')
+	eq(t.items[2], '(gone  ·  No disponible)', 'not available: greyed out')
+	eq(t.items[3], 'Borrar historial')
+	eq(t.default_item, 1)
+	mock.console()
+	mock.choose(1)
+	local c = mock.commands[#mock.commands]
+	eq(table.concat(c, ' '), 'script-message-to hikari_resume open-file /a/today.mkv')
+	mock.messages['open-file'](c[4])
+	eq(table.concat(mock.commands[#mock.commands], ' '), 'loadfile /a/today.mkv replace')
+end)
+
 os.execute('rm -rf "' .. DIR .. '"')
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

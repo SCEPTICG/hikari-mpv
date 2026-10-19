@@ -522,6 +522,33 @@ test('a language switch redraws an open upscale menu in the new language', funct
 	eq(s.osd_text(s.mode_by_id.off, s.quality_by_id.hq), 'Anime4K: off')
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+test('without uosc: no shaders: mpv\'s selector greys the modes out and picking them does nothing', function()
+	local s = load(nil, EMPTY_SHADERS)
+	mock.uosc = false
+	mock.enable_input()
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	local data = s.menu_data()
+	eq(t.items[1], '— ' .. data.items[1].title .. ' —', 'not installed note')
+	local greyed
+	for i, item in ipairs(data.items) do
+		if item.selectable == false and item.value then
+			greyed = greyed or i
+			eq(t.items[i]:sub(1, 1), '(', 'greyed out: ' .. t.items[i])
+		end
+	end
+	assert(greyed, 'some greyed out')
+	mock.console()
+	mock.commands = {}
+	mock.choose(greyed)
+	eq(#mock.commands, 0, 'nothing run')
+	mock.advance(1)
+	mock.console()
+	assert(mock.on_screen, 'the menu came back')
+end)
+
 os.remove(SHADERS); os.execute('rm -rf "' .. SHADERS .. '" "' .. EMPTY_SHADERS .. '"')
 print(('\n%d passed, %d failed'):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

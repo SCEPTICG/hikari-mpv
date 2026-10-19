@@ -105,6 +105,14 @@ fails 'refuses a repeated hikari.sh marker' 'hikari.sh release markers found 2, 
 git reset -q --hard "$base"
 git tag -f v1.2.3 "$base" >/dev/null
 
+git rm -q portable_config/script-modules/hikari-menu.lua
+commit_as 'no menus module'
+git tag -f v1.2.3 >/dev/null
+fails 'refuses a commit without the menus module' 'hikari-menu.lua is not in the commit' tools/make-release.sh v1.2.3
+check 'nothing built without the menus module' test ! -e dist/hikari.ps1 -a ! -e dist/hikari.zip
+git reset -q --hard "$base"
+git tag -f v1.2.3 "$base" >/dev/null
+
 # --- a good release ----------------------------------------------------------
 if tools/make-release.sh v1.2.3 >"$tmp/out.txt" 2>&1; then ok 'builds v1.2.3'; else fail 'builds v1.2.3'; cat "$tmp/out.txt"; fi
 check 'dist has the four files' test -f dist/hikari.zip -a -f dist/hikari.ps1 -a -f dist/hikari.sh -a -f dist/SHA256SUMS
@@ -197,6 +205,7 @@ for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-op
 done
 check 'installed hikari files are the committed ones' $all_same
 check 'record says 1.2.3' grep -q '^hikari_version=1.2.3' "$cfg/hikari-installed.txt"
+check 'menus module installed and recorded' grep -q '^file=script-modules/hikari-menu\.lua' "$cfg/hikari-installed.txt"
 check 'input.conf has Alt+r for continue watching' grep -qF 'Alt+r  script-binding hikari_resume/open-menu' "$cfg/input.conf"
 check 'mpv.conf has the hikari block and nothing personal' bash -c "grep -q '^include=\"~~/hikari-subs.conf\"' '$cfg/mpv.conf' && ! grep -qE 'alang|slang|border=no' '$cfg/mpv.conf'"
 check 'Anime4K installed from its (fake) zip' test -f "$cfg/shaders/Anime4K_Clamp_Highlights.glsl"
@@ -251,6 +260,7 @@ for f in "$work"/portable_config/scripts/*.lua "$work"/portable_config/script-op
 done
 check 'curl | bash: installed hikari files are the committed ones' $all_same
 check 'curl | bash: record says 1.2.3' grep -q '^hikari_version=1.2.3$' "$shcfg/hikari-installed.txt"
+check 'curl | bash: menus module installed and recorded' grep -qx 'file=script-modules/hikari-menu.lua' "$shcfg/hikari-installed.txt"
 check 'curl | bash: input.conf has Alt+r for continue watching' grep -qF 'Alt+r  script-binding hikari_resume/open-menu' "$shcfg/input.conf"
 check 'curl | bash: Anime4K in Automatico' grep -q '^script-opts-append=hikari_upscale-mode=auto$' "$shcfg/hikari-upscale.conf"
 check 'curl | bash: temporary folder removed' test -z "$(ls -A "$tmp/tmpdir-sh")"

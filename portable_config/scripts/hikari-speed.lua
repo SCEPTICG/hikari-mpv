@@ -1,14 +1,14 @@
--- hikari-speed: playback speed menu for uosc.
+-- hikari-speed: playback speed menu.
 --
--- Opens a uosc menu with a few fixed speeds; picking one sets `speed` and uosc
--- closes the menu. Labels use the decimal separator of hikari's language
--- (`0,75×` in Spanish, `0.75×` in English).
+-- Opens a menu with a few fixed speeds (uosc's, or mpv's own selector without
+-- uosc: script-modules/hikari-menu.lua); picking one sets `speed` and the menu
+-- closes. Labels use the decimal separator of hikari's language (`0,75×` in
+-- Spanish, `0.75×` in English).
 --
 -- mpv turns this file name into the script name `hikari_speed`, so:
 --   input.conf:  <key> script-binding hikari_speed/open-menu
 
 local msg = require('mp.msg')
-local utils = require('mp.utils')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
 -- scripts get no mpv folder in package.path, so the folder is added for this
@@ -23,6 +23,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -82,22 +97,13 @@ local function menu_data()
 	return {type = MENU_TYPE, title = i18n.t('speed_title'), items = items}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the speed menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
-local function open_menu() send_menu('open-menu') end
+local function open_menu() menu.open(menu_data()) end
 
 mp.register_script_message('select-speed', select_speed)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open speed menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if menu.is_open(MENU_TYPE) then menu.update(menu_data()) end
 end)
 
 if HIKARI_SPEED_TEST then

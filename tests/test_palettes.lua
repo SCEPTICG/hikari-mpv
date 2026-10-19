@@ -346,5 +346,64 @@ test('a language switch redraws an open palette menu; names with a word follow',
 	eq(#mock.commands, count + 1, 'menu closed: nothing')
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+test('without uosc: mpv\'s selector says palettes colour uosc; a pick is still applied and saved', function()
+	local path = tmp_path()
+	local p = load({[SCRIPT_NAME .. '-palette'] = 'nord'})
+	mock.uosc = false
+	mock.enable_input()
+	mock.expand['~~/hikari-palette.conf'] = path
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.prompt, 'Paletas:')
+	eq(t.items[1], '— Las paletas cambian los colores de uosc —', 'the note first')
+	eq(t.items[2], '— Oscuras —', 'group heading')
+	local nord, dracula
+	for i, line in ipairs(t.items) do
+		if line == '• Nord  ·  activa' then nord = i end
+		if line == 'Dracula' then dracula = i end
+	end
+	assert(nord and dracula, 'Nord marked, Dracula listed')
+	eq(t.default_item, nord)
+	mock.console()
+	mock.commands = {}
+	mock.choose(1)
+	eq(#mock.commands, 0, 'the note does nothing')
+	mock.advance(1)
+	mock.console()
+	assert(mock.on_screen, 'the menu came back')
+	mock.choose(dracula)
+	eq(table.concat(mock.commands[1], ' '), 'script-message-to hikari_palettes select-palette dracula')
+	mock.messages['select-palette']('dracula')
+	eq(p.get_active_id(), 'dracula')
+	local f = assert(io.open(path, 'rb')); local content = f:read('*a'); f:close()
+	eq(content, p.persist_content(p.get_palette('dracula')), 'saved, for when uosc is back')
+	os.remove(path)
+end)
+
+test('without uosc: a language switch redraws the selector with the note in the new language', function()
+	load()
+	mock.uosc = false
+	mock.enable_input()
+	mock.bindings['open-menu']()
+	mock.console()
+	mock.set_script_opt('hikari-language', 'en')
+	mock.console()
+	mock.advance(1)
+	mock.console()
+	local t = mock.on_screen
+	eq(t.prompt, 'Palettes:')
+	eq(t.items[1], '— Palettes change the colours of uosc —')
+end)
+
+test('without uosc on mpv before 0.39: a message on screen, no error', function()
+	load()
+	mock.uosc = false
+	mock.bindings['open-menu']()
+	eq(mock.osd[1], 'Este menú necesita uosc o mpv 0.39 o posterior')
+	eq(#mock.logs.error, 0)
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

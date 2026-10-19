@@ -1,7 +1,7 @@
 -- hikari-resume: continue watching where you left off, for files.
 --
 -- While a file plays, its position is remembered. Opening it again pauses mpv
--- and asks, in a uosc menu, whether to continue from there (the default) or
+-- and asks, in a menu, whether to continue from there (the default) or
 -- start from the beginning. The `open-menu` binding, and a button in uosc's
 -- controls bar (uosc.conf shows it while user-data/hikari_resume/available is
 -- true, mpv 0.36+), list the files left half-watched, newest first; picking
@@ -57,8 +57,14 @@
 --   outside, another menu) is "from the beginning". uosc may send the answer
 --   and close the menu in either order: closing only puts the pause back, and
 --   a "continue" that arrives after it still seeks (same file only). When the
---   menu never shows (no uosc), the pause goes back after PROMPT_TIMEOUT.
+--   menu never shows, the pause goes back after PROMPT_TIMEOUT.
 --   With ask=no it seeks without asking.
+-- - Without uosc, the question and the list open in mpv's own selector
+--   (script-modules/hikari-menu.lua, mpv 0.39+) and work the same: Esc is
+--   "from the beginning", and the menu reports opening and closing as uosc's
+--   user-data/uosc/menu/type does (menu.observe). With neither uosc nor mpv
+--   0.39, the question never shows: no OSD message, the pause goes back after
+--   PROMPT_TIMEOUT with a warning in the log, as in hikari 0.9.
 -- - Series: a file whose name is an episode of a series (one plain episode
 --   number: `Show - 05`, `Show S01E05`; not a special, an OVA, a range or
 --   `12.5`) is kept by series, not by file, as script-modules/hikari-release.lua
@@ -142,10 +148,11 @@ local options = require('mp.options')
 local utils = require('mp.utils')
 
 -- hikari's modules in ~~/script-modules: the texts (hikari-i18n.lua), the
--- chapter kinds (hikari-chapters.lua) and the release names
--- (hikari-release.lua, which needs the texts first). Single-file scripts get
--- no mpv folder in package.path, so the folder is added for each require and
--- taken out again (see the header of hikari-i18n.lua).
+-- chapter kinds (hikari-chapters.lua), the release names (hikari-release.lua)
+-- and the menus (hikari-menu.lua), these two needing the texts first.
+-- Single-file scripts get no mpv folder in package.path, so the folder is
+-- added for each require and taken out again (see the header of
+-- hikari-i18n.lua).
 local function load_module(name)
 	local dir = mp.command_native({'expand-path', '~~/script-modules'})
 	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
@@ -161,6 +168,8 @@ end
 local i18n = load_module('hikari-i18n')
 local chapter_kinds = load_module('hikari-chapters')
 local release = load_module('hikari-release')
+-- Menus: uosc's, or mpv's own selector without uosc.
+local menu = load_module('hikari-menu')
 
 local script_name = mp.get_script_name()
 local OPTIONS_ID = 'hikari-resume'
@@ -756,22 +765,12 @@ local function prompt_data()
 	}
 end
 
-local function send_menu(message, data)
-	local json, err = utils.format_json(data)
-	if not json then
-		msg.error('Could not build the continue watching menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
 -- Redraws whichever of our menus is open.
 local function update_open_menu()
-	local open = mp.get_property_native('user-data/uosc/menu/type')
-	if open == MENU_TYPE then
-		send_menu('update-menu', list_menu_data())
-	elseif open == PROMPT_TYPE and state.prompt and not state.prompt.closed then
-		send_menu('update-menu', prompt_data())
+	if menu.is_open(MENU_TYPE) then
+		menu.update(list_menu_data())
+	elseif menu.is_open(PROMPT_TYPE) and state.prompt and not state.prompt.closed then
+		menu.update(prompt_data())
 	end
 end
 
@@ -784,7 +783,7 @@ local function open_menu()
 	local entries = read_list()
 	-- Keeps the button in step with a list another mpv window changed.
 	publish(entries)
-	send_menu('open-menu', list_menu_data(entries))
+	menu.open(list_menu_data(entries))
 end
 
 -- Saving --------------------------------------------------------------------------
@@ -798,7 +797,7 @@ local function update_list(change)
 	for i = #entries, opts.history_size + 1, -1 do entries[i] = nil end
 	write_list(entries)
 	publish(entries)
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu', list_menu_data(entries)) end
+	if menu.is_open(MENU_TYPE) then menu.update(list_menu_data(entries)) end
 end
 
 -- Records `position` for `file`, an episode of a series: the entry of its series
@@ -908,11 +907,12 @@ local function ask(entry)
 	}
 	local p = state.prompt
 	if p.paused_by_us then mp.set_property_native('pause', true) end
-	send_menu('open-menu', prompt_data())
+	-- No OSD message when it cannot open: the timer below starts from the beginning.
+	menu.open(prompt_data(), {silent = true})
 	p.timer = mp.add_timeout(PROMPT_TIMEOUT, function()
 		p.timer = nil
 		if not p.shown and state.prompt == p then
-			msg.warn('The continue watching question did not show (is uosc installed?): starting from the beginning')
+			msg.warn('The continue watching question did not show (it needs uosc or mpv 0.39+): starting from the beginning')
 			prompt_closed(p)
 		end
 	end)
@@ -923,9 +923,7 @@ local function drop_prompt()
 	local p = state.prompt
 	if not p then return end
 	state.prompt = nil
-	if not p.closed and mp.get_property_native('user-data/uosc/menu/type') == PROMPT_TYPE then
-		mp.commandv('script-message-to', 'uosc', 'close-menu', PROMPT_TYPE)
-	end
+	if not p.closed and menu.is_open(PROMPT_TYPE) then menu.close(PROMPT_TYPE) end
 	restore_pause(p)
 end
 
@@ -1030,7 +1028,7 @@ local function on_start_file()
 	save_episode(left.file, left.position, left.duration, true)
 end
 
-local function on_menu_type(_, value)
+local function on_menu_type(value)
 	local p = state.prompt
 	if not p then return end
 	if value == PROMPT_TYPE then
@@ -1116,7 +1114,8 @@ if opts.enabled then
 	mp.observe_property('time-pos', 'number', keep('time'))
 	mp.observe_property('duration', 'number', keep('duration'))
 	mp.observe_property('chapter-list', 'native', keep('chapters'))
-	mp.observe_property('user-data/uosc/menu/type', 'native', on_menu_type)
+	-- The type of the menu open (uosc's user-data/uosc/menu/type, or the selector's).
+	menu.observe(on_menu_type)
 	mp.add_periodic_timer(SAVE_INTERVAL, tick)
 	-- Another language: an open menu or question is redrawn in it.
 	i18n.on_change(update_open_menu)

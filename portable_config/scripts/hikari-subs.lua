@@ -1,6 +1,7 @@
--- hikari-subs: subtitle style, size and height picker for uosc.
+-- hikari-subs: subtitle style, size and height picker.
 --
--- Opens a uosc menu with three groups (style, size, height). Picking an option
+-- Opens a menu with three groups (style, size, height): uosc's, or mpv's own
+-- selector without uosc (script-modules/hikari-menu.lua). Picking an option
 -- applies it on the fly with `set`, keeps the menu open and refreshes it, and
 -- saves the whole combination to `~~/hikari-subs.conf`, which mpv.conf includes on
 -- the next start.
@@ -19,7 +20,6 @@
 -- `sub-ass-override`.
 
 local msg = require('mp.msg')
-local utils = require('mp.utils')
 local options = require('mp.options')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
@@ -35,6 +35,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -350,16 +365,7 @@ local function menu_data()
 	return {type = MENU_TYPE, title = i18n.t('subs_title'), keep_open = true, items = items}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the subtitle menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
-local function open_menu() send_menu('open-menu') end
+local function open_menu() menu.open(menu_data()) end
 
 -- Handlers for menu selections. Ids come from outside, so they must match a table.
 local function selector(by_id, what, apply)
@@ -372,7 +378,7 @@ local function selector(by_id, what, apply)
 		if apply(entry) then
 			save()
 			-- uosc only updates a menu of this type if it is still open.
-			send_menu('update-menu')
+			menu.update(menu_data())
 		end
 	end
 end
@@ -386,7 +392,7 @@ mp.register_script_message('select-height', select_height)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open subtitle menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if menu.is_open(MENU_TYPE) then menu.update(menu_data()) end
 end)
 
 -- Start-up: the included .conf already set everything, but applying again from

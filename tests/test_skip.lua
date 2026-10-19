@@ -271,6 +271,17 @@ test('drawing uses the active palette and changes it on the fly', function()
 	assert(overlay(s).data:find('\\1c&H000000&', 1, true), 'repainted')
 end)
 
+test('without uosc (no uosc-color, no menu type): the button is drawn in the default colours', function()
+	local s = play(95)
+	mock.uosc = false
+	mock.set('script-opts', {})
+	local o = overlay(s)
+	assert(o.visible, 'shown')
+	assert(o.data:find('\\1c&H000000&', 1, true), 'default background')
+	assert(o.data:find('\\3c&HFFFFFF&', 1, true), 'default foreground border')
+	eq(#mock.logs.error, 0)
+end)
+
 test('hover fills with foreground and uses foreground_text', function()
 	local s = play(95)
 	mock.set('script-opts', {['uosc-color'] = 'foreground=5ad4e6,foreground_text=0b0d12'})
