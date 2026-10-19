@@ -141,6 +141,18 @@ local STRINGS = {
 		en = '.', es = ',', de = ',', fr = ',', it = ',', pl = ',', pt = ',', ro = ',', ru = ',',
 		tr = ',', uk = ',', ['zh-HK'] = '.', ['zh-hans'] = '.',
 	},
+	-- A menu without uosc on an mpv too old for its own selector
+	-- (script-modules/hikari-menu.lua).
+	menu_needs_uosc = {
+		en = 'This menu needs uosc or mpv 0.39 or later', es = 'Este menú necesita uosc o mpv 0.39 o posterior',
+		de = 'Dieses Menü braucht uosc oder mpv 0.39 oder neuer',
+		fr = 'Ce menu nécessite uosc ou mpv 0.39 ou plus récent',
+		it = 'Questo menu richiede uosc o mpv 0.39 o successivo', pl = 'To menu wymaga uosc albo mpv 0.39 lub nowszego',
+		pt = 'Este menu precisa do uosc ou do mpv 0.39 ou posterior',
+		ro = 'Acest meniu necesită uosc sau mpv 0.39 ori mai nou', ru = 'Для этого меню нужен uosc или mpv 0.39 и новее',
+		tr = 'Bu menü için uosc ya da mpv 0.39 veya üstü gerekir', uk = 'Для цього меню потрібен uosc або mpv 0.39 чи новіший',
+		['zh-HK'] = '此選單需要 uosc 或 mpv 0.39 或以上版本', ['zh-hans'] = '此菜单需要 uosc 或 mpv 0.39 及以上版本',
+	},
 
 	-- Tooltips of hikari's buttons in uosc's controls bar (hikari-language.lua)
 	tooltip_subs = {
@@ -238,6 +250,16 @@ local STRINGS = {
 		it = 'Solarized chiaro', pl = 'Solarized jasny', pt = 'Solarized claro', ro = 'Solarized luminos',
 		ru = 'Solarized светлая', tr = 'Solarized açık', uk = 'Solarized світла',
 		['zh-HK'] = 'Solarized 淺色', ['zh-hans'] = 'Solarized 浅色',
+	},
+	-- First line of the palette menu in mpv's own selector, when uosc is not there.
+	palettes_need_uosc = {
+		en = 'Palettes change the colours of uosc', es = 'Las paletas cambian los colores de uosc',
+		de = 'Farbpaletten ändern die Farben von uosc', fr = 'Les palettes changent les couleurs d’uosc',
+		it = 'Le palette cambiano i colori di uosc', pl = 'Palety zmieniają kolory uosc',
+		pt = 'As paletas mudam as cores do uosc', ro = 'Paletele schimbă culorile uosc',
+		ru = 'Палитры меняют цвета uosc', tr = 'Paletler uosc’un renklerini değiştirir',
+		uk = 'Палітри змінюють кольори uosc', ['zh-HK'] = '配色方案會改變 uosc 的顏色',
+		['zh-hans'] = '配色方案会改变 uosc 的颜色',
 	},
 	palettes_save_failed = {
 		en = 'hikari: could not save the palette', es = 'hikari: no se pudo guardar la paleta',
