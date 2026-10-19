@@ -56,10 +56,12 @@
 --   item chosen is usually a message to the script itself, which arrives after
 --   `closed`, and the update-menu it causes should make it into the menu that
 --   comes back, with the cursor on the line chosen if it can still be chosen.
---   A request with no `opened` (0.39 with the console busy, or the
---   console disabled) is given up after OPEN_TIMEOUT, so the next one is not
---   stuck behind it. mpv 0.40's keep_open is not used: 0.39 and 0.40 work the
---   same way.
+--   Without keep_open, observers hear that the menu closed REOPEN_DELAY after
+--   the choice too, once that message has been handled (the continue watching
+--   question seeks before the pause goes). A request with no `opened` (0.39
+--   with the console busy, or the console disabled) is given up after
+--   OPEN_TIMEOUT, so the next one is not stuck behind it. mpv 0.40's
+--   keep_open is not used: 0.39 and 0.40 work the same way.
 -- - Without uosc and without mp.input (mpv before 0.39): a translated OSD
 --   message (unless silent) and a warning in the log; open returns false.
 
@@ -88,10 +90,10 @@ local uosc_callbacks = {}
 local observers = {}
 
 -- The selector. `want` is the menu that should be on screen ({type, data,
--- opts}, plus `line`, the line last chosen), `session` the state of our
--- console: nil, 'requested' (no `opened` yet) or 'open'. `shown` is what the
--- last request put on screen: per line, the item it runs (false: nothing),
--- the menu and the language it is in.
+-- opts}, plus `line`, the line last chosen, and `done` once an item closed
+-- it), `session` the state of our console: nil, 'requested' (no `opened` yet)
+-- or 'open'. `shown` is what the last request put on screen: per line, the
+-- item it runs (false: nothing), the menu and the language it is in.
 local want, session, shown
 -- Why the next `closed` comes: we asked for it, or an item was chosen.
 local closing, submitted = false, false
@@ -199,7 +201,12 @@ local function on_submit(index)
 	local item = shown and shown.actions[line]
 	if not item then return end
 	run(item.value)
-	if want == menu and not menu.data.keep_open then drop() end
+	if want == menu and not menu.data.keep_open then
+		menu.done = true
+		mp.add_timeout(REOPEN_DELAY, function()
+			if want == menu then drop() end
+		end)
+	end
 end
 
 local function on_closed()
@@ -208,7 +215,7 @@ local function on_closed()
 	session, closing, submitted = nil, false, false
 	-- Esc, a click outside, or another script's input took the console.
 	if not ours then drop() end
-	if want and not reopen_timer then
+	if want and not want.done and not reopen_timer then
 		reopen_timer = mp.add_timeout(REOPEN_DELAY, function()
 			reopen_timer = nil
 			sync()
@@ -248,7 +255,7 @@ sync = function()
 			closing = true
 			input.terminate()
 		end
-	elseif session == nil and want and not reopen_timer then
+	elseif session == nil and want and not want.done and not reopen_timer then
 		request(input)
 	end
 end

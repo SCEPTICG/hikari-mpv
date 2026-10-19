@@ -1413,6 +1413,9 @@ test('without uosc: the question in mpv\'s selector, continue by default', funct
 	mock.advance(30)
 	eq(saved()[1].position, 754, 'nothing saved while asking')
 	mock.choose(1)
+	-- The answer is a message the script handles next: the pause stays until then.
+	eq(mock.props.pause, true, 'still paused until the answer is handled')
+	eq(#commands_named('seek'), 0)
 	eq(deliver_answer(), 'continue')
 	local seek = commands_named('seek')[1]
 	eq(seek[2], '754.000'); eq(seek[3], 'absolute+exact')
@@ -1421,6 +1424,29 @@ test('without uosc: the question in mpv\'s selector, continue by default', funct
 	mock.console()
 	eq(mock.on_screen, nil, 'not back')
 	eq(#mock.logs.warn, 0)
+end)
+
+test('without uosc: the answer is handled before the menu reports it closed', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_without_uosc()
+	open(EP)
+	mock.console()
+	local order = {}
+	local native = mp.set_property_native
+	mp.set_property_native = function(name, value)
+		if name == 'pause' then order[#order + 1] = 'pause ' .. tostring(value) end
+		return native(name, value)
+	end
+	local commandv = mp.commandv
+	mp.commandv = function(...)
+		if (...) == 'seek' then order[#order + 1] = 'seek' end
+		return commandv(...)
+	end
+	mock.choose(1)
+	deliver_answer()
+	mock.advance(1)
+	mp.set_property_native, mp.commandv = native, commandv
+	eq(table.concat(order, ','), 'seek,pause false', 'seek first, then playing; once')
 end)
 
 test('without uosc: the list stays on screen while the video plays and saves', function()
