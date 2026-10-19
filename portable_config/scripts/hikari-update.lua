@@ -7,8 +7,10 @@
 -- user-data/hikari_update/available is true, mpv 0.36+). The button, or Alt+u,
 -- opens a menu with: the release notes in the browser, copying the update
 -- command (PowerShell on Windows, a terminal elsewhere) and "Don't remind me of
--- this version", which stops the notice for that version only. Texts follow
--- hikari's language (hikari-i18n).
+-- this version", which stops the notice for that version only. Without uosc
+-- there is no button, and the menu opens in mpv's own selector
+-- (script-modules/hikari-menu.lua). Texts follow hikari's language
+-- (hikari-i18n).
 --
 -- mpv turns this file name into the script name `hikari_update`, so:
 --   input.conf:  Alt+u script-binding hikari_update/open-menu
@@ -83,6 +85,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -543,15 +560,6 @@ local function menu_data()
 	}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the update menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
 local function open_menu()
 	if not opts.enabled then
 		mp.osd_message(i18n.t('update_disabled'), 3)
@@ -567,7 +575,7 @@ local function open_menu()
 		mp.osd_message(i18n.t('update_none', {version = installed}), 3)
 		return
 	end
-	send_menu('open-menu')
+	menu.open(menu_data())
 end
 
 local function open_notes()
@@ -637,7 +645,7 @@ local function dismiss()
 	state.dismissed = v
 	save_state(state)
 	set_button(false)
-	mp.commandv('script-message-to', 'uosc', 'close-menu', MENU_TYPE)
+	menu.close(MENU_TYPE)
 	mp.osd_message(i18n.t('update_dismissed', {version = v}), 3)
 end
 
@@ -649,7 +657,7 @@ mp.register_script_message('dismiss', dismiss)
 mp.register_event('file-loaded', on_file_loaded)
 -- Another language: an open update menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE and pending_version() then send_menu('update-menu') end
+	if menu.is_open(MENU_TYPE) and pending_version() then menu.update(menu_data()) end
 end)
 
 if HIKARI_UPDATE_TEST then
