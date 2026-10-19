@@ -244,6 +244,32 @@ test('no uosc: keep_open: the value runs and the menu comes back with the newest
 	assert(mock.on_screen == mock.selects[2], 'on screen')
 end)
 
+test('no uosc: keep_open: the cursor comes back on the line chosen, if it can still be chosen', function()
+	local menu = fresh(false, true)
+	menu.open(sample({keep_open = true}))
+	mock.console()
+	-- Nord is the active one (line 2); Dracula is picked but the update does not mark it.
+	mock.choose(3)
+	menu.update(sample({keep_open = true}))
+	mock.advance(menu.REOPEN_DELAY)
+	mock.console()
+	eq(mock.selects[2].default_item, 3, 'the line chosen, not the active one')
+	-- A heading chosen: not a line to land on; the active item instead.
+	mock.choose(1)
+	mock.advance(menu.REOPEN_DELAY)
+	mock.console()
+	eq(mock.selects[3].default_item, 2)
+	-- The line chosen cannot be chosen any more: the active item.
+	mock.choose(3)
+	local updated = sample({keep_open = true})
+	updated.items[3].selectable = false
+	menu.update(updated)
+	mock.advance(menu.REOPEN_DELAY)
+	mock.console()
+	eq(mock.selects[4].items[3], '(Dracula)')
+	eq(mock.selects[4].default_item, 2)
+end)
+
 test('no uosc: an update while the video plays (no choice, same language) leaves the menu on screen', function()
 	local menu = fresh(false, true)
 	menu.open(sample())

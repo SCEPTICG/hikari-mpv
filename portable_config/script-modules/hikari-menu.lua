@@ -55,7 +55,8 @@
 --   cursor is on. The menu comes back after REOPEN_DELAY: the value of the
 --   item chosen is usually a message to the script itself, which arrives after
 --   `closed`, and the update-menu it causes should make it into the menu that
---   comes back. A request with no `opened` (0.39 with the console busy, or the
+--   comes back, with the cursor on the line chosen if it can still be chosen.
+--   A request with no `opened` (0.39 with the console busy, or the
 --   console disabled) is given up after OPEN_TIMEOUT, so the next one is not
 --   stuck behind it. mpv 0.40's keep_open is not used: 0.39 and 0.40 work the
 --   same way.
@@ -87,9 +88,10 @@ local uosc_callbacks = {}
 local observers = {}
 
 -- The selector. `want` is the menu that should be on screen ({type, data,
--- opts}), `session` the state of our console: nil, 'requested' (no `opened`
--- yet) or 'open'. `shown` is what the last request put on screen: per line,
--- the item it runs (false: nothing), the menu and the language it is in.
+-- opts}, plus `line`, the line last chosen), `session` the state of our
+-- console: nil, 'requested' (no `opened` yet) or 'open'. `shown` is what the
+-- last request put on screen: per line, the item it runs (false: nothing),
+-- the menu and the language it is in.
 local want, session, shown
 -- Why the next `closed` comes: we asked for it, or an item was chosen.
 local closing, submitted = false, false
@@ -132,7 +134,7 @@ end
 
 -- The lines of the selector for a menu, what each line runs (false: nothing)
 -- and the line chosen by default.
-local function lines_of(data, opts)
+local function lines_of(data, opts, line)
 	local lines, actions = {}, {}
 	local selected, active, first
 	if opts and opts.note then
@@ -159,7 +161,7 @@ local function lines_of(data, opts)
 			end
 		end
 	end
-	return lines, actions, selected or active or first or 1
+	return lines, actions, (line and actions[line] and line) or selected or active or first or 1
 end
 
 local function run(value)
@@ -191,9 +193,11 @@ end
 
 local function on_submit(index)
 	submitted = true
-	local item = shown and shown.actions[tonumber(index)]
+	local line = tonumber(index)
+	local menu = shown and shown.menu
+	if menu then menu.line = line end
+	local item = shown and shown.actions[line]
 	if not item then return end
-	local menu = shown.menu
 	run(item.value)
 	if want == menu and not menu.data.keep_open then drop() end
 end
@@ -221,7 +225,7 @@ local function on_open_timeout()
 end
 
 local function request(input)
-	local lines, actions, default = lines_of(want.data, want.opts)
+	local lines, actions, default = lines_of(want.data, want.opts, want.line)
 	shown = {actions = actions, menu = want, variant = i18n.variant()}
 	session = 'requested'
 	open_timer = mp.add_timeout(OPEN_TIMEOUT, on_open_timeout)

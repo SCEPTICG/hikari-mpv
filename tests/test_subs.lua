@@ -530,7 +530,7 @@ test('without uosc: mpv\'s selector stays open; each pick moves the mark', funct
 	mock.console()
 	local again = assert(mock.on_screen, 'back on screen')
 	eq(again.items[large], '• ' .. data.items[large].title .. '  ·  activa', 'marked now')
-	eq(again.default_item, 2, 'the first active item')
+	eq(again.default_item, large, 'the cursor stays on the line chosen')
 	os.remove(path)
 end)
 
