@@ -787,6 +787,31 @@ test('state file cannot be written: a warning, still announced', function()
 	cleanup(env)
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+test('without uosc: the menu in mpv\'s selector; "Don\'t remind me" closes it', function()
+	local _, env = load('0.2.1')
+	file_loaded()
+	mock.finish_async(true, {status = 0, stdout = answer('v0.3.1'), error_string = ''})
+	mock.uosc = false
+	mock.enable_input()
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.items[1]:find('Ver novedades de la 0.3.1  ·  ', 1, true), 1, t.items[1])
+	eq(t.items[3], 'No avisar de esta versión')
+	eq(t.default_item, 1)
+	mock.console()
+	mock.messages['dismiss']()
+	eq(mock.terminates, 1, 'closed')
+	mock.console()
+	eq(mock.on_screen, nil)
+	eq(button(), false)
+	mock.advance(1)
+	mock.console()
+	eq(mock.on_screen, nil, 'not back')
+	cleanup(env)
+end)
+
 os.getenv = system_getenv
 os.remove(FAKE_BIN .. '/curl'); os.remove(FAKE_BIN)
 print(('\n%d passed, %d failed'):format(passed, failed))

@@ -503,5 +503,36 @@ test('a language switch redraws an open subtitle menu in the new language', func
 	end
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+test('without uosc: mpv\'s selector stays open; each pick moves the mark', function()
+	local path = tmp_path()
+	local s = load()
+	mock.uosc = false
+	mock.enable_input()
+	mock.expand['~~/hikari-subs.conf'] = path
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	local data = s.menu_data()
+	eq(#t.items, #data.items, 'one line per item')
+	eq(t.items[1], '— ' .. data.items[1].title .. ' —', 'group heading')
+	eq(t.items[#t.items], '— ' .. data.items[#data.items].title .. ' —', 'the note at the end')
+	local large
+	for i, item in ipairs(data.items) do
+		if item.value and item.value[3] == 'select-size' and item.value[4] == 'large' then large = i end
+	end
+	eq(t.items[large], data.items[large].title)
+	mock.console()
+	mock.choose(large)
+	eq(table.concat(mock.commands[#mock.commands], ' '), 'script-message-to hikari_subs select-size large')
+	mock.messages['select-size']('large')
+	mock.advance(1)
+	mock.console()
+	local again = assert(mock.on_screen, 'back on screen')
+	eq(again.items[large], '• ' .. data.items[large].title .. '  ·  activa', 'marked now')
+	eq(again.default_item, 2, 'the first active item')
+	os.remove(path)
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

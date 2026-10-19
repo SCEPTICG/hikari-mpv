@@ -108,5 +108,38 @@ test('labels follow the language, decimal separator included; an open menu is re
 	eq(#mock.commands, count, 'another menu open: nothing sent')
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+test('without uosc: the speeds in mpv\'s selector, the current one chosen; picking one sets it and closes', function()
+	load()
+	mock.uosc = false
+	mock.enable_input()
+	mock.props.speed = 1
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.prompt, 'Velocidad:')
+	eq(t.items[1], '0,5×'); eq(t.items[3], '• 1× (normal)  ·  actual'); eq(#t.items, 6)
+	eq(t.default_item, 3)
+	mock.console()
+	mock.choose(2)
+	local c = mock.commands[#mock.commands]
+	eq(table.concat(c, ' '), 'script-message-to hikari_speed select-speed 0.75', 'the value of the item')
+	mock.messages['select-speed']('0.75')
+	eq(table.concat(mock.commands[#mock.commands], ' '), 'set speed 0.75')
+	mock.advance(1)
+	mock.console()
+	eq(#mock.selects, 1, 'closed after picking')
+	eq(mock.on_screen, nil)
+end)
+
+test('without uosc on mpv before 0.39: a message on screen, no error', function()
+	load()
+	mock.uosc = false
+	mock.bindings['open-menu']()
+	eq(mock.osd[1], 'Este menú necesita uosc o mpv 0.39 o posterior')
+	eq(#mock.logs.warn, 1)
+	eq(#mock.logs.error, 0)
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)
