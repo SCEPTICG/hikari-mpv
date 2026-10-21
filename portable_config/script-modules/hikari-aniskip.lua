@@ -37,7 +37,8 @@
 --   season N > 1, exactly the name followed by `Season N`, `Nth Season`,
 --   `Second Season`, `SN` or `N` (as AniList and Kitsu name sequels). More
 --   than one MyAnimeList id among the matches, or an episode number above the
---   episode count the service knows, and the lookup stops.
+--   episode count the service knows, and the lookup stops. A Kitsu series
+--   linked to two or more MyAnimeList ids is ambiguous in the same way.
 -- - AniSkip keeps times submitted by players, each for one length of the
 --   episode, and answers with at most one per type: with `episodeLength`, the
 --   one whose length is closest to it; without (or 0), the most voted
@@ -93,7 +94,7 @@ M.JIKAN_URL = 'https://api.jikan.moe/v4/anime?limit=25&q='
 M.KITSU_URL = 'https://kitsu.app/api/edge/anime?page%5Blimit%5D=20&include=mappings'
 	.. '&fields%5Banime%5D=canonicalTitle,titles,abbreviatedTitles,subtype,episodeCount,mappings'
 	.. '&fields%5Bmappings%5D=externalSite,externalId&filter%5Btext%5D='
--- Kitsu refuses (406) any other Accept.
+-- Kitsu answers 406 to application/json.
 M.KITSU_ACCEPT = 'application/vnd.api+json'
 M.ANISKIP_URL = 'https://api.aniskip.com/v2/skip-times/'
 -- types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed, with the brackets
@@ -314,8 +315,10 @@ end
 -- The same from Kitsu's answer (JSON:API): each series lists its mappings
 -- (relationships.mappings.data, {type, id}), and the mappings themselves are
 -- in `included`; the one for "myanimelist/anime" holds the id. A series
--- linked to two different MyAnimeList ids gives one entry per id, so that a
--- match on it is ambiguous (see pick).
+-- linked to two or more different MyAnimeList ids gives one entry for each of
+-- the first two, so that a match on it is ambiguous (see pick); no more, so
+-- that a hostile answer cannot make pick normalise the same titles once per
+-- mapping.
 function M.parse_kitsu(body)
 	local value, err = decode(body)
 	if not value then return nil, err end
@@ -361,6 +364,7 @@ function M.parse_kitsu(body)
 				if mal and not seen[mal] then
 					seen[mal] = true
 					ids[#ids + 1] = mal
+					if #ids == 2 then break end
 				end
 			end
 			if #ids == 0 then ids[1] = false end
