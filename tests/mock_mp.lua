@@ -39,6 +39,10 @@ M.flag_choices = {['subs-with-matching-audio'] = true}
 -- Whether uosc is loaded: when false, `script-message-to uosc ...` fails as in
 -- mpv (mp.commandv returns nil) and hikari-menu falls back to mp.input.
 M.uosc = true
+-- Whether a script called suji is loaded: when false (the default), `script-message-to
+-- suji ...` fails as for uosc. suji's own user-data/suji/enabled is a property the
+-- tests set (M.props or M.set), as suji would: true while it is turned on.
+M.suji = false
 -- mp.input (mpv 0.39+): missing unless a test calls M.enable_input(). Then a
 -- small console stands in for console.lua: select() and terminate() only queue
 -- what the console would do, M.console() does it, and M.choose(i) and
@@ -252,6 +256,7 @@ function M.install(script_name)
 	M.sets = {}
 	M.tracks, M.pick = nil, nil
 	M.uosc = true
+	M.suji = false
 	M.selects, M.on_screen, M.terminates = {}, nil, 0
 	console_queue, input_handler = {}, nil
 	package.loaded['mp.input'] = nil
@@ -268,11 +273,13 @@ function M.install(script_name)
 
 	mp = {
 		get_script_name = function() return script_name end,
-		-- True, as mpv on success; a script-message-to uosc without uosc fails.
+		-- True, as mpv on success; a script-message-to uosc without uosc fails,
+		-- and so does one to suji without suji.
 		commandv = function(...)
 			local args = {...}
 			table.insert(M.commands, args)
-			if args[1] == 'script-message-to' and args[2] == 'uosc' and not M.uosc then
+			if args[1] == 'script-message-to' and ((args[2] == 'uosc' and not M.uosc)
+				or (args[2] == 'suji' and not M.suji)) then
 				return nil, 'error running command'
 			end
 			return true

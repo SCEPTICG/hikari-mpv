@@ -1,11 +1,11 @@
--- hikari-menu: hikari's menus, in uosc when it is loaded and in mpv's own
--- selector (mp.input.select, mpv 0.39+) when it is not. A module, not a
--- script: the seven scripts with a menu (hikari-palettes, -language, -subs,
--- -resume, -speed, -update and -upscale) load it and describe each menu once,
--- as uosc takes it.
+-- hikari-menu: hikari's menus, in suji when it is loaded and turned on, in
+-- uosc when it is loaded, and in mpv's own selector (mp.input.select, mpv
+-- 0.39+) when neither is. A module, not a script: the seven scripts with a
+-- menu (hikari-palettes, -language, -subs, -resume, -speed, -update and
+-- -upscale) load it and describe each menu once, as uosc takes it.
 --
 -- Usage:
---   menu.open(data)                    -- uosc's open-menu
+--   menu.open(data)                    -- uosc's (and suji's) open-menu
 --   menu.open(data, {note = 'text'})   -- `note`: a first line, selector only
 --   menu.open(data, {silent = true})   -- no OSD message when it cannot open
 --   menu.update(data)                  -- uosc's update-menu
@@ -14,6 +14,8 @@
 --   menu.observe(fn)                   -- fn(type or nil) when the open menu changes
 --   menu.uosc()                        -- uosc is loaded
 --   menu.on_uosc(fn)                   -- fn() when uosc says it has started
+--   menu.suji()                        -- suji is loaded and turned on, now
+--   menu.on_suji(fn)                   -- fn() when suji says it has started
 --
 -- Decisions:
 -- - With uosc nothing changes from hikari 0.9.0: the same `script-message-to
@@ -29,12 +31,36 @@
 --   file-loaded, and mpv creates every script before it plays anything
 --   (mp_load_scripts, then mp_play_files waits for them), so a uosc loaded
 --   after a hikari script is found all the same.
+-- - suji (hikari's own interface, docs/api.md in its repository) takes the
+--   same messages and the same JSON, so the order is suji, then uosc, then
+--   the selector. suji only counts while SUJI_ENABLED is true: suji sets it
+--   as it loads, false with its option enabled=no (when its open-menu does
+--   nothing) and deletes it on shutdown. Anything else, and suji is not even
+--   sent the message. A suji that died without its shutdown may leave it at
+--   true: then its `script-message-to` fails like uosc's above and the menu
+--   goes on to uosc or the selector. Both loaded: suji wins (someone put it
+--   there on purpose). The JSON is the same for both; `note` is for the
+--   selector only, suji gets nothing for it (hikari-palettes adds its own
+--   line for suji).
+-- - update and close go where open sent that type last (`opened_in`). A type
+--   this module never opened goes to uosc, as in hikari 0.9: each mpv script
+--   has its own copy of this module, and only the script that owns a type
+--   opens it, so there is no menu of that type open in suji to reach (suji's
+--   update-menu would do nothing anyway), and the scripts that update on
+--   every change (subtitles, upscaling) do not send suji a message each
+--   time.
+-- - is_open and observe follow user-data/suji/menu/type as well as uosc's:
+--   observers get the type that is open in either, or nil when neither has
+--   one. suji deletes its property on every close (a choice runs the value
+--   first), which is what the continue watching question waits for.
 -- - menu.uosc(), for what is not a menu (uosc's options, in hikari-language):
 --   true once a message reached uosc or uosc announced itself (it broadcasts
 --   `uosc-version` as it starts, to every script created before it: hikari's,
 --   which sort before uosc in scripts/; see on_uosc). Until then it asks
 --   again each time with PROBE, a message uosc has no handler for (mpv's Lua
---   drops it).
+--   drops it). It means uosc only, never suji. menu.suji() reads
+--   SUJI_ENABLED each time; on_suji listens for the `suji-version` suji
+--   broadcasts as it starts.
 -- - The selector: one line per item, `title  ·  hint`; the active item
 --   marked `• ` and chosen by default, unless selected_index says another.
 --   Items that cannot be chosen (selectable = false): headings and notes (no
@@ -62,7 +88,7 @@
 --   with the console busy, or the console disabled) is given up after
 --   OPEN_TIMEOUT, so the next one is not stuck behind it. mpv 0.40's
 --   keep_open is not used: 0.39 and 0.40 work the same way.
--- - Without uosc and without mp.input (mpv before 0.39): a translated OSD
+-- - Without suji, uosc and mp.input (mpv before 0.39): a translated OSD
 --   message (unless silent) and a warning in the log; open returns false.
 
 local msg = require('mp.msg')
@@ -75,6 +101,10 @@ local M = {}
 
 local UOSC = 'uosc'
 local TYPE_PROP = 'user-data/uosc/menu/type'
+local SUJI = 'suji'
+local SUJI_TYPE_PROP = 'user-data/suji/menu/type'
+-- true while suji is loaded and turned on (see the header).
+local SUJI_ENABLED = 'user-data/suji/enabled'
 local PROBE = 'hikari-probe'
 local REOPEN_DELAY = 0.1
 local OPEN_TIMEOUT = 2
@@ -87,7 +117,11 @@ i18n.on_change(function() end)
 
 local uosc_seen = false
 local uosc_callbacks = {}
+local suji_callbacks = {}
 local observers = {}
+-- Per menu type, where open-menu last went: SUJI or UOSC (nil: the selector,
+-- or never opened).
+local opened_in = {}
 
 -- The selector. `want` is the menu that should be on screen ({type, data,
 -- opts}, plus `line`, the line last chosen, and `done` once an item closed
@@ -100,9 +134,14 @@ local closing, submitted = false, false
 local open_timer, reopen_timer
 local sync
 
-local function send(message, arg)
-	if mp.commandv('script-message-to', UOSC, message, arg) then
-		uosc_seen = true
+local function suji_on()
+	return mp.get_property_native(SUJI_ENABLED) == true
+end
+
+-- Sends a message to `target` (SUJI or UOSC). False when no script has that name.
+local function send(target, message, arg)
+	if mp.commandv('script-message-to', target, message, arg) then
+		if target == UOSC then uosc_seen = true end
 		return true
 	end
 	return false
@@ -272,7 +311,13 @@ end
 function M.open(data, opts)
 	local json = encode(data)
 	if not json then return false end
-	if send('open-menu', json) then return true end
+	for _, target in ipairs({SUJI, UOSC}) do
+		if (target ~= SUJI or suji_on()) and send(target, 'open-menu', json) then
+			if data.type ~= nil then opened_in[data.type] = target end
+			return true
+		end
+	end
+	if data.type ~= nil then opened_in[data.type] = nil end
 	if not input_api() then
 		msg.warn('Menu ' .. plain(data.type) .. ': uosc is not loaded and mpv has no mp.input.select (0.39+)')
 		if not (opts and opts.silent) then mp.osd_message(i18n.t('menu_needs_uosc'), 4) end
@@ -292,7 +337,7 @@ function M.update(data, opts)
 		return
 	end
 	local json = encode(data)
-	if json then send('update-menu', json) end
+	if json then send(data.type ~= nil and opened_in[data.type] or UOSC, 'update-menu', json) end
 end
 
 function M.close(menu_type)
@@ -300,18 +345,30 @@ function M.close(menu_type)
 		drop()
 		return
 	end
-	send('close-menu', menu_type)
+	send(menu_type ~= nil and opened_in[menu_type] or UOSC, 'close-menu', menu_type)
 end
 
 function M.is_open(menu_type)
-	return mp.get_property_native(TYPE_PROP) == menu_type or (want ~= nil and want.type == menu_type)
+	return mp.get_property_native(SUJI_TYPE_PROP) == menu_type or mp.get_property_native(TYPE_PROP) == menu_type
+		or (want ~= nil and want.type == menu_type)
 end
 
--- fn(type or nil) whenever the open menu changes, uosc's or the selector's.
+-- fn(type or nil) whenever the open menu changes, suji's, uosc's or the
+-- selector's. When one of suji and uosc closes its menu, the other's type,
+-- if it has one, is what observers hear.
 function M.observe(fn)
 	observers[#observers + 1] = fn
 	if #observers == 1 then
-		mp.observe_property(TYPE_PROP, 'native', function(_, value) emit(value) end)
+		local types = {}
+		local function watch(prop, other)
+			mp.observe_property(prop, 'native', function(_, value)
+				types[prop] = value
+				if value == nil then value = types[other] end
+				emit(value)
+			end)
+		end
+		watch(TYPE_PROP, SUJI_TYPE_PROP)
+		watch(SUJI_TYPE_PROP, TYPE_PROP)
 	end
 end
 
@@ -327,6 +384,21 @@ function M.on_uosc(fn)
 		mp.register_script_message('uosc-version', function()
 			uosc_seen = true
 			for _, callback in ipairs(uosc_callbacks) do callback() end
+		end)
+	end
+end
+
+-- suji is loaded and turned on, now (SUJI_ENABLED; see the header).
+function M.suji()
+	return suji_on()
+end
+
+-- fn() when suji broadcasts `suji-version` as it starts.
+function M.on_suji(fn)
+	suji_callbacks[#suji_callbacks + 1] = fn
+	if #suji_callbacks == 1 then
+		mp.register_script_message('suji-version', function()
+			for _, callback in ipairs(suji_callbacks) do callback() end
 		end)
 	end
 end

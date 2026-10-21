@@ -1535,6 +1535,101 @@ test('without uosc: the list in mpv\'s selector; picking a row opens it', functi
 	eq(table.concat(mock.commands[#mock.commands], ' '), 'loadfile /a/today.mkv replace')
 end)
 
+-- With suji -----------------------------------------------------------------------
+
+local SUJI_TYPE_PROP = 'user-data/suji/menu/type'
+
+-- Like load(opts, true), with suji loaded and turned on and no uosc.
+local function load_with_suji(opts)
+	local s = load(opts, true, {['user-data/suji/enabled'] = true})
+	mock.suji, mock.uosc = true, false
+	return s
+end
+
+-- The last menu sent to suji, decoded, and its message.
+local function last_suji_menu()
+	for i = #mock.commands, 1, -1 do
+		local c = mock.commands[i]
+		if c[1] == 'script-message-to' and c[2] == 'suji' and (c[3] == 'open-menu' or c[3] == 'update-menu') then
+			return assert(mock.parse_json(c[4])), c[3]
+		end
+	end
+	return nil
+end
+
+test('with suji: the question in suji; continue seeks, then the pause goes', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_with_suji()
+	open(EP)
+	eq(mock.props.pause, true, 'paused')
+	local data, message = last_suji_menu()
+	eq(message, 'open-menu'); eq(data.type, 'hikari-resume-prompt'); eq(data.selected_index, 1)
+	eq(data.items[1].title, 'Continuar desde 12:34')
+	eq(#commands_named('open-menu'), 1, 'only to suji')
+	mock.set(SUJI_TYPE_PROP, 'hikari-resume-prompt')
+	-- suji runs the value first, then closes and deletes the type.
+	local paused_at_seek
+	local commandv = mp.commandv
+	mp.commandv = function(...)
+		if (...) == 'seek' then paused_at_seek = mock.props.pause end
+		return commandv(...)
+	end
+	mock.messages['prompt-answer']('continue', data.items[1].value[5])
+	mp.commandv = commandv
+	mock.set(SUJI_TYPE_PROP, nil)
+	local seek = commands_named('seek')[1]
+	eq(seek[2], '754.000'); eq(seek[3], 'absolute+exact')
+	eq(paused_at_seek, true, 'the seek comes before the pause goes')
+	eq(mock.props.pause, false, 'playing again')
+	eq(#commands_named('seek'), 1)
+end)
+
+test('with suji: start from the beginning', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load_with_suji()
+	open(EP)
+	local data = last_suji_menu()
+	mock.set(SUJI_TYPE_PROP, 'hikari-resume-prompt')
+	mock.messages['prompt-answer']('start', data.items[2].value[5])
+	mock.set(SUJI_TYPE_PROP, nil)
+	eq(#commands_named('seek'), 0)
+	eq(mock.props.pause, false)
+end)
+
+test('with suji: Esc or a click outside (the type deleted) starts from the beginning', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	local s = load_with_suji()
+	open(EP)
+	mock.set(SUJI_TYPE_PROP, 'hikari-resume-prompt')
+	mock.advance(s.PROMPT_TIMEOUT * 2)
+	eq(mock.props.pause, true, 'still asking while it is on screen')
+	mock.set(SUJI_TYPE_PROP, nil)
+	eq(#commands_named('seek'), 0)
+	eq(mock.props.pause, false, 'playing')
+end)
+
+test('with suji: a question that never shows there: the pause goes back after PROMPT_TIMEOUT', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	local s = load_with_suji()
+	open(EP)
+	eq(mock.props.pause, true)
+	mock.advance(s.PROMPT_TIMEOUT)
+	eq(mock.props.pause, false)
+	eq(#commands_named('seek'), 0)
+end)
+
+test('suji left user-data/suji/enabled at true but is gone: the question goes to uosc', function()
+	write(LIST, list_json({entry(EP, 754)}))
+	load(nil, true, {['user-data/suji/enabled'] = true})
+	open(EP)
+	local data, message = last_menu()
+	eq(message, 'open-menu'); eq(data.type, 'hikari-resume-prompt')
+	mock.set(MENU_TYPE_PROP, 'hikari-resume-prompt')
+	mock.messages['prompt-answer']('continue', data.items[1].value[5])
+	eq(#commands_named('seek'), 1)
+	eq(mock.props.pause, false)
+end)
+
 os.execute('rm -rf "' .. DIR .. '"')
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)
