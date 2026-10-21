@@ -4720,37 +4720,29 @@ function Uninstall-HikariTarget {
         # hikari's uosc or suji, set aside when the other one was chosen: back in
         # its place first, so the questions below take care of it.
         if ($asidePairs.Count -gt 0) { Restore-HikariPairs -ConfigDir $config -Pairs $asidePairs }
-        # One that could not be put back (something else is in its place): what
-        # is there is not hikari's.
-        $uoscStuck = $false
+        # hikari's suji that could not be put back (something else is in its
+        # place): what is there is not hikari's.
         $sujiStuck = $false
         foreach ($a in $asidePairs) {
             $pair = $a -split '\|'
-            if ($null -eq (Get-Item -LiteralPath (Join-HikariPath $config ($pair[0] -split '/')) -Force -ErrorAction SilentlyContinue)) { continue }
-            if ($pair[1] -eq 'scripts/suji') { $sujiStuck = $true } else { $uoscStuck = $true }
+            if ($pair[1] -ne 'scripts/suji') { continue }
+            if ($null -ne (Get-Item -LiteralPath (Join-HikariPath $config ($pair[0] -split '/')) -Force -ErrorAction SilentlyContinue)) { $sujiStuck = $true }
         }
 
-        # Yes by default only for hikari's own copy, exactly as it copied it (by
-        # the hashes of the record): a uosc or suji of someone else, or one with
-        # changed files, is kept unless the user says otherwise. A record without
-        # hashes (before hikari 0.8) cannot tell: uosc goes by the record, as ever.
         $uoscBefore = & $wasThere 'uosc_preexisting'
         $removeUosc = $false
         if (Test-HikariUoscPresent $config) {
-            $uoscDefault = ($uoscBefore -eq $false -and -not $uoscStuck)
-            if ($uoscDefault) {
-                $sums = @()
-                if ($null -ne $record) { $sums = @($record.Sums) }
-                $uoscDefault = ((Test-HikariCopyIntact -ConfigDir $config -Dir 'scripts/uosc' -Prefixes @('fonts/uosc_') -Sums $sums) -ne 1)
-            }
-            $removeUosc = Confirm-Hikari -Question (T 'ask_remove_uosc') -Default $uoscDefault
+            $removeUosc = Confirm-Hikari -Question (T 'ask_remove_uosc') -Default ($uoscBefore -eq $false)
             if ($removeUosc) {
                 Remove-HikariItem -Path (Join-HikariPath $scripts 'uosc') -Root $config
                 foreach ($font in $script:UoscFonts) { Remove-HikariItem -Path (Join-HikariPath $config @('fonts', $font)) -Root $config }
             }
         }
         # suji, only when hikari installed it here at some point (a suji of the
-        # user's own is left alone).
+        # user's own is left alone). Yes by default only for hikari's own copy,
+        # exactly as it copied it (by the hashes of the record): a suji of
+        # someone else in its place, or one with changed files, is kept unless
+        # the user says otherwise.
         $removeSuji = $false
         if ((Test-HikariSujiPresent $config) -and [string]$values['suji_version']) {
             $sujiDefault = ((& $wasThere 'suji_preexisting') -eq $false -and -not $sujiStuck -and

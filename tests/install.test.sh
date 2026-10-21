@@ -1700,12 +1700,17 @@ run "$h" --yes --interface suji --anime4k no
 printf -- '-- my change\n' >>"$cfg/scripts/suji/core/menu.lua"
 run "$h" --uninstall --yes
 check 'uninstall: hikari'"'"'s suji with a changed file: kept' test "$rc" = 0 -a -n "$(grep -F -- '-- my change' "$cfg/scripts/suji/core/menu.lua")"
+# uosc goes by the record alone, as ever (it may have updated itself): one
+# hikari installed, with main.lua changed, is removed and ModernX comes back.
 h=$(newhome uosc-changed)
 cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts"
+printf -- '-- modernx\n' >"$cfg/scripts/ModernX.lua"
 run "$h" --yes --anime4k no
-printf -- '-- mine\n' >"$cfg/scripts/uosc/mine.lua"
+printf -- '-- uosc, updated\n' >"$cfg/scripts/uosc/main.lua"
 run "$h" --uninstall --yes
-check 'uninstall: hikari'"'"'s uosc with a file added: kept' test "$rc" = 0 -a -f "$cfg/scripts/uosc/mine.lua" -a -f "$cfg/fonts/uosc_icons.otf"
+check 'uninstall: hikari'"'"'s uosc with main.lua changed: removed, ModernX back' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/fonts/uosc_icons.otf" -a "$(cat "$cfg/scripts/ModernX.lua")" = '-- modernx'
 # A suji of the user's own set aside, then the run fails: already recorded,
 # so uninstall gives it back.
 h=$(newhome suji-own-fail)

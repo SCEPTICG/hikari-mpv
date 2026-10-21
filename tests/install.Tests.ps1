@@ -4349,7 +4349,7 @@ Test-Case 'a suji of the user: with uosc it clashes, with suji it is set aside; 
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados')))) 'nothing left aside'
 }
 
-Test-Case 'uninstall takes only hikari''s own copy by default: not a suji of someone else, not a changed suji or uosc' {
+Test-Case 'uninstall takes only hikari''s own suji by default (not someone else''s, not a changed one); uosc as ever' {
     $d = New-TestDir 'suji-notours'
     $art = New-FakeSujiArtifacts (P @($d, 'dl'))
     $env1 = New-FakeEnv $d
@@ -4369,18 +4369,16 @@ Test-Case 'uninstall takes only hikari''s own copy by default: not a suji of som
     Set-TestFile (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua')) '-- my change'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130400')
     Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua'))) '-- my change' 'a changed suji kept'
-    # hikari's uosc with a file added; an intact one goes, as ever.
+    # uosc goes by the record alone, as ever (it may have updated itself): one
+    # hikari installed, with main.lua changed, is removed and ModernX comes back.
     $cfg = P @($d, 'c')
+    Set-TestFile (P @($cfg, 'scripts', 'ModernX.lua')) '-- modernx'
     $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
     [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130500')
-    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'mine.lua')) '-- mine'
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'main.lua')) '-- uosc, updated'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130600')
-    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'mine.lua'))) 'a changed uosc kept'
-    $cfg = P @($d, 'e')
-    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
-    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130700')
-    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130800')
-    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'an intact uosc removed'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'a changed uosc removed'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'ModernX.lua'))) '-- modernx' 'ModernX back'
 }
 
 Test-Case 'a suji of the user set aside is recorded at once, and -Interface SUJI is suji' {

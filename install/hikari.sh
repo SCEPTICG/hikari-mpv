@@ -3963,26 +3963,17 @@ uninstall_steps() {
     # hikari's uosc or suji, set aside when the other one was chosen: back in
     # its place first, so the questions below take care of it.
     if [ "${#aside[@]}" -gt 0 ]; then restore_pairs "${aside[@]}" || return 1; fi
-    # One that could not be put back (something else is in its place): what
-    # is there is not hikari's.
-    local e uosc_stuck=0 suji_stuck=0
+    # hikari's suji that could not be put back (something else is in its
+    # place): what is there is not hikari's.
+    local e suji_stuck=0
     for e in ${aside[@]+"${aside[@]}"}; do
-        [ -e "$CFG/${e%%|*}" ] || [ -L "$CFG/${e%%|*}" ] || continue
-        case ${e#*|} in scripts/suji) suji_stuck=1 ;; *) uosc_stuck=1 ;; esac
+        [ "${e#*|}" = scripts/suji ] || continue
+        if [ -e "$CFG/${e%%|*}" ] || [ -L "$CFG/${e%%|*}" ]; then suji_stuck=1; fi
     done
 
-    # Yes by default only for hikari's own copy, exactly as it copied it (by
-    # the hashes of the record): a uosc or suji of someone else, or one with
-    # changed files, is kept unless the user says otherwise. A record without
-    # hashes (before hikari 0.8) cannot tell: uosc goes by the record, as ever.
-    local remove_uosc=0 remove_suji=0 def font rc
+    local remove_uosc=0 remove_suji=0 def font
     if uosc_present "$CFG"; then
-        def=no
-        if [ "$(was_there uosc_preexisting)" = no ] && [ "$uosc_stuck" = 0 ]; then
-            copy_intact "$CFG" scripts/uosc fonts/uosc_
-            rc=$?
-            [ "$rc" = 1 ] || def=yes
-        fi
+        def=no; [ "$(was_there uosc_preexisting)" = no ] && def=yes
         if confirm "$(T ask_remove_uosc)" "$def"; then
             remove_uosc=1
             remove_item "$CFG/scripts/uosc" "$CFG" || return 1
@@ -3990,7 +3981,10 @@ uninstall_steps() {
         fi
     fi
     # suji, only when hikari installed it here at some point (a suji of the
-    # user's own is left alone).
+    # user's own is left alone). Yes by default only for hikari's own copy,
+    # exactly as it copied it (by the hashes of the record): a suji of someone
+    # else in its place, or one with changed files, is kept unless the user
+    # says otherwise.
     if suji_present "$CFG" && [ "$HAS_RECORD" = 1 ] && rec_get suji_version && [ -n "$REC_VALUE" ]; then
         def=no
         if [ "$(was_there suji_preexisting)" = no ] && [ "$suji_stuck" = 0 ] && copy_intact "$CFG" scripts/suji; then def=yes; fi
