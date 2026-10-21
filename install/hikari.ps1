@@ -2903,6 +2903,25 @@ function Test-HikariSujiUpToDate {
     return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
 }
 
+# Is $Dir (scripts/uosc or scripts/suji) exactly what hikari copied there, by
+# the hashes of its record ($Sums)? Every file listed under $Dir/ (and under
+# $Prefixes: fonts/uosc_) is there, unchanged, not a link, and $Dir holds
+# nothing else. The version is not checked: only whether it is hikari's copy.
+# 0 intact, 1 not (changed, someone else's), 2 the record has no hashes for it
+# (one written before hikari 0.8: it cannot tell).
+function Test-HikariCopyIntact {
+    param([string]$ConfigDir, [string]$Dir, [string[]]$Prefixes = @(), [string[]]$Sums = @())
+    $entries = @(Select-HikariSumsByPrefix -Sums $Sums -Prefixes (@($Dir + '/') + @($Prefixes)))
+    if ($entries.Count -eq 0) { return 2 }
+    $inside = @($entries | Where-Object { $_.StartsWith($Dir + '/') })
+    $item = Get-Item -LiteralPath (Join-HikariPath $ConfigDir ($Dir -split '/')) -Force -ErrorAction SilentlyContinue
+    if ($inside.Count -eq 0 -or $null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return 1 }
+    $files = Get-HikariTreeFiles $item.FullName
+    if ($null -eq $files -or @($files).Count -ne $inside.Count) { return 1 }
+    if (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries) { return 0 }
+    return 1
+}
+
 # The interface hikari installed in a folder, from its record: suji, or uosc
 # (also with no record, a record from before suji or an odd value).
 function Get-HikariRecordedInterface {
@@ -2915,7 +2934,7 @@ function Get-HikariRecordedInterface {
 # or the Interface question), else the one hikari installed there, else uosc.
 function Get-HikariTargetInterface {
     param($Record, [string]$Chosen = '')
-    if ($Chosen -eq 'uosc' -or $Chosen -eq 'suji') { return $Chosen }
+    if ($Chosen -eq 'uosc' -or $Chosen -eq 'suji') { return $Chosen.ToLowerInvariant() }
     return (Get-HikariRecordedInterface $Record)
 }
 
@@ -4184,7 +4203,9 @@ function Install-HikariTarget {
         # The interface hikari installed here before ('' on a first install)
         # and the one it installs now.
         $oldIface = ''
-        if ($null -ne $old) { $oldIface = Get-HikariRecordedInterface $old }
+        # Only a whole record says what hikari installed (one cut short by a
+        # failed first run only has the entries added on the way).
+        if ($null -ne $old -and $old.Values.ContainsKey('hikari_version')) { $oldIface = Get-HikariRecordedInterface $old }
         $iface = Get-HikariTargetInterface -Record $old -Chosen $Interface
         $oldAside = @()
         if ($null -ne $old) { $oldAside = @($old.Aside) }
@@ -4262,7 +4283,10 @@ function Install-HikariTarget {
         # deleted), given back on uninstall; hikari installs its own (or puts
         # back the one it set aside, below).
         if ($iface -eq 'suji' -and $oldIface -ne 'suji' -and (Test-HikariSujiPresent $config)) {
-            $disabled.Add((Move-HikariToDisabled -Path (Join-HikariPath $scripts 'suji') -ConfigDir $config -Stamp $Stamp))
+            $pair = Move-HikariToDisabled -Path (Join-HikariPath $scripts 'suji') -ConfigDir $config -Stamp $Stamp
+            $disabled.Add($pair)
+            # Recorded at once: a failure later in the run never loses it.
+            Add-HikariRecordEntries -ConfigDir $config -Entries @('disabled=' + $pair)
             $sujiBefore = $false
         }
         if ($oldIface -and $oldIface -ne $iface) {
@@ -4275,6 +4299,15 @@ function Install-HikariTarget {
         $back = @($aside | Where-Object { $chosenItems -ccontains ($_ -split '\|')[1] })
         if ($back.Count -gt 0) {
             Restore-HikariPairs -ConfigDir $config -Pairs $back
+            # The sub-folder the set aside fonts went to (scripts-desactivados\fonts),
+            # when putting them back left it empty.
+            foreach ($b in $back) {
+                $parent = Split-Path -Path (Join-HikariPath $config (($b -split '\|')[0] -split '/')) -Parent
+                if (Test-HikariSamePath $parent (Join-HikariPath $config $script:DisabledDir)) { continue }
+                $item = Get-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+                if ($null -ne $item -and $item.PSIsContainer -and -not (Test-HikariLink $item) -and
+                    @(Get-ChildItem -LiteralPath $parent -Force).Count -eq 0) { Remove-HikariItem -Path $parent -Root $config }
+            }
             $still = @($aside | Where-Object { $null -ne (Get-Item -LiteralPath (Join-HikariPath $config (($_ -split '\|')[0] -split '/')) -Force -ErrorAction SilentlyContinue) })
             $aside.Clear()
             foreach ($a in $still) { $aside.Add($a) }
@@ -4687,11 +4720,30 @@ function Uninstall-HikariTarget {
         # hikari's uosc or suji, set aside when the other one was chosen: back in
         # its place first, so the questions below take care of it.
         if ($asidePairs.Count -gt 0) { Restore-HikariPairs -ConfigDir $config -Pairs $asidePairs }
+        # One that could not be put back (something else is in its place): what
+        # is there is not hikari's.
+        $uoscStuck = $false
+        $sujiStuck = $false
+        foreach ($a in $asidePairs) {
+            $pair = $a -split '\|'
+            if ($null -eq (Get-Item -LiteralPath (Join-HikariPath $config ($pair[0] -split '/')) -Force -ErrorAction SilentlyContinue)) { continue }
+            if ($pair[1] -eq 'scripts/suji') { $sujiStuck = $true } else { $uoscStuck = $true }
+        }
 
+        # Yes by default only for hikari's own copy, exactly as it copied it (by
+        # the hashes of the record): a uosc or suji of someone else, or one with
+        # changed files, is kept unless the user says otherwise. A record without
+        # hashes (before hikari 0.8) cannot tell: uosc goes by the record, as ever.
         $uoscBefore = & $wasThere 'uosc_preexisting'
         $removeUosc = $false
         if (Test-HikariUoscPresent $config) {
-            $removeUosc = Confirm-Hikari -Question (T 'ask_remove_uosc') -Default ($uoscBefore -eq $false)
+            $uoscDefault = ($uoscBefore -eq $false -and -not $uoscStuck)
+            if ($uoscDefault) {
+                $sums = @()
+                if ($null -ne $record) { $sums = @($record.Sums) }
+                $uoscDefault = ((Test-HikariCopyIntact -ConfigDir $config -Dir 'scripts/uosc' -Prefixes @('fonts/uosc_') -Sums $sums) -ne 1)
+            }
+            $removeUosc = Confirm-Hikari -Question (T 'ask_remove_uosc') -Default $uoscDefault
             if ($removeUosc) {
                 Remove-HikariItem -Path (Join-HikariPath $scripts 'uosc') -Root $config
                 foreach ($font in $script:UoscFonts) { Remove-HikariItem -Path (Join-HikariPath $config @('fonts', $font)) -Root $config }
@@ -4701,7 +4753,9 @@ function Uninstall-HikariTarget {
         # user's own is left alone).
         $removeSuji = $false
         if ((Test-HikariSujiPresent $config) -and [string]$values['suji_version']) {
-            $removeSuji = Confirm-Hikari -Question (T 'ask_remove_suji') -Default ((& $wasThere 'suji_preexisting') -eq $false)
+            $sujiDefault = ((& $wasThere 'suji_preexisting') -eq $false -and -not $sujiStuck -and
+                (Test-HikariCopyIntact -ConfigDir $config -Dir 'scripts/suji' -Sums @($record.Sums)) -eq 0)
+            $removeSuji = Confirm-Hikari -Question (T 'ask_remove_suji') -Default $sujiDefault
             if ($removeSuji) { Remove-HikariItem -Path (Join-HikariPath $scripts 'suji') -Root $config }
         }
         $thumb = Join-HikariPath $scripts 'thumbfast.lua'
@@ -5309,7 +5363,8 @@ function Invoke-HikariMain {
     Initialize-HikariUi
     $script:NonInteractive = $Yes
     $script:HikariAnime4KChoice = $Anime4K
-    $script:HikariInterfaceChoice = $Interface
+    # ValidateSet takes any case (-Interface SUJI): the record only knows lower case.
+    $script:HikariInterfaceChoice = ([string]$Interface).ToLowerInvariant()
     # Keyboard menus only on a real interactive console; numbers otherwise.
     $script:HikariMenu = $false
     if (-not $Yes -and -not $NoMenu) { $script:HikariMenu = [bool](& $script:HikariConsoleProbe) }

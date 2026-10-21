@@ -4349,6 +4349,58 @@ Test-Case 'a suji of the user: with uosc it clashes, with suji it is set aside; 
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados')))) 'nothing left aside'
 }
 
+Test-Case 'uninstall takes only hikari''s own copy by default: not a suji of someone else, not a changed suji or uosc' {
+    $d = New-TestDir 'suji-notours'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $env1 = New-FakeEnv $d
+    # A suji of someone else where hikari's (set aside) was.
+    $cfg = P @($d, 'a')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130000' -Interface 'suji')
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130100' -Interface 'uosc')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'main.lua')) '-- mine'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130200')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- mine' 'the other suji kept'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'suji', 'main.lua'))) '-- fake suji main' 'hikari''s left aside'
+    # hikari's suji with a changed file.
+    $cfg = P @($d, 'b')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130300' -Interface 'suji')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua')) '-- my change'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130400')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua'))) '-- my change' 'a changed suji kept'
+    # hikari's uosc with a file added; an intact one goes, as ever.
+    $cfg = P @($d, 'c')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130500')
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'mine.lua')) '-- mine'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130600')
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'mine.lua'))) 'a changed uosc kept'
+    $cfg = P @($d, 'e')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130700')
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130800')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'an intact uosc removed'
+}
+
+Test-Case 'a suji of the user set aside is recorded at once, and -Interface SUJI is suji' {
+    $d = New-TestDir 'suji-early'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'main.lua')) '-- my suji'
+    Set-TestFile (P @($cfg, 'mpv.conf')) ($BlockB + "`nosc=no`n")
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-Throws { Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-140000' -Interface 'suji' } '*incomplete*' 'malformed mpv.conf'
+    Assert-True (@((Read-HikariRecord $cfg).Disabled) -contains 'scripts-desactivados/suji|scripts/suji') 'recorded before the failure'
+    $cfg2 = P @($d, 'upper')
+    Set-TestFile (P @($cfg2, 'mpv.conf')) "volume=50`n"
+    Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg2) -Yes $true -Interface 'SUJI') 0 'install'
+    Assert-Equal (Read-HikariRecord $cfg2).Values['interface'] 'suji' 'recorded in lower case'
+    Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg2) -Yes $true) 0 'update'
+    Assert-Equal (Read-HikariRecord $cfg2).Values['interface'] 'suji' 'still suji on the next update'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg2, 'scripts', 'uosc')))) 'no uosc'
+}
+
 Test-Case 'Invoke-HikariMain -Interface: only suji downloaded, remembered with -Yes, bad hash refused' {
     $d = New-TestDir 'suji-main'
     [void](New-FakeArtifacts (P @($d, 'dl')))

@@ -1638,6 +1638,7 @@ check 'uosc -> suji: uosc still in the record' test "$(rec "$cfg" uosc_version)"
 run "$h" --yes --interface uosc
 check 'suji -> uosc again: uosc back, not copied again, suji aside' \
     test "$rc" = 0 -a "$(inode "$cfg/scripts/uosc/main.lua")" = "$uosc_inode" -a -f "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/suji" -a -d "$cfg/scripts-desactivados/suji"
+check 'suji -> uosc again: the fonts folder of scripts-desactivados, left empty, goes' test ! -e "$cfg/scripts-desactivados/fonts"
 run "$h" --yes --interface suji
 run "$h" --uninstall --yes
 check 'suji, uninstall: exit 0, suji, uosc (set aside), suji.conf and record gone' \
@@ -1681,6 +1682,45 @@ check 'a suji of the user, suji: set aside, hikari'"'"'s installed' \
 run "$h" --uninstall --yes
 check 'a suji of the user, suji, uninstall: hikari'"'"'s gone, the user'"'"'s back' \
     test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji' -a ! -e "$cfg/scripts-desactivados"
+
+# Uninstall only takes hikari's own copy by default: not a suji of someone
+# else in its place, not one with a file changed, not a changed uosc.
+h=$(newhome suji-notours)
+cfg="$h/.config/mpv"
+run "$h" --yes --interface suji --anime4k no
+run "$h" --yes --interface uosc --anime4k no
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- mine\n' >"$cfg/scripts/suji/main.lua"
+run "$h" --uninstall --yes
+check 'uninstall: a suji of someone else where hikari'"'"'s was: kept, hikari'"'"'s left aside' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- mine' -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- fake suji 0.2.0'
+h=$(newhome suji-changed)
+cfg="$h/.config/mpv"
+run "$h" --yes --interface suji --anime4k no
+printf -- '-- my change\n' >>"$cfg/scripts/suji/core/menu.lua"
+run "$h" --uninstall --yes
+check 'uninstall: hikari'"'"'s suji with a changed file: kept' test "$rc" = 0 -a -n "$(grep -F -- '-- my change' "$cfg/scripts/suji/core/menu.lua")"
+h=$(newhome uosc-changed)
+cfg="$h/.config/mpv"
+run "$h" --yes --anime4k no
+printf -- '-- mine\n' >"$cfg/scripts/uosc/mine.lua"
+run "$h" --uninstall --yes
+check 'uninstall: hikari'"'"'s uosc with a file added: kept' test "$rc" = 0 -a -f "$cfg/scripts/uosc/mine.lua" -a -f "$cfg/fonts/uosc_icons.otf"
+# A suji of the user's own set aside, then the run fails: already recorded,
+# so uninstall gives it back.
+h=$(newhome suji-own-fail)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- my suji\n' >"$cfg/scripts/suji/main.lua"
+printf 'a=1\n# >>> hikari (managed block, do not edit) >>>\nosc=no\n' >"$cfg/mpv.conf"
+run "$h" --yes --interface suji --anime4k no
+check 'a suji of the user set aside, then a failure: recorded at once' \
+    test "$rc" = 1 -a "$(rec "$cfg" disabled)" = 'scripts-desactivados/suji|scripts/suji'
+printf 'a=1\n' >"$cfg/mpv.conf"
+run "$h" --yes --interface suji --anime4k no
+run "$h" --uninstall --yes
+check 'a suji of the user set aside, then a failure: back on uninstall after the next install' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji'
 
 # A suji download that does not match its SHA256: nothing is touched.
 h=$(newhome suji-badhash)

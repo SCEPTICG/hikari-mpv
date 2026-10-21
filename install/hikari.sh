@@ -27,7 +27,7 @@
 #                              experimental). Without it and without
 #                              questions, each folder keeps the one hikari
 #                              installed there (uosc on a first install)
-#     --version               show the hikari version in each mpv config folder
+#     --version                show the hikari version in each mpv config folder
 #                              found (and in --target folders) and this
 #                              installer's, then leave without changing anything
 #     --verbose                every step on a line of its own, without
@@ -2253,6 +2253,37 @@ suji_uptodate() {
     sums_match "$cfg"
 }
 
+# copy_intact <folder> <dir> [prefix...]: is <dir> (scripts/uosc or
+# scripts/suji, relative) exactly what hikari copied there, by the hashes of
+# the record read last? Every file it lists under <dir>/ (and under the other
+# prefixes: fonts/uosc_) is there, unchanged, not a link, and <dir> holds
+# nothing else. The version is not checked: only whether it is hikari's copy.
+# Returns 0 (intact), 1 (not: changed, someone else's) or 2 (the record has
+# no hashes for it, as one written before hikari 0.8: it cannot tell).
+copy_intact() {
+    local cfg=$1 dir=$2 e rel p n=0 all=0 pre own
+    shift 2
+    SUM_PATHS=()
+    SUM_WANT=()
+    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
+        rel=${e%%|*}
+        own=0
+        case $rel in "$dir"/*) own=1; n=$((n + 1)) ;; esac
+        for pre in ${1+"$@"}; do case $rel in "$pre"*) own=1 ;; esac; done
+        [ "$own" = 1 ] || continue
+        all=$((all + 1))
+        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
+        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
+        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
+        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
+    done
+    [ "$all" -gt 0 ] || return 2
+    [ "$n" -gt 0 ] && [ -d "$cfg/$dir" ] && [ ! -L "$cfg/$dir" ] || return 1
+    [ -z "$(find "$cfg/$dir" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
+    [ "$(find "$cfg/$dir" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
+    sums_match "$cfg"
+}
+
 # The "path|sha256" entries of the record read last whose path starts with
 # one of the prefixes given (scripts/uosc/, fonts/uosc_...), into PICKED_SUMS.
 pick_sums() {
@@ -3394,6 +3425,14 @@ bring_back() {
     done
     [ "${#mine[@]}" -gt 0 ] || return 0
     restore_pairs "${mine[@]}" || return 1
+    # The sub-folder the set aside fonts went to (scripts-desactivados/fonts),
+    # when putting them back left it empty: rmdir only takes an empty folder.
+    for e in "${mine[@]}"; do
+        rel=${e%%|*}
+        rel=${rel%/*}
+        [ "$rel" != "$DISABLED_DIR" ] || continue
+        if [ -d "$CFG/$rel" ] && [ ! -L "$CFG/$rel" ] && [ -z "$(ls -A "$CFG/$rel" 2>/dev/null)" ]; then rmdir "$CFG/$rel" 2>/dev/null || :; fi
+    done
     keep=()
     for e in ${ASIDE[@]+"${ASIDE[@]}"}; do
         if [ -e "$CFG/${e%%|*}" ] || [ -L "$CFG/${e%%|*}" ]; then keep[${#keep[@]}]=$e; fi
@@ -3480,7 +3519,9 @@ install_steps() {
     OLD_IFACE=''
     if read_record "$CFG"; then
         FIRST=0
-        OLD_IFACE=$(recorded_interface)
+        # Only a whole record says what hikari installed (one cut short by a
+        # failed first run only has the entries added on the way).
+        if rec_get hikari_version; then OLD_IFACE=$(recorded_interface); fi
         OLD_ASIDE=(${REC_ASIDE[@]+"${REC_ASIDE[@]}"})
         suji_uptodate "$CFG" && SUJI_UPTODATE=1
         # Checked before anything in the folder changes.
@@ -3559,6 +3600,8 @@ install_steps() {
     if [ "$IFACE" = suji ] && [ "$OLD_IFACE" != suji ] && suji_present "$CFG"; then
         move_to_disabled "$CFG/scripts/suji" || return 1
         DISABLED[${#DISABLED[@]}]=$MOVED_PAIR
+        # Recorded at once: a failure later in the run never loses it.
+        add_record_entries "$CFG" "disabled=$MOVED_PAIR" || return 1
         suji_before=0
     fi
     if [ -n "$OLD_IFACE" ] && [ "$OLD_IFACE" != "$IFACE" ]; then
@@ -3920,10 +3963,26 @@ uninstall_steps() {
     # hikari's uosc or suji, set aside when the other one was chosen: back in
     # its place first, so the questions below take care of it.
     if [ "${#aside[@]}" -gt 0 ]; then restore_pairs "${aside[@]}" || return 1; fi
+    # One that could not be put back (something else is in its place): what
+    # is there is not hikari's.
+    local e uosc_stuck=0 suji_stuck=0
+    for e in ${aside[@]+"${aside[@]}"}; do
+        [ -e "$CFG/${e%%|*}" ] || [ -L "$CFG/${e%%|*}" ] || continue
+        case ${e#*|} in scripts/suji) suji_stuck=1 ;; *) uosc_stuck=1 ;; esac
+    done
 
-    local remove_uosc=0 remove_suji=0 def font
+    # Yes by default only for hikari's own copy, exactly as it copied it (by
+    # the hashes of the record): a uosc or suji of someone else, or one with
+    # changed files, is kept unless the user says otherwise. A record without
+    # hashes (before hikari 0.8) cannot tell: uosc goes by the record, as ever.
+    local remove_uosc=0 remove_suji=0 def font rc
     if uosc_present "$CFG"; then
-        def=no; [ "$(was_there uosc_preexisting)" = no ] && def=yes
+        def=no
+        if [ "$(was_there uosc_preexisting)" = no ] && [ "$uosc_stuck" = 0 ]; then
+            copy_intact "$CFG" scripts/uosc fonts/uosc_
+            rc=$?
+            [ "$rc" = 1 ] || def=yes
+        fi
         if confirm "$(T ask_remove_uosc)" "$def"; then
             remove_uosc=1
             remove_item "$CFG/scripts/uosc" "$CFG" || return 1
@@ -3933,7 +3992,8 @@ uninstall_steps() {
     # suji, only when hikari installed it here at some point (a suji of the
     # user's own is left alone).
     if suji_present "$CFG" && [ "$HAS_RECORD" = 1 ] && rec_get suji_version && [ -n "$REC_VALUE" ]; then
-        def=no; [ "$(was_there suji_preexisting)" = no ] && def=yes
+        def=no
+        if [ "$(was_there suji_preexisting)" = no ] && [ "$suji_stuck" = 0 ] && copy_intact "$CFG" scripts/suji; then def=yes; fi
         if confirm "$(T ask_remove_suji)" "$def"; then
             remove_suji=1
             remove_item "$CFG/scripts/suji" "$CFG" || return 1
