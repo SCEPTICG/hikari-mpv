@@ -47,7 +47,7 @@ suji is hikari's own interface for mpv, a controls bar written from scratch. It 
 
 If suji is installed and turned on, hikari finds it and uses it:
 
-- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji. When uosc is there too, suji wins.
+- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji. When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them.
 - The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`.
 - A palette also sets suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
 

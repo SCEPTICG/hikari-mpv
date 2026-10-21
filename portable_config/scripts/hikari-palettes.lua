@@ -17,8 +17,10 @@
 -- suji (hikari's own interface, in development) has one colour, its accent:
 -- the `suji-accent` script option, which it follows at run time. A palette
 -- sets it to its foreground (the colour of uosc's timeline and active items)
--- while suji is turned on (menu.suji()), and again when suji announces itself
--- (menu.on_suji), since it may start after this script. The saved file
+-- while suji is turned on (menu.suji()), and again each time
+-- user-data/suji/enabled becomes true: suji sets it at the end of its
+-- start-up, after this script has loaded, and when it is turned on again,
+-- maybe after another palette was picked while it was off. The saved file
 -- always carries it, like `uosc-color`, so suji starts with it. When the menu
 -- goes to suji, its first line, muted, says that the palette changes suji's
 -- accent; the selector's note (palettes_need_uosc) is for the selector only.
@@ -419,8 +421,11 @@ end)
 -- Re-apply from the table at start-up so edits to a palette (e.g. SCEPTIC) take
 -- effect without picking it again; the included .conf only covers the first frame.
 apply(get_palette(active_id))
--- suji started after this script: its accent, now that it listens.
-menu.on_suji(function() apply_accent(get_palette(active_id)) end)
+-- suji started after this script, or was turned on again: the accent of the
+-- palette in use. Without suji the property never exists: nothing is sent.
+mp.observe_property('user-data/suji/enabled', 'native', function(_, value)
+	if value == true then apply_accent(get_palette(active_id)) end
+end)
 
 if HIKARI_PALETTES_TEST then
 	return {

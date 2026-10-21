@@ -467,13 +467,29 @@ test('suji loaded but turned off, or not there: no suji-accent at run time, the 
 	for _, value in ipairs(appended()) do assert(not value:find('^suji'), value) end
 end)
 
-test('suji loads after this script (enabled nil at start-up): suji-version sets the accent of the active palette', function()
+test('suji loads after this script (enabled nil at start-up): when it turns true, the accent of the active palette', function()
 	load_with_suji({[SCRIPT_NAME .. '-palette'] = 'dracula'}, nil, true)
 	eq(#appended(), 2, 'no suji yet')
 	mock.commands = {}
-	mock.props['user-data/suji/enabled'] = true
-	mock.messages['suji-version']('0.2.0')
+	mock.set('user-data/suji/enabled', nil)
+	eq(#mock.commands, 0, 'nil: nothing')
+	mock.set('user-data/suji/enabled', true)
 	eq(table.concat(appended(), ';'), 'suji-accent=bd93f9', 'only the accent')
+end)
+
+test('suji on, off, another palette picked, on again: the new palette\'s accent', function()
+	local path = tmp_path()
+	load_with_suji({[SCRIPT_NAME .. '-palette'] = 'nord'}, true, true)
+	eq(appended()[3], 'suji-accent=88c0d0', 'on: Nord')
+	mock.expand['~~/hikari-palette.conf'] = path
+	mock.set('user-data/suji/enabled', false)
+	mock.commands = {}
+	mock.messages['select-palette']('dracula')
+	eq(#appended(), 2, 'off: no accent at run time')
+	mock.commands = {}
+	mock.set('user-data/suji/enabled', true)
+	eq(table.concat(appended(), ';'), 'suji-accent=bd93f9', 'on again: Dracula')
+	os.remove(path)
 end)
 
 test('with suji: the menu opens in suji with a muted first line about the accent; no uosc note', function()
