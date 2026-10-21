@@ -1613,7 +1613,8 @@ Test-Case 'refused targets: drive root, user profile, and folders that are not m
     [void](New-FakeArtifacts (P @($d, 'dl')))
     $script:FakeEnvBase = $d
     function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
-    function Read-HikariLine { param([string]$Prompt) return $script:Reply }
+    # Enter (the default, uosc) for the Interface question, $script:Reply to the rest.
+    function Read-HikariLine { param([string]$Prompt) if ($Prompt -like 'Choose an option (Enter: *') { return '' } return $script:Reply }
     try {
         Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($docs) -Yes $true) 2 '-Yes refuses a non-mpv folder'
         Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($e.UserProfile) -Yes $true) 2 '-Yes refuses the profile'
@@ -3452,8 +3453,8 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
     try {
         $script:HikariFancyProbe = { $true }
         $script:HikariVersion = 'preview-abc1234'
-        # Install (Enter), the highlighted folder (Enter).
-        Use-FakeConsole @('Enter', 'Enter')
+        # Install (Enter), the highlighted folder (Enter), the interface (Enter: uosc).
+        Use-FakeConsole @('Enter', 'Enter', 'Enter')
         $script:HikariConsoleProbe = { $true }
         $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
         Assert-Equal $script:SummaryCode 0 'exit code'
@@ -3464,7 +3465,7 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
         Assert-True (-not $text.Contains('Install or update') -and -not $text.Contains('folders found')) ('nothing of the menus written; output: ' + $text)
         Assert-True ($script:Frames[2].StartsWith('  Players and config folders found:' + "`n")) ('the title is part of the menu: ' + $script:Frames[2])
         $empty = @($script:Frames | Where-Object { $_ -eq '' }).Count
-        Assert-Equal $empty 2 ('both menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
+        Assert-Equal $empty 3 ('the three menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
         # Esc in the folders menu: only "Cancelled." after the notices.
         Use-FakeConsole @('Enter', 'Escape')
         $script:HikariConsoleProbe = { $true }
@@ -3474,11 +3475,13 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
         Assert-Equal ([string]::Join('|', (Get-SummaryLines $text))) ([string]::Join('|', $want)) 'Esc: the title, the notice and "Cancelled."'
         Assert-Equal (Get-LastFrame) '' 'Esc: the menu taken off the screen'
         # -Verbose: the title written above the menu, the choice left in its place.
-        Use-FakeConsole @('Enter', 'Enter')
+        Use-FakeConsole @('Enter', 'Enter', 'Enter')
         $script:HikariConsoleProbe = { $true }
         $text = Get-ShownText { [void](Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $true) }
         Assert-True ((Get-ScreenLines $text) -contains 'Players and config folders found:') ('-Verbose: the title stays; output: ' + $text)
-        Assert-True ($script:Frames[0] -ne '' -and (Get-LastFrame).StartsWith($Ptr + ' mpv.net (')) ('-Verbose: the choice stays: ' + (Get-LastFrame))
+        $chosen = @($script:Frames | Where-Object { $_.StartsWith($Ptr + ' mpv.net (') })
+        Assert-True ($script:Frames[0] -ne '' -and $chosen.Count -eq 1) ('-Verbose: the choice stays: ' + [string]::Join(' || ', $script:Frames))
+        Assert-Equal (Get-LastFrame) ($Ptr + ' uosc') '-Verbose: the interface chosen stays too'
     }
     finally {
         $script:HikariFancyProbe = $savedFancy
@@ -4413,6 +4416,8 @@ Test-Case 'the Interface menu: Down and Enter = suji, starts on the one installe
     $cfg = P @($d, 'mpv')
     New-Item -ItemType Directory -Path $cfg -Force | Out-Null
     $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    # No -Interface (Invoke-HikariMain sets it on every run).
+    $script:HikariInterfaceChoice = ''
     try {
         Use-FakeConsole @('DownArrow', 'Enter')
         Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) 'suji' 'Down, Enter'
