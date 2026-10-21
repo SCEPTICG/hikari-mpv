@@ -291,6 +291,196 @@ test('with suji: no height, 0 or junk: margin_bottom, as before', function()
 	eq(s.layout().y1, 720 - 10000 - 15, 'bounded')
 end)
 
+-- suji's action button (suji 0.3.0 or newer) --------------------------------------
+
+-- The show-action and hide-action messages sent to suji, in order.
+local function actions()
+	local out = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'script-message-to' and c[2] == 'suji' and (c[3] == 'show-action' or c[3] == 'hide-action') then
+			out[#out + 1] = c
+		end
+	end
+	return out
+end
+
+-- suji as it starts: on, and its version sent to the scripts already running.
+local function suji(version)
+	mock.suji = true
+	mock.set('user-data/suji/enabled', true)
+	mock.messages['suji-version'](version)
+end
+
+-- A show-action, checked: id, label and a command back to this script.
+local function shown(c, label)
+	eq(c[3], 'show-action'); eq(c[4], 'hikari-skip', 'id')
+	local data = mock.parse_json(c[5])
+	eq(data.text, label, 'text')
+	eq(#data.command, 3, 'command length')
+	eq(data.command[1], 'script-message-to'); eq(data.command[2], SCRIPT_NAME); eq(data.command[3], 'skip-action')
+	return data
+end
+
+test('suji 0.3.0: show-action with the label and a command back, nothing drawn here', function()
+	local s = play(95)
+	eq(overlay(s).visible, true, 'ours before suji')
+	suji('0.3.0')
+	local list = actions()
+	eq(#list, 1)
+	shown(list[1], 'Saltar opening ›')
+	eq(overlay(s).visible, false, 'our overlay is gone')
+	eq(s.layout(), nil)
+	mock.set('mouse-pos', {x = 1200, y = 610, hover = true})
+	eq(section(s).enabled, false, 'no click section')
+	-- Nothing new while nothing changes.
+	mock.set('time-pos', 100)
+	mock.set('osd-dimensions', {w = 1920, h = 1080})
+	eq(#actions(), 1, 'no resend')
+	eq(overlay(s).updates, 1, 'drawn once, before suji')
+end)
+
+test('suji 0.3.0: in a range from the start, no overlay at all', function()
+	local s = load()
+	suji('0.3.0')
+	mock.set('osd-dimensions', {w = 1280, h = 720})
+	mock.set('duration', 1420)
+	mock.set('chapter-list', EPISODE)
+	mock.set('time-pos', 95)
+	eq(overlay(s).updates, 0, 'never drawn')
+	eq(#actions(), 1); shown(actions()[1], 'Saltar opening ›')
+end)
+
+test('suji 0.3.0: hide-action when the range ends, and after the skip', function()
+	local s = play(95)
+	suji('0.3.0')
+	mock.set('time-pos', 179.9)
+	local list = actions()
+	eq(#list, 2, 'range over')
+	eq(list[2][3], 'hide-action'); eq(list[2][4], 'hikari-skip'); eq(list[2][5], nil)
+	-- Into the ending: a new show-action with its label.
+	mock.set('time-pos', 1310)
+	shown(actions()[3], 'Saltar ending ›')
+	mock.bindings.skip()
+	list = actions()
+	eq(#list, 4); eq(list[4][3], 'hide-action', 'after the skip')
+	eq(overlay(s).updates, 1, 'never drawn here since suji')
+end)
+
+test('suji 0.3.0: the command skips like a click; nothing when no button of ours is up', function()
+	local s = play(95)
+	suji('0.3.0')
+	mock.commands = {}
+	mock.messages['skip-action']()
+	eq(mock.commands[1][1], 'seek'); eq(mock.commands[1][2], '180.000'); eq(mock.commands[1][3], 'absolute+exact')
+	eq(mock.commands[2][3], 'hide-action', 'then hidden')
+	eq(s.guard_active(), false, 'no guard of ours: suji has its own')
+	eq(section(s).enabled, false)
+	-- A second, late message (or one by hand): no button, nothing.
+	mock.commands = {}
+	mock.messages['skip-action']()
+	eq(#mock.commands, 0)
+	mock.set('time-pos', 500)
+	mock.messages['skip-action']()
+	eq(#mock.commands, 0, 'outside a range')
+end)
+
+test('suji 0.3.0: the command skips while the console hides our own button; the key keeps its rule', function()
+	local s = play(95)
+	suji('0.3.0')
+	mock.set('user-data/mpv/console/open', true)
+	eq(#actions(), 1, 'still up: suji decides')
+	mock.commands = {}
+	mock.messages['skip-action']()
+	eq(mock.commands[1][1], 'seek')
+	mock.set('time-pos', 1310)
+	mock.commands = {}
+	mock.bindings.skip()
+	eq(#mock.commands, 0, 'key: not while the console is open')
+	eq(s.is_visible(), false)
+end)
+
+test('suji 0.3.0: a new label is a new show-action (language, next episode)', function()
+	play(95)
+	suji('0.3.0')
+	mock.set_script_opt('hikari-language', 'en')
+	eq(#actions(), 2); shown(actions()[2], 'Skip opening ›')
+	mock.set_script_opt('hikari-language', 'en')
+	eq(#actions(), 2, 'same label: nothing')
+	-- A last-chapter ending, then the next episode queued.
+	local s = play(1350, chapters({{0, 'Part A'}, {1300, 'ED'}}))
+	suji('0.3.0')
+	shown(actions()[1], 'Saltar ending ›')
+	mock.props['path'] = '/anime/ep01.mkv'
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 2
+	mock.props['playlist/1/filename'] = '/anime/ep02.mkv'
+	mock.set(s.NEXT_PROP, {path = '/anime/ep01.mkv', next = '/anime/ep02.mkv'})
+	eq(#actions(), 2); shown(actions()[2], 'Siguiente episodio ›')
+end)
+
+test('suji 0.3.0: turned off, ours again; turned on, show-action again', function()
+	local s = play(95)
+	suji('0.3.0')
+	mock.set('user-data/suji/enabled', false)
+	eq(overlay(s).visible, true, 'ours while suji is off')
+	local n = #actions()
+	mock.set('user-data/suji/enabled', true)
+	eq(overlay(s).visible, false, 'suji again')
+	eq(#actions(), n + 1); shown(actions()[n + 1], 'Saltar opening ›')
+	-- suji gone (the property is deleted when mpv quits).
+	mock.set('user-data/suji/enabled', nil)
+	eq(overlay(s).visible, true, 'ours when suji is gone')
+	-- Turned on outside a range: nothing to show.
+	mock.set('time-pos', 500)
+	n = #actions()
+	mock.set('user-data/suji/enabled', true)
+	eq(#actions(), n, 'no button wanted')
+end)
+
+test('suji 0.3.0: a new file drops the button; the next one in a range gets it again', function()
+	local s = play(95)
+	suji('0.3.0')
+	mock.events['end-file']()
+	eq(actions()[2][3], 'hide-action')
+	mock.set('duration', 1420)
+	mock.set('chapter-list', EPISODE)
+	mock.set('time-pos', 95)
+	eq(#actions(), 3); shown(actions()[3], 'Saltar opening ›')
+	eq(overlay(s).updates, 1)
+end)
+
+test('suji 0.2.x or an unknown version: our own button, as before', function()
+	for _, version in ipairs({'0.2.1', '0.2.9', '0.1.0', 'abc', ''}) do
+		local s = play(95)
+		mock.set('user-data/suji/margins', {bottom = 62})
+		suji(version)
+		eq(#actions(), 0, version)
+		eq(overlay(s).visible, true, version)
+		eq(s.layout().y1, 720 - 62 - 15, 'above suji, as before')
+	end
+	-- suji loaded before this script: no suji-version arrives.
+	local s = play(95)
+	mock.suji = true
+	mock.set('user-data/suji/enabled', true)
+	eq(#actions(), 0, 'no version known')
+	eq(overlay(s).visible, true)
+	-- Newer versions count.
+	for _, version in ipairs({'0.3.0', '0.3.1-dev', '0.10.0', '1.0.0'}) do
+		play(95)
+		suji(version)
+		eq(#actions(), 1, version)
+	end
+end)
+
+test('without suji: nothing is sent to it, our own button as before', function()
+	local s = play(95)
+	eq(#actions(), 0)
+	eq(overlay(s).visible, true)
+	mock.set('time-pos', 500)
+	eq(#actions(), 0)
+	eq(overlay(s).visible, false)
+end)
+
 -- Colours -----------------------------------------------------------------------
 
 test('colours come from uosc-color in BGR, with defaults', function()
