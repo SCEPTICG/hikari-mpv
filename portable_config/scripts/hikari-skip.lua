@@ -47,17 +47,21 @@
 --   0.3.1 or newer) or, without it, the one in the last `suji-version`
 --   message (suji 0.3.0 sends only that, and only to the scripts already
 --   running when it starts); the property must be text, and either needs
---   major.minor 0.3 or more. The property is observed rather than read on
---   file-loaded and on entering a range: mpv loads the scripts at the same
---   time, so it is often missing when this script loads, and the observer is
---   told when suji sets it; a script loaded later with load-script gets its
---   value at once (it misses that file's file-loaded); and a suji loaded again
---   sets it again, which sends show-action again as the message does. Its
---   first value comes from mpv after this script has loaded, so nothing is
---   decided while loading. With neither (suji 0.3.0 started before this
---   script), the version is unknown and the button is drawn here, as with
---   suji 0.2.x. suji drops its action buttons when turned off and does not
---   bring them back: when
+--   major.minor 0.3 or more. A property that is there but not valid wins
+--   over the message on purpose, as in suji's API example. The property is
+--   observed rather than read on file-loaded and on entering a range: mpv
+--   loads the scripts at the same time, so it is often missing when this
+--   script loads, and the observer is told when suji sets it; a script
+--   loaded later with load-script gets its value at once (it misses that
+--   file's file-loaded). Its first value comes from mpv after this script
+--   has loaded, so nothing is decided while loading. mpv only tells an
+--   observer when the value changes, and a suji loaded again sets the same
+--   version: that case is the `suji-version` message's, which is why the
+--   message stays. With neither (suji 0.3.0 started before this script), the
+--   version is unknown and the button is drawn here, as with suji 0.2.x.
+--   When the version stops counting while suji has our button up,
+--   hide-action is sent first, so no two buttons show. suji drops its action
+--   buttons when turned off and does not bring them back: when
 --   user-data/suji/enabled turns true again, show-action is sent again; while
 --   it is anything else (suji off or gone), the button is ours again. A
 --   suji-version message (suji loaded again while playing) sends it again too.
@@ -902,6 +906,10 @@ local function update_suji_actions()
 	if type(version) == 'string' then major, minor = version:match('^(%d+)%.(%d+)') end
 	major, minor = tonumber(major), tonumber(minor)
 	state.suji_actions = major ~= nil and (major > 0 or minor >= 3)
+	-- No longer one that draws it: take ours down there before drawing it here.
+	if state.action and not state.suji_actions then
+		mp.commandv('script-message-to', 'suji', 'hide-action', ACTION_ID)
+	end
 	-- A suji that starts now holds no button of ours: send it again if wanted.
 	state.action = nil
 	refresh()

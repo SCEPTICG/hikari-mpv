@@ -524,7 +524,9 @@ test('suji 0.3.1: the version it publishes is enough, with no suji-version (this
 	eq(overlay(s).updates, 0, 'never drawn here')
 end)
 
-test('suji 0.3.1: loaded again (the version set again): show-action again; gone: ours', function()
+-- The property going away and coming back (mpv tells observers only of a
+-- change, so a suji loaded again with the same version is the message's case).
+test('suji 0.3.1: the property goes away and comes back: ours meanwhile, then show-action again', function()
 	local s = play(95)
 	suji_published('0.3.1')
 	mock.set('user-data/suji/version', nil)
@@ -534,6 +536,21 @@ test('suji 0.3.1: loaded again (the version set again): show-action again; gone:
 	local list = actions()
 	eq(list[#list][3], 'show-action', 'back to suji')
 	eq(overlay(s).visible, false)
+end)
+
+test('suji 0.3.1: the version stops counting with our button up there: hide-action first, then ours', function()
+	local s = play(95)
+	suji_published('0.3.1')
+	eq(#actions(), 1)
+	mock.set('user-data/suji/version', '0.2.9')
+	eq(#actions(), 2, 'hide-action sent')
+	eq(actions()[2][3], 'hide-action'); eq(actions()[2][4], 'hikari-skip')
+	eq(overlay(s).visible, true, 'ours now')
+	-- With no button of ours up there, nothing is sent.
+	play(500)
+	suji_published('0.3.1')
+	mock.set('user-data/suji/version', 'abc')
+	eq(#actions(), 0, 'nothing to hide')
 end)
 
 test('suji: a published version below 0.3 or not valid: our own button, no error', function()
