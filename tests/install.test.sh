@@ -580,14 +580,14 @@ check 'Mac, uninstall: exit 0' test "$rc" = 0
 check_mac_restored 'Mac, uninstall'
 
 # The same answering the questions (numbers and typed answers, as without
-# arrows): 1 install, 1 the folder, then Enter (yes) for the broken script,
+# arrows): 1 install, 1 the folder, Enter for the interface (uosc), then Enter (yes) for the broken script,
 # y to let hikari take care of Anime4K, Enter for the keys and the mpv.conf lines.
 h=$(newhome mac3)
 cfg="$h/.config/mpv"
 snap="$tmp/snap-mac3"
 make_mac "$cfg"
 snapshot "$cfg" "$snap"
-answers '1\n1\n\ny\n\n\n'
+answers '1\n1\n\n\ny\n\n\n'
 run "$h"
 check 'Mac, interactive: exit 0' test "$rc" = 0
 check 'Mac, interactive: asked to take care of Anime4K, default no' has "$out" 'Let hikari take care of it?'
@@ -1822,8 +1822,9 @@ pty_run() {
 
 h=$(newhome menu)
 cfg="$h/.config/mpv"
-# Main menu: Enter (install); folders: Enter (the highlighted one); Anime4K: n.
-pty_run "$h" '\r' '\r' 'n'
+# Main menu: Enter (install); folders: Enter (the highlighted one); interface:
+# Enter (uosc); Anime4K: n.
+pty_run "$h" '\r' '\r' '\r' 'n'
 check 'menus: install through the keyboard menus' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
 check 'menus: help line shown' has "$out" '↑/↓ to move · Enter to choose · Esc to exit'
 check 'menus: N answered no (Anime4K declined)' test "$(rec "$cfg" anime4k)" = declined
@@ -1846,6 +1847,21 @@ check 'menus: digit hotkey 3 = versions, 0 = exit' test "$rc" = 0 -a -n "$(grep 
 # --no-menu on a terminal: numbers and typed answers.
 h=$(newhome nomenu)
 PTY_OPTS='--no-menu' pty_run "$h" '0\r'
+# The Interface menu: Down, Enter = suji; next time it starts on suji (Enter
+# keeps it); hotkey 1 = uosc; Esc leaves without doing anything.
+h=$(newhome menu-suji)
+cfg="$h/.config/mpv"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b[B' '\r'
+check 'menus: Interface, Down and Enter install suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
+check 'menus: the Interface menu shows suji'"'"'s note' has "$out" "hikari's own interface, still being tested"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\r'
+check 'menus: Interface starts on the one installed (Enter keeps suji)' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '1'
+check 'menus: Interface hotkey 1 = uosc' test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a -d "$cfg/scripts-desactivados/suji"
+cp "$cfg/hikari-installed.txt" "$tmp/record-before-esc"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b'
+check 'menus: Esc in the Interface menu: cancelled, nothing changed' \
+    test "$rc" = 0 -a -n "$(grep Cancelled "$out")" -a "$(cmp -s "$tmp/record-before-esc" "$cfg/hikari-installed.txt" && echo same)" = same
 check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
 
 # --- the summary on a terminal: progress bars and spinners ----------------------
@@ -1956,7 +1972,7 @@ screen "$out" | grep -E '%|\^C' | sed 's/^/     | /'
 h=$(newhome fancy-ask)
 cfg="$h/.config/mpv"
 make_mac "$cfg"
-LC_ALL=C PTY_OPTS='--install' pty_run "$h" '\r' '\r' 'n'
+LC_ALL=C PTY_OPTS='--install' pty_run "$h" '\r' '\r' '\r' 'n'
 check 'terminal with questions: installs, the answer taken' test "$rc" = 0 -a "$(rec "$cfg" anime4k)" = manual
 screen "$out" >"$tmp/fancy-ask-screen"
 check 'terminal with questions: warnings, question and steps on their own lines' \
@@ -1964,11 +1980,12 @@ check 'terminal with questions: warnings, question and steps on their own lines'
     -a -z "$(grep -E '[|/\\-] Installing\.\.\..+' "$tmp/fancy-ask-screen")"
 # Menus in the summary: once answered, the menu and its title go (the folder
 # block says what was chosen); the notices stay, indented, with a blank line
-# before the folder. A preview build on a Mac with IINA, chosen with Enter twice.
+# before the folder. A preview build on a Mac with IINA, chosen with Enter three
+# times (install, the folder, uosc).
 h=$(newhome fancy-menus)
 cfg="$h/.config/mpv"
 copy="$tmp/build-preview/install/hikari.sh"
-HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r'
+HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\r'
 copy=$dev_copy
 screen "$out" >"$tmp/fancy-menus-screen"
 check 'terminal, menus: installs' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
@@ -2001,7 +2018,7 @@ h=$(newhome fancy-ctl)
 esc=$(printf '\033')
 ctl_dir="$h/cu${esc}[31mstom"
 mkdir -p "$ctl_dir"
-LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r'
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r' '\r'
 check 'terminal, MPV_HOME with an escape sequence: installs into it' test "$rc" = 0 -a -f "$ctl_dir/hikari-installed.txt"
 check 'terminal, MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mstom"
 # shellcheck disable=SC2088 # a ~ as shown, not to expand.
@@ -2054,7 +2071,7 @@ ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
 check 'terminal, typed answers: indented in the summary only' \
     test "$ask_out" = "$(printf '  Folder: \n  Go on? [Y/n] \nFolder: \n|')"
 # --verbose keeps the menus' title and the line with the choice.
-LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r'
+LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r' '\r'
 check 'terminal, --verbose: the title of the folders and the chosen entries stay' \
     test "$rc" = 0 -a -n "$(screen "$out" | grep -x 'Config folders found:')" -a -n "$(screen "$out" | grep -xE '[^ ]+ Install or update')"
 # No real terminal: nothing animated and no escape sequence, also on a terminal.
