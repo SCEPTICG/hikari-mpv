@@ -51,7 +51,7 @@ The installer asks which one you want (*Interface*: *uosc (recommended)* or *suj
 With suji, hikari finds it and uses it:
 
 - Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji, and its buttons sit in suji's row.
-- The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`.
+- The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`. With suji 0.3.0 or newer, suji draws the skip button itself, with its own look.
 - A palette only changes suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
 
 What suji does not do yet: there are no thumbnails over the timeline, and the palettes do not colour the rest of the bar. When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them, as the installer does.
