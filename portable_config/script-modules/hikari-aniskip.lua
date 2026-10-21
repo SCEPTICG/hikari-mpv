@@ -7,8 +7,10 @@
 -- -> Sousou no Frieren, episode 5). From there:
 -- 1. MyAnimeList id of the series: AniList's public GraphQL API
 --    (https://graphql.anilist.co, no key), searched with the series name. When
---    AniList cannot be reached or answers with an error, Jikan
---    (https://api.jikan.moe, an unofficial MyAnimeList API) is asked instead.
+--    AniList cannot be reached or answers with an error, Kitsu
+--    (https://kitsu.app/api/edge, no key, JSON:API) is asked instead, and when
+--    Kitsu fails too, Jikan (https://api.jikan.moe, an unofficial MyAnimeList
+--    API).
 -- 2. Times: AniSkip (https://api.aniskip.com/v2/skip-times/<id>/<episode>),
 --    asking for `op`, `ed`, `mixed-op` and `mixed-ed` (an opening or ending
 --    mixed with scenes of the episode: skipped as openings and endings too)
@@ -20,17 +22,22 @@
 -- - Why AniList first: one request gives every title of every match (romaji,
 --   English, native, synonyms), its format, episode count and MyAnimeList id;
 --   its limit is documented (30 to 90 requests a minute per address) and it is
---   the service most anime trackers use. Jikan scrapes MyAnimeList, allows 3
---   requests a second and 60 a minute, and is slower and down more often; it
---   is only the fallback, and only when AniList fails (not when AniList
---   answers "no such series").
+--   the service most anime trackers use (in October 2026 it answered every
+--   request with a 403 and `errors`: "temporarily disabled", a failure like
+--   any other). Kitsu next: one request gives the same (its titles by locale,
+--   abbreviated titles, subtype, episode count, and its mappings to other
+--   sites, MyAnimeList's among them), and it answers fast. Jikan last: it
+--   scrapes MyAnimeList, allows 3 requests a second and 60 a minute, and is
+--   the slowest and the one down most often. Each is asked only when the one
+--   before fails (cannot be reached, an error, an answer that is not valid),
+--   not when it answers "no such series".
 -- - A match must be clear, or nothing is shown: a series (TV, TV_SHORT or ONA)
 --   one of whose titles is, once normalised (lower case, punctuation as
 --   spaces, apostrophes dropped, × as x), exactly the series name; for a
 --   season N > 1, exactly the name followed by `Season N`, `Nth Season`,
---   `Second Season`, `SN` or `N` (as AniList names sequels). More than one
---   MyAnimeList id among the matches, or an episode number above the episode
---   count AniList knows, and the lookup stops.
+--   `Second Season`, `SN` or `N` (as AniList and Kitsu name sequels). More
+--   than one MyAnimeList id among the matches, or an episode number above the
+--   episode count the service knows, and the lookup stops.
 -- - AniSkip keeps times submitted by players, each for one length of the
 --   episode, and answers with at most one per type: with `episodeLength`, the
 --   one whose length is closest to it; without (or 0), the most voted
@@ -47,8 +54,9 @@
 --   positive integers, times finite, start < end, within MAX_SECONDS, a segment
 --   no longer than MAX_SEGMENT). Received text is only compared, never shown,
 --   put in a command line or used in a file name. The MyAnimeList id and the
---   episode go into the AniSkip URL as validated integers; the series name
---   goes to AniList as a JSON value on curl's stdin and to Jikan
+--   episode go into the AniSkip URL as validated integers (Kitsu's ids come
+--   as text: digits only, then the same range); the series name goes to
+--   AniList as a JSON value on curl's stdin and to Kitsu and Jikan
 --   percent-encoded.
 -- - Network: curl, as in hikari-update.lua (same reasons): asynchronous
 --   subprocesses (playback never waits), `-q` first so no .curlrc is read,
@@ -80,6 +88,13 @@ local M = {}
 M.CACHE_PATH = '~~/hikari-aniskip.json'
 M.ANILIST_URL = 'https://graphql.anilist.co'
 M.JIKAN_URL = 'https://api.jikan.moe/v4/anime?limit=25&q='
+-- 20 series (Kitsu's largest page), each with its mappings (ids on other
+-- sites) and only the fields used; the brackets encoded as in ANISKIP_QUERY.
+M.KITSU_URL = 'https://kitsu.app/api/edge/anime?page%5Blimit%5D=20&include=mappings'
+	.. '&fields%5Banime%5D=canonicalTitle,titles,abbreviatedTitles,subtype,episodeCount,mappings'
+	.. '&fields%5Bmappings%5D=externalSite,externalId&filter%5Btext%5D='
+-- Kitsu refuses (406) any other Accept.
+M.KITSU_ACCEPT = 'application/vnd.api+json'
 M.ANISKIP_URL = 'https://api.aniskip.com/v2/skip-times/'
 -- types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed, with the brackets
 -- encoded so curl does not read them as a glob, and the episode length in
@@ -97,6 +112,7 @@ local MAX_SERIES = 200          -- bytes of a series name looked up
 local MAX_CANDIDATES = 50       -- series in a search answer
 local MAX_NAMES = 60            -- titles of one series
 local MAX_NAME = 500            -- bytes of one title
+local MAX_MAPPINGS = 1000       -- mappings (ids on other sites) in a Kitsu answer
 local MAX_RESULTS = 30          -- AniSkip results kept
 local MAX_ID = 999999999
 local MAX_EPISODE = 9999
@@ -115,6 +131,9 @@ M.KIND_OF = {op = 'opening', ['mixed-op'] = 'opening', ed = 'ending', ['mixed-ed
 local FORMATS = {TV = true, TV_SHORT = true, ONA = true}
 -- Jikan's names for them.
 local JIKAN_FORMATS = {TV = 'TV', ONA = 'ONA'}
+-- Kitsu's (its subtypes: TV, ONA, OVA, movie, special, music; short series
+-- are TV, there is no TV_SHORT).
+local KITSU_FORMATS = {TV = 'TV', ONA = 'ONA'}
 
 -- Unix time; tests replace it.
 M.now = os.time
@@ -279,6 +298,75 @@ function M.parse_jikan(body)
 				if type(t) == 'table' then add_names(c.names, t.title) end
 			end
 			list[#list + 1] = c
+		end
+	end
+	return list
+end
+
+-- A MyAnimeList id as Kitsu writes it (text: "52991"), as a number; nil for
+-- anything but digits without a leading zero, in range.
+local function kitsu_id(text)
+	if type(text) ~= 'string' or #text > 9 or not text:match('^[1-9]%d*$') then return nil end
+	local id = tonumber(text)
+	return is_int(id, 1, MAX_ID) and id or nil
+end
+
+-- The same from Kitsu's answer (JSON:API): each series lists its mappings
+-- (relationships.mappings.data, {type, id}), and the mappings themselves are
+-- in `included`; the one for "myanimelist/anime" holds the id. A series
+-- linked to two different MyAnimeList ids gives one entry per id, so that a
+-- match on it is ambiguous (see pick).
+function M.parse_kitsu(body)
+	local value, err = decode(body)
+	if not value then return nil, err end
+	if value.errors ~= nil then return nil, 'Kitsu error' end
+	local data = array(value.data, MAX_CANDIDATES)
+	local included = value.included == nil and {} or array(value.included, MAX_MAPPINGS)
+	if not data or not included then return nil, 'unexpected answer' end
+	-- Mapping id -> MyAnimeList id.
+	local mal_of = {}
+	for _, i in ipairs(included) do
+		local attributes = type(i) == 'table' and i.type == 'mappings' and is_text(i.id, MAX_NAME)
+			and type(i.attributes) == 'table' and i.attributes
+		if attributes and attributes.externalSite == 'myanimelist/anime' then
+			mal_of[i.id] = kitsu_id(attributes.externalId)
+		end
+	end
+	local list = {}
+	for _, a in ipairs(data) do
+		local attributes = type(a) == 'table' and type(a.attributes) == 'table' and a.attributes
+		if attributes then
+			local format = type(attributes.subtype) == 'string' and KITSU_FORMATS[attributes.subtype] or nil
+			local episodes = is_int(attributes.episodeCount, 1, MAX_EPISODE) and attributes.episodeCount or nil
+			local names = {}
+			add_names(names, attributes.canonicalTitle)
+			if type(attributes.titles) == 'table' then
+				-- An object of locale -> title; sorted so the MAX_NAMES kept do not
+				-- depend on the order pairs gives.
+				local locales = {}
+				for locale in pairs(attributes.titles) do
+					if type(locale) == 'string' then locales[#locales + 1] = locale end
+				end
+				table.sort(locales)
+				for _, locale in ipairs(locales) do add_names(names, attributes.titles[locale]) end
+			end
+			for _, name in ipairs(array(attributes.abbreviatedTitles, MAX_NAMES) or {}) do add_names(names, name) end
+			local relationships = type(a.relationships) == 'table' and a.relationships
+			local mappings = relationships and type(relationships.mappings) == 'table' and relationships.mappings
+			local links = mappings and array(mappings.data, MAX_MAPPINGS) or {}
+			local ids, seen = {}, {}
+			for _, link in ipairs(links) do
+				local mal = type(link) == 'table' and link.type == 'mappings' and is_text(link.id, MAX_NAME)
+					and mal_of[link.id]
+				if mal and not seen[mal] then
+					seen[mal] = true
+					ids[#ids + 1] = mal
+				end
+			end
+			if #ids == 0 then ids[1] = false end
+			for _, mal in ipairs(ids) do
+				list[#list + 1] = {mal = mal or nil, format = format, episodes = episodes, names = names}
+			end
 		end
 	end
 	return list
@@ -615,11 +703,12 @@ function M.curl_program()
 end
 
 -- curl's arguments for `url`; with `post`, the body comes from stdin.
-function M.curl_args(program, url, post)
+-- `accept`: the media type asked for (nil: application/json).
+function M.curl_args(program, url, post, accept)
 	local args = {
 		program, '-q', '--silent', '--show-error', '--max-time', tostring(CURL_TIMEOUT),
 		'--proto', '=https', '--max-redirs', '0', '--max-filesize', tostring(MAX_RESPONSE),
-		'-H', 'Accept: application/json',
+		'-H', 'Accept: ' .. (accept or 'application/json'),
 	}
 	if post then
 		args[#args + 1] = '-H'
@@ -632,7 +721,8 @@ function M.curl_args(program, url, post)
 end
 
 -- Runs curl and calls done(body) with its output, or done(nil) on failure.
-local function fetch(what, url, body, done)
+-- `accept` as in curl_args.
+local function fetch(what, url, body, done, accept)
 	local curl = M.curl_program()
 	if not curl then
 		msg.verbose('AniSkip: curl not found, not asking ' .. what)
@@ -640,7 +730,7 @@ local function fetch(what, url, body, done)
 	end
 	mp.command_native_async({
 		name = 'subprocess',
-		args = M.curl_args(curl, url, body ~= nil),
+		args = M.curl_args(curl, url, body ~= nil, accept),
 		stdin_data = body,
 		playback_only = false,
 		capture_stdout = true,
@@ -666,22 +756,33 @@ local function url_encode(text)
 	return (text:gsub('[^%w%-%._~]', function(c) return string.format('%%%02X', c:byte()) end))
 end
 
--- Candidates for `series`: AniList, or Jikan when AniList fails. done(list)
--- or done(nil) when neither answered.
+-- Candidates for `series`: from AniList; when it cannot be reached or does
+-- not answer validly, from Kitsu; and then the same, from Jikan. done(list),
+-- empty when the one that answered knows no such series (the next is not
+-- asked then), or done(nil) when none answered.
 local function search(series, done)
-	local body = utils.format_json({query = M.ANILIST_QUERY, variables = {search = series}})
-	msg.verbose('AniSkip: asking AniList for the MyAnimeList id of "' .. series .. '"')
-	fetch('AniList', M.ANILIST_URL, body, function(answer)
-		local list, err = M.parse_anilist(answer)
-		if list then return done(list) end
-		if answer then msg.verbose('AniSkip: AniList: ' .. tostring(err)) end
-		msg.verbose('AniSkip: asking Jikan instead')
-		fetch('Jikan', M.JIKAN_URL .. url_encode(series), nil, function(jikan)
-			local jlist, jerr = M.parse_jikan(jikan)
-			if not jlist and jikan then msg.verbose('AniSkip: Jikan: ' .. tostring(jerr)) end
-			done(jlist)
-		end)
-	end)
+	local sources = {
+		{name = 'AniList', url = M.ANILIST_URL, parse = M.parse_anilist,
+			body = utils.format_json({query = M.ANILIST_QUERY, variables = {search = series}})},
+		{name = 'Kitsu', url = M.KITSU_URL .. url_encode(series), parse = M.parse_kitsu, accept = M.KITSU_ACCEPT},
+		{name = 'Jikan', url = M.JIKAN_URL .. url_encode(series), parse = M.parse_jikan},
+	}
+	local function ask(i)
+		local source = sources[i]
+		if not source then return done(nil) end
+		if i == 1 then
+			msg.verbose('AniSkip: asking ' .. source.name .. ' for the MyAnimeList id of "' .. series .. '"')
+		else
+			msg.verbose('AniSkip: asking ' .. source.name .. ' instead')
+		end
+		fetch(source.name, source.url, source.body, function(answer)
+			local list, err = source.parse(answer)
+			if list then return done(list) end
+			if answer then msg.verbose('AniSkip: ' .. source.name .. ': ' .. tostring(err)) end
+			ask(i + 1)
+		end, source.accept)
+	end
+	ask(1)
 end
 
 -- ---------------------------------------------------------------------------
