@@ -29,6 +29,25 @@
 --   or 0) the button goes where margin_bottom says, as before. suji only
 --   takes clicks on its row and timeline strip, below that height, so the
 --   button's clicks are not shared with it.
+-- - With suji 0.3.0 or newer turned on, suji draws the button, with its own
+--   look: hikari draws nothing and takes no clicks, and sends
+--   `show-action hikari-skip {text, command}` instead, the command being a
+--   script-message-to this script (ACTION_MESSAGE) that skips as a click on
+--   our own button does. The text is the same label; a new label (language,
+--   kind of range, next episode) is a new show-action. `hide-action
+--   hikari-skip` goes when the button would go: the range ends or changes to
+--   none, the skip dismisses it, idle, a new file. suji hides it while a menu
+--   of its own is open and keeps it while its controls are hidden, so our
+--   menu, console and window-size conditions are left to it; the binding
+--   keeps them. suji leaves it up after a click (only we know when the skip is
+--   done) and swallows the second click of a double click itself, so the
+--   double-click guard is not started for it. The version is the one in the
+--   `suji-version` message, which suji sends only to the scripts already
+--   running when it starts: if this script loads after suji, the version is
+--   unknown and the button is drawn here, as with suji 0.2.x. suji drops its
+--   action buttons when turned off and does not bring them back: when
+--   user-data/suji/enabled turns true again, show-action is sent again; while
+--   it is anything else (suji off or gone), the button is ours again.
 -- - Clicks: a private input section with MBTN_LEFT is enabled only while the
 --   button is visible and the pointer is over it, and disabled as soon as it
 --   leaves, so every other click reaches uosc and mpv untouched. It is the
@@ -89,6 +108,7 @@
 
 local msg = require('mp.msg')
 local options = require('mp.options')
+local utils = require('mp.utils')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
 -- scripts get no mpv folder in package.path, so the folder is added for this
@@ -138,6 +158,11 @@ local NEXT_SHARE = 0.95
 -- How high suji's controls reach, and the gap above them at scale 1.
 local SUJI_MARGINS_PROP = 'user-data/suji/margins'
 local SUJI_GAP = 15
+-- suji's action button (suji 0.3.0 or newer): whether suji is on, the id of
+-- our button, and the message its command sends back to this script.
+local SUJI_ENABLED_PROP = 'user-data/suji/enabled'
+local ACTION_ID = 'hikari-skip'
+local ACTION_MESSAGE = 'skip-action'
 
 local opts = {
 	openings = true,
@@ -392,6 +417,10 @@ local state = {
 	idle = false, menu_open = false, suji_menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
 	suji_bottom = nil, -- user-data/suji/margins.bottom, when above 0
+	-- suji_on: user-data/suji/enabled is true; suji_actions: its suji-version
+	-- is 0.3.0 or newer; action: the text of the show-action sent, nil when
+	-- none is up.
+	suji_on = false, suji_actions = false, action = nil,
 	fullscreen = false, maximized = false, hidpi = 1,
 	colors = parse_colors(nil),
 	mouse = nil, hovered = false, pressed = false, guard_press = false, section_enabled = false,
@@ -405,9 +434,13 @@ local function is_dismissed(index)
 	return range ~= nil and state.dismissed ~= nil and state.dismissed.start == range.start
 end
 
+-- In a range that has not been skipped, with a file playing.
+local function is_active()
+	return state.current ~= nil and not is_dismissed(state.current) and not state.idle
+end
+
 local function is_visible()
-	return state.current ~= nil and not is_dismissed(state.current)
-		and not state.idle and not state.menu_open and not state.suji_menu_open and not state.console_open and not state.context_menu_open
+	return is_active() and not state.menu_open and not state.suji_menu_open and not state.console_open and not state.context_menu_open
 		and state.osd_w > 0 and state.osd_h > 0
 end
 
@@ -423,9 +456,14 @@ local function label_key(range)
 	return range.kind.label
 end
 
--- Button rectangle in OSD pixels, or nil when hidden.
+-- suji draws the button: it is on and understands show-action.
+local function suji_draws()
+	return state.suji_on and state.suji_actions
+end
+
+-- Button rectangle in OSD pixels, or nil when hidden (or drawn by suji).
 local function layout()
-	if not is_visible() then return nil end
+	if not is_visible() or suji_draws() then return nil end
 	local label = i18n.t(label_key(state.ranges[state.current]))
 	local s = current_scale()
 	local fs = round(opts.font_size * s)
@@ -491,8 +529,26 @@ end
 local on_mouse_pos
 local mouse_watched = false
 
--- Brings overlay, hover state and click section in line with the state.
+-- Shows suji's action button with the label of the current range, changes it,
+-- or hides it, when that differs from what was sent last.
+local function sync_action()
+	local text = suji_draws() and is_active() and i18n.t(label_key(state.ranges[state.current])) or nil
+	if text == state.action then return end
+	if text then
+		mp.commandv('script-message-to', 'suji', 'show-action', ACTION_ID, utils.format_json({
+			text = text,
+			command = {'script-message-to', mp.get_script_name(), ACTION_MESSAGE},
+		}))
+	else
+		mp.commandv('script-message-to', 'suji', 'hide-action', ACTION_ID)
+	end
+	state.action = text
+end
+
+-- Brings overlay, hover state, click section and suji's action button in line
+-- with the state.
 local function refresh()
+	sync_action()
 	local rect = layout()
 	-- Only follow the pointer while there is a button to point at.
 	if rect and not mouse_watched then
@@ -610,8 +666,7 @@ local function rebuild()
 end
 
 -- Skips the current range. Returns true if it did something.
-local function skip()
-	if not is_visible() then return false end
+local function skip_range()
 	local range = state.ranges[state.current]
 	local target
 	if range.next_time then
@@ -635,6 +690,12 @@ local function skip()
 	mp.commandv('seek', format_time(target), 'absolute+exact')
 	refresh()
 	return true
+end
+
+-- The binding and our own button: only while the button can be seen.
+local function skip()
+	if not is_visible() then return false end
+	return skip_range()
 end
 
 local function stop_guard()
@@ -804,6 +865,26 @@ mp.observe_property(SUJI_MARGINS_PROP, 'native', setter('suji_bottom', function(
 	if not bottom or bottom ~= bottom or bottom <= 0 then return nil end
 	return math.min(bottom, 10000)
 end))
+-- suji turned on, off or gone. Either way suji holds no action button of
+-- ours now (turning it off removed them): one is sent again if wanted.
+mp.observe_property(SUJI_ENABLED_PROP, 'native', function(_, v)
+	state.suji_on = v == true
+	state.action = nil
+	refresh()
+end)
+-- suji's version, sent when suji starts (only to the scripts already running).
+mp.register_script_message('suji-version', function(version)
+	local major, minor = tostring(version):match('^(%d+)%.(%d+)')
+	major, minor = tonumber(major), tonumber(minor)
+	state.suji_actions = major ~= nil and (major > 0 or minor >= 3)
+	refresh()
+end)
+-- A click on suji's action button. suji ignores the second click of a double
+-- click, so there is no guard here; a message when no button of ours is up
+-- (sent by hand, or late) does nothing.
+mp.register_script_message(ACTION_MESSAGE, function()
+	if state.action and suji_draws() and is_active() then skip_range() end
+end)
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
@@ -847,5 +928,6 @@ if HIKARI_SKIP_TEST then
 		has_skip_chapters = has_skip_chapters, aniskip_ranges = aniskip_ranges, aniskip = aniskip,
 		RELEASE_PROP = RELEASE_PROP, NEXT_PROP = NEXT_PROP, same_path = same_path,
 		SUJI_MARGINS_PROP = SUJI_MARGINS_PROP, SUJI_GAP = SUJI_GAP,
+		SUJI_ENABLED_PROP = SUJI_ENABLED_PROP, ACTION_ID = ACTION_ID, ACTION_MESSAGE = ACTION_MESSAGE,
 	}
 end
