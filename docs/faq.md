@@ -46,7 +46,7 @@ hikari tidies release names, and it can only show what the file name carries. So
 Two things go out, both to public services and both can be turned off:
 
 - **The update check**, only to GitHub: at most once a day it asks `https://github.com/SCEPTICG/hikari-mpv/releases/latest` where it points. Nothing about you or your files is sent, and it never updates anything by itself. Turn it off with `enabled=no` in `script-opts/hikari-update.conf`. See [Update check](features/update-check.md).
-- **AniSkip**, only for an anime episode whose file has no opening or ending chapters: the series name to AniList (or Jikan, if AniList fails) and then the MyAnimeList id, the episode number and the episode's length to AniSkip, to get the times of the opening and the ending. The answers are kept, so an episode is only looked up once. Turn it off with `aniskip=no` in `script-opts/hikari-skip.conf`. See [AniSkip](features/skip.md#aniskip).
+- **AniSkip**, only for an anime episode whose file has no opening or ending chapters: the series name to AniList (or Kitsu, and then Jikan, if AniList fails) and then the MyAnimeList id, the episode number and the episode's length to AniSkip, to get the times of the opening and the ending. The answers are kept, so an episode is only looked up once. Turn it off with `aniskip=no` in `script-opts/hikari-skip.conf`. See [AniSkip](features/skip.md#aniskip).
 
 Nothing else: the [continue watching](features/resume.md) list, for one, is never sent anywhere.
 
