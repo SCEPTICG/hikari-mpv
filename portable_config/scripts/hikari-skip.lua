@@ -43,11 +43,21 @@
 --   controls are hidden, so those and the window size are left to it. suji
 --   leaves it up after a click (only we know when the skip is done) and
 --   swallows the second click of a double click itself, so the double-click
---   guard is not started for it. The version is the one in the
---   `suji-version` message, which suji sends only to the scripts already
---   running when it starts: if this script loads after suji, the version is
---   unknown and the button is drawn here, as with suji 0.2.x. suji drops its
---   action buttons when turned off and does not bring them back: when
+--   guard is not started for it. The version is user-data/suji/version (suji
+--   0.3.1 or newer) or, without it, the one in the last `suji-version`
+--   message (suji 0.3.0 sends only that, and only to the scripts already
+--   running when it starts); the property must be text, and either needs
+--   major.minor 0.3 or more. The property is observed rather than read on
+--   file-loaded and on entering a range: mpv loads the scripts at the same
+--   time, so it is often missing when this script loads, and the observer is
+--   told when suji sets it; a script loaded later with load-script gets its
+--   value at once (it misses that file's file-loaded); and a suji loaded again
+--   sets it again, which sends show-action again as the message does. Its
+--   first value comes from mpv after this script has loaded, so nothing is
+--   decided while loading. With neither (suji 0.3.0 started before this
+--   script), the version is unknown and the button is drawn here, as with
+--   suji 0.2.x. suji drops its action buttons when turned off and does not
+--   bring them back: when
 --   user-data/suji/enabled turns true again, show-action is sent again; while
 --   it is anything else (suji off or gone), the button is ours again. A
 --   suji-version message (suji loaded again while playing) sends it again too.
@@ -164,6 +174,8 @@ local SUJI_GAP = 15
 -- suji's action button (suji 0.3.0 or newer): whether suji is on, the id of
 -- our button, and the message its command sends back to this script.
 local SUJI_ENABLED_PROP = 'user-data/suji/enabled'
+-- suji's version as text (suji 0.3.1 or newer; 0.3.0 only sends suji-version).
+local SUJI_VERSION_PROP = 'user-data/suji/version'
 local ACTION_ID = 'hikari-skip'
 local ACTION_MESSAGE = 'skip-action'
 
@@ -420,10 +432,11 @@ local state = {
 	idle = false, menu_open = false, suji_menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
 	suji_bottom = nil, -- user-data/suji/margins.bottom, when above 0
-	-- suji_on: user-data/suji/enabled is true; suji_actions: its suji-version
-	-- is 0.3.0 or newer; action: the text of the show-action sent, nil when
-	-- none is up.
-	suji_on = false, suji_actions = false, action = nil,
+	-- suji_on: user-data/suji/enabled is true; suji_published: the value of
+	-- user-data/suji/version; suji_announced: the last suji-version message;
+	-- suji_actions: the version (the first, or else the second) is 0.3.0 or
+	-- newer; action: the text of the show-action sent, nil when none is up.
+	suji_on = false, suji_published = nil, suji_announced = nil, suji_actions = false, action = nil,
 	fullscreen = false, maximized = false, hidpi = 1,
 	colors = parse_colors(nil),
 	mouse = nil, hovered = false, pressed = false, guard_press = false, section_enabled = false,
@@ -881,14 +894,27 @@ mp.observe_property(SUJI_ENABLED_PROP, 'native', function(_, v)
 	state.action = nil
 	refresh()
 end)
--- suji's version, sent when suji starts (only to the scripts already running).
-mp.register_script_message('suji-version', function(version)
-	local major, minor = tostring(version):match('^(%d+)%.(%d+)')
+-- Whether suji understands show-action: the version it publishes, or else the
+-- one it announced, is text with major.minor 0.3 or more.
+local function update_suji_actions()
+	local version = state.suji_published or state.suji_announced
+	local major, minor
+	if type(version) == 'string' then major, minor = version:match('^(%d+)%.(%d+)') end
 	major, minor = tonumber(major), tonumber(minor)
 	state.suji_actions = major ~= nil and (major > 0 or minor >= 3)
 	-- A suji that starts now holds no button of ours: send it again if wanted.
 	state.action = nil
 	refresh()
+end
+-- suji's version, published as it loads (suji 0.3.1 or newer).
+mp.observe_property(SUJI_VERSION_PROP, 'native', function(_, v)
+	state.suji_published = v
+	update_suji_actions()
+end)
+-- suji's version, sent when suji starts (only to the scripts already running).
+mp.register_script_message('suji-version', function(version)
+	state.suji_announced = tostring(version)
+	update_suji_actions()
 end)
 -- A click on suji's action button. suji ignores the second click of a double
 -- click, so there is no guard here; a message when no button of ours is up
@@ -939,6 +965,6 @@ if HIKARI_SKIP_TEST then
 		has_skip_chapters = has_skip_chapters, aniskip_ranges = aniskip_ranges, aniskip = aniskip,
 		RELEASE_PROP = RELEASE_PROP, NEXT_PROP = NEXT_PROP, same_path = same_path,
 		SUJI_MARGINS_PROP = SUJI_MARGINS_PROP, SUJI_GAP = SUJI_GAP,
-		SUJI_ENABLED_PROP = SUJI_ENABLED_PROP, ACTION_ID = ACTION_ID, ACTION_MESSAGE = ACTION_MESSAGE,
+		SUJI_ENABLED_PROP = SUJI_ENABLED_PROP, SUJI_VERSION_PROP = SUJI_VERSION_PROP, ACTION_ID = ACTION_ID, ACTION_MESSAGE = ACTION_MESSAGE,
 	}
 end

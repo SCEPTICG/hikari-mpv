@@ -496,6 +496,69 @@ test('suji 0.2.x or an unknown version: our own button, as before', function()
 	end
 end)
 
+-- suji 0.3.1 or newer: user-data/suji/version, set before user-data/suji/enabled.
+local function suji_published(version)
+	mock.suji = true
+	mock.set('user-data/suji/version', version)
+	mock.set('user-data/suji/enabled', true)
+end
+
+test('suji 0.3.1: the version it publishes is enough, with no suji-version (this script loaded later)', function()
+	local s = play(95)
+	suji_published('0.3.1')
+	eq(#actions(), 1); shown(actions()[1], 'Saltar opening ›')
+	eq(overlay(s).visible, false, 'drawn by suji')
+	-- Set the other way round: the same.
+	play(95)
+	mock.suji = true
+	mock.set('user-data/suji/enabled', true)
+	eq(#actions(), 0, 'no version yet')
+	mock.set('user-data/suji/version', '0.3.1')
+	eq(#actions(), 1); shown(actions()[1], 'Saltar opening ›')
+	-- Outside a range at first, then into one.
+	s = play(500)
+	suji_published('0.3.1')
+	eq(#actions(), 0, 'no range')
+	mock.set('time-pos', 1310)
+	eq(#actions(), 1); shown(actions()[1], 'Saltar ending ›')
+	eq(overlay(s).updates, 0, 'never drawn here')
+end)
+
+test('suji 0.3.1: loaded again (the version set again): show-action again; gone: ours', function()
+	local s = play(95)
+	suji_published('0.3.1')
+	mock.set('user-data/suji/version', nil)
+	mock.set('user-data/suji/enabled', nil)
+	eq(overlay(s).visible, true, 'ours while suji is gone')
+	suji_published('0.3.1')
+	local list = actions()
+	eq(list[#list][3], 'show-action', 'back to suji')
+	eq(overlay(s).visible, false)
+end)
+
+test('suji: a published version below 0.3 or not valid: our own button, no error', function()
+	for _, version in ipairs({'0.2.9', '0.1.0', 'abc', '', 'v0.3.1', ' 0.3.1', 0.3, 1, {'0.3.1'}, {major = 0, minor = 3}, true}) do
+		local s = play(95)
+		suji_published(version)
+		eq(#actions(), 0, tostring(version))
+		eq(overlay(s).visible, true, tostring(version))
+	end
+	-- Neither the property nor the message: ours.
+	local s = play(95)
+	mock.suji = true
+	mock.set('user-data/suji/enabled', true)
+	mock.set('user-data/suji/version', nil)
+	eq(#actions(), 0, 'nothing known')
+	eq(overlay(s).visible, true)
+	-- Published, but suji turned off: ours.
+	s = play(95)
+	mock.suji = true
+	mock.set('user-data/suji/version', '0.3.1')
+	mock.set('user-data/suji/enabled', false)
+	eq(#actions(), 0, 'suji off')
+	eq(overlay(s).visible, true)
+end)
+
 test('without suji: nothing is sent to it, our own button as before', function()
 	local s = play(95)
 	eq(#actions(), 0)
