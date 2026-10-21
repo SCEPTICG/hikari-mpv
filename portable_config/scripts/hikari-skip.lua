@@ -1,8 +1,8 @@
--- hikari-skip: "skip opening / ending" button for uosc.
+-- hikari-skip: "skip opening / ending" button for uosc (and suji).
 --
 -- While playback is inside a chapter that looks like an opening or an ending,
--- a rounded button is drawn at the bottom right, above uosc's controls and
--- timeline. Clicking it (or the `skip` binding) jumps to the start of the next
+-- a rounded button is drawn at the bottom right, above uosc's (or suji's)
+-- controls and timeline. Clicking it (or the `skip` binding) jumps to the start of the next
 -- chapter. Files with no opening or ending chapters get the times from
 -- AniSkip when they are anime releases (see below). Outside those ranges
 -- nothing is drawn and no input is taken.
@@ -20,6 +20,15 @@
 --   button keeps its place above uosc's bar in any window size. The default
 --   margin_bottom clears uosc's default bottom stack: timeline 40 + timeline
 --   border 1 + controls margin 8 + controls 32 = 81, plus a 15 px gap.
+-- - With suji: suji publishes how high its controls reach,
+--   user-data/suji/margins = {bottom = N}, in OSD pixels with its own scale
+--   included, the same whether its controls are shown or hidden, and deletes
+--   it while turned off. When `bottom` is a number above 0, the button sits
+--   that high plus SUJI_GAP times this script's scale (the 15 px gap above),
+--   and margin_bottom does not count. Without it (no suji, suji turned off,
+--   or 0) the button goes where margin_bottom says, as before. suji only
+--   takes clicks on its row and timeline strip, below that height, so the
+--   button's clicks are not shared with it.
 -- - Clicks: a private input section with MBTN_LEFT is enabled only while the
 --   button is visible and the pointer is over it, and disabled as soon as it
 --   leaves, so every other click reaches uosc and mpv untouched. It is the
@@ -42,6 +51,9 @@
 --   entry and no known duration) the skip does nothing.
 -- - Chapter titles come from the file: they are only cut to a bounded length
 --   and compared with patterns, never shown.
+-- - Hidden while a menu of uosc or suji is open (user-data/uosc/menu/type,
+--   user-data/suji/menu/type), mpv's console or its context menu: a click
+--   there belongs to them.
 -- - The label follows hikari's language (hikari-i18n) and is redrawn as soon
 --   as it changes. The box is sized from the label's width: CJK and other
 --   full-width characters count double.
@@ -123,6 +135,9 @@ local NEXT_PROP = 'user-data/hikari_resume/next'
 local FINAL_MARGIN = 10
 -- Without an ending, the "Next episode" button shows from this share on.
 local NEXT_SHARE = 0.95
+-- How high suji's controls reach, and the gap above them at scale 1.
+local SUJI_MARGINS_PROP = 'user-data/suji/margins'
+local SUJI_GAP = 15
 
 local opts = {
 	openings = true,
@@ -374,8 +389,9 @@ local state = {
 	file = 0, loaded = false, asked = false, results = nil,
 	next_queued = false, -- the next playlist entry is the next episode (see next_episode_queued)
 	guard_until = nil, guard_timer = nil, -- double-click guard after a mouse skip
-	idle = false, menu_open = false, console_open = false, context_menu_open = false,
+	idle = false, menu_open = false, suji_menu_open = false, console_open = false, context_menu_open = false,
 	osd_w = 0, osd_h = 0,
+	suji_bottom = nil, -- user-data/suji/margins.bottom, when above 0
 	fullscreen = false, maximized = false, hidpi = 1,
 	colors = parse_colors(nil),
 	mouse = nil, hovered = false, pressed = false, guard_press = false, section_enabled = false,
@@ -391,7 +407,7 @@ end
 
 local function is_visible()
 	return state.current ~= nil and not is_dismissed(state.current)
-		and not state.idle and not state.menu_open and not state.console_open and not state.context_menu_open
+		and not state.idle and not state.menu_open and not state.suji_menu_open and not state.console_open and not state.context_menu_open
 		and state.osd_w > 0 and state.osd_h > 0
 end
 
@@ -417,7 +433,12 @@ local function layout()
 	local w = round(text_width(label) * fs * CHAR_WIDTH) + pad_x * 2
 	local h = fs + pad_y * 2
 	local x1 = state.osd_w - round(opts.margin_right * s)
-	local y1 = state.osd_h - round(opts.margin_bottom * s)
+	local y1
+	if state.suji_bottom then
+		y1 = state.osd_h - round(state.suji_bottom) - round(SUJI_GAP * s)
+	else
+		y1 = state.osd_h - round(opts.margin_bottom * s)
+	end
 	return {
 		x0 = x1 - w, y0 = y1 - h, x1 = x1, y1 = y1,
 		font_size = fs, radius = math.min(round(6 * s), math.floor(h / 2)),
@@ -774,6 +795,15 @@ mp.observe_property('display-hidpi-scale', 'number', setter('hidpi', function(v)
 mp.observe_property('user-data/uosc/menu/type', 'native', setter('menu_open', function(v)
 	return v ~= nil and v ~= ''
 end))
+mp.observe_property('user-data/suji/menu/type', 'native', setter('suji_menu_open', function(v)
+	return v ~= nil and v ~= ''
+end))
+-- suji's height; anything but a finite number above 0 is no height.
+mp.observe_property(SUJI_MARGINS_PROP, 'native', setter('suji_bottom', function(v)
+	local bottom = type(v) == 'table' and tonumber(v.bottom) or nil
+	if not bottom or bottom ~= bottom or bottom <= 0 then return nil end
+	return math.min(bottom, 10000)
+end))
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
@@ -816,5 +846,6 @@ if HIKARI_SKIP_TEST then
 		on_down = on_down, on_up = on_up, END_MARGIN = END_MARGIN, guard_active = guard_active,
 		has_skip_chapters = has_skip_chapters, aniskip_ranges = aniskip_ranges, aniskip = aniskip,
 		RELEASE_PROP = RELEASE_PROP, NEXT_PROP = NEXT_PROP, same_path = same_path,
+		SUJI_MARGINS_PROP = SUJI_MARGINS_PROP, SUJI_GAP = SUJI_GAP,
 	}
 end

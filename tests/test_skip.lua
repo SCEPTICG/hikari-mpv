@@ -244,6 +244,53 @@ test('margins are configurable', function()
 	eq(r.x1, 1280 - 40); eq(r.y1, 720 - 150)
 end)
 
+-- suji ----------------------------------------------------------------------------
+
+test('hides while a menu of suji is open, as with uosc', function()
+	local s = play(95)
+	mock.set('user-data/suji/menu/type', 'hikari-speed')
+	eq(s.is_visible(), false, 'suji menu'); eq(overlay(s).visible, false)
+	mock.set('user-data/suji/menu/type', nil)
+	eq(s.is_visible(), true, 'menu closed'); eq(overlay(s).visible, true)
+	-- One of each: hidden until both close.
+	mock.set('user-data/suji/menu/type', 'suji-more')
+	mock.set('user-data/uosc/menu/type', 'hikari-speed')
+	mock.set('user-data/uosc/menu/type', nil)
+	eq(s.is_visible(), false, 'suji still has one')
+	mock.set('user-data/suji/menu/type', nil)
+	eq(s.is_visible(), true)
+end)
+
+test('with suji: above the height it publishes plus a 15 px gap times the scale; margin_bottom does not count', function()
+	local s = play(95, nil, {['hikari-skip-margin_bottom'] = '150'})
+	mock.set('user-data/suji/margins', {bottom = 62})
+	local r = s.layout()
+	eq(r.y1, 720 - 62 - 15)
+	eq(r.x1, 1280 - 16, 'margin_right as before')
+	eq(overlay(s).visible, true)
+	-- suji's height already has its scale; the gap takes this script's.
+	mock.set('fullscreen', true)
+	eq(s.layout().y1, 720 - 62 - math.floor(15 * 1.3 + 0.5))
+	mock.set('fullscreen', false)
+	mock.set('display-hidpi-scale', 2)
+	mock.set('user-data/suji/margins', {bottom = 124})
+	eq(s.layout().y1, 720 - 124 - 30, 'hidpi')
+	mock.set('user-data/suji/margins', {bottom = 62.4})
+	eq(s.layout().y1, 720 - 62 - 30, 'rounded')
+end)
+
+test('with suji: no height, 0 or junk: margin_bottom, as before', function()
+	local s = play(95)
+	mock.set('user-data/suji/margins', {bottom = 62})
+	eq(s.layout().y1, 720 - 77)
+	for _, margins in ipairs({false, {bottom = 0}, {bottom = -5}, {bottom = 'abc'}, {}, 'x', {bottom = 0 / 0}}) do
+		mock.set('user-data/suji/margins', margins or nil)
+		eq(s.layout().y1, 720 - 96, 'margins ' .. tostring(margins))
+	end
+	mock.set('user-data/suji/margins', {bottom = 1e999})
+	eq(s.layout().y1, 720 - 10000 - 15, 'bounded')
+end)
+
 -- Colours -----------------------------------------------------------------------
 
 test('colours come from uosc-color in BGR, with defaults', function()
