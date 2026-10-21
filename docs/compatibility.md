@@ -12,7 +12,7 @@ The installer always downloads these exact versions and checks each one against 
 | Component | Version |
 | --- | --- |
 | [uosc](https://github.com/tomasklaen/uosc) | 5.13.0 |
-| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.2.1 |
+| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.3.0 |
 | [thumbfast](https://github.com/po5/thumbfast) | commit `0f711de` |
 | [Anime4K](https://github.com/bloc97/Anime4K) (optional) | 4.0.1 |
 
@@ -44,9 +44,9 @@ What only uosc gives you: the buttons of the controls bar (they are uosc's), uos
 
 ## hikari with suji (experimental)
 
-[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.2.1, experimental), so uosc stays the recommended one.
+[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.3.0, experimental), so uosc stays the recommended one.
 
-The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.2.1 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
+The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.3.0 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
 
 With suji, hikari finds it and uses it:
 
