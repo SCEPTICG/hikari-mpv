@@ -36,18 +36,21 @@
 --   our own button does. The text is the same label; a new label (language,
 --   kind of range, next episode) is a new show-action. `hide-action
 --   hikari-skip` goes when the button would go: the range ends or changes to
---   none, the skip dismisses it, idle, a new file. suji hides it while a menu
---   of its own is open and keeps it while its controls are hidden, so our
---   menu, console and window-size conditions are left to it; the binding
---   keeps them. suji leaves it up after a click (only we know when the skip is
---   done) and swallows the second click of a double click itself, so the
---   double-click guard is not started for it. The version is the one in the
+--   none, the skip dismisses it, idle, a new file, and while a menu of uosc,
+--   mpv's console or its context menu is open (as our own button: a click
+--   there belongs to them); show-action comes again when they close. suji
+--   hides it itself while a menu of its own is open and keeps it while its
+--   controls are hidden, so those and the window size are left to it. suji
+--   leaves it up after a click (only we know when the skip is done) and
+--   swallows the second click of a double click itself, so the double-click
+--   guard is not started for it. The version is the one in the
 --   `suji-version` message, which suji sends only to the scripts already
 --   running when it starts: if this script loads after suji, the version is
 --   unknown and the button is drawn here, as with suji 0.2.x. suji drops its
 --   action buttons when turned off and does not bring them back: when
 --   user-data/suji/enabled turns true again, show-action is sent again; while
---   it is anything else (suji off or gone), the button is ours again.
+--   it is anything else (suji off or gone), the button is ours again. A
+--   suji-version message (suji loaded again while playing) sends it again too.
 -- - Clicks: a private input section with MBTN_LEFT is enabled only while the
 --   button is visible and the pointer is over it, and disabled as soon as it
 --   leaves, so every other click reaches uosc and mpv untouched. It is the
@@ -439,6 +442,12 @@ local function is_active()
 	return state.current ~= nil and not is_dismissed(state.current) and not state.idle
 end
 
+-- A menu of uosc, mpv's console or its context menu is open: clicks are theirs.
+-- (suji's own menus are counted apart: suji hides its action buttons itself.)
+local function covered()
+	return state.menu_open or state.console_open or state.context_menu_open
+end
+
 local function is_visible()
 	return is_active() and not state.menu_open and not state.suji_menu_open and not state.console_open and not state.context_menu_open
 		and state.osd_w > 0 and state.osd_h > 0
@@ -532,7 +541,7 @@ local mouse_watched = false
 -- Shows suji's action button with the label of the current range, changes it,
 -- or hides it, when that differs from what was sent last.
 local function sync_action()
-	local text = suji_draws() and is_active() and i18n.t(label_key(state.ranges[state.current])) or nil
+	local text = suji_draws() and is_active() and not covered() and i18n.t(label_key(state.ranges[state.current])) or nil
 	if text == state.action then return end
 	if text then
 		mp.commandv('script-message-to', 'suji', 'show-action', ACTION_ID, utils.format_json({
@@ -877,13 +886,15 @@ mp.register_script_message('suji-version', function(version)
 	local major, minor = tostring(version):match('^(%d+)%.(%d+)')
 	major, minor = tonumber(major), tonumber(minor)
 	state.suji_actions = major ~= nil and (major > 0 or minor >= 3)
+	-- A suji that starts now holds no button of ours: send it again if wanted.
+	state.action = nil
 	refresh()
 end)
 -- A click on suji's action button. suji ignores the second click of a double
 -- click, so there is no guard here; a message when no button of ours is up
 -- (sent by hand, or late) does nothing.
 mp.register_script_message(ACTION_MESSAGE, function()
-	if state.action and suji_draws() and is_active() then skip_range() end
+	if state.action and suji_draws() and is_active() and not covered() then skip_range() end
 end)
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))

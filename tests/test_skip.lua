@@ -384,19 +384,28 @@ test('suji 0.3.0: the command skips like a click; nothing when no button of ours
 	eq(#mock.commands, 0, 'outside a range')
 end)
 
-test('suji 0.3.0: the command skips while the console hides our own button; the key keeps its rule', function()
+test('suji 0.3.0: hidden while a menu of uosc, the console or the context menu is open, back when it closes', function()
 	local s = play(95)
 	suji('0.3.0')
-	mock.set('user-data/mpv/console/open', true)
-	eq(#actions(), 1, 'still up: suji decides')
+	for _, prop in ipairs({'user-data/uosc/menu/type', 'user-data/mpv/console/open', 'user-data/mpv/context-menu/open'}) do
+		local n = #actions()
+		mock.set(prop, prop == 'user-data/uosc/menu/type' and 'hikari-speed' or true)
+		eq(#actions(), n + 1, prop)
+		eq(actions()[n + 1][3], 'hide-action', prop)
+		eq(overlay(s).visible, false, 'not ours either')
+		-- The command does nothing meanwhile, and neither does the key.
+		mock.commands = {}
+		mock.messages['skip-action']()
+		mock.bindings.skip()
+		eq(#mock.commands, 0, prop .. ': no skip')
+		if prop == 'user-data/uosc/menu/type' then mock.set(prop, nil) else mock.set(prop, false) end
+		eq(#actions(), 1, prop .. ': show-action again')
+		shown(actions()[1], 'Saltar opening ›')
+	end
+	-- suji's own menu: suji hides the button itself, nothing is sent.
 	mock.commands = {}
-	mock.messages['skip-action']()
-	eq(mock.commands[1][1], 'seek')
-	mock.set('time-pos', 1310)
-	mock.commands = {}
-	mock.bindings.skip()
-	eq(#mock.commands, 0, 'key: not while the console is open')
-	eq(s.is_visible(), false)
+	mock.set('user-data/suji/menu/type', 'suji-more')
+	eq(#actions(), 0, 'suji menu: left to suji')
 end)
 
 test('suji 0.3.0: a new label is a new show-action (language, next episode)', function()
@@ -435,6 +444,21 @@ test('suji 0.3.0: turned off, ours again; turned on, show-action again', functio
 	n = #actions()
 	mock.set('user-data/suji/enabled', true)
 	eq(#actions(), n, 'no button wanted')
+end)
+
+test('suji 0.3.0: suji loaded again while playing (a new suji-version): show-action again', function()
+	local s = play(95)
+	suji('0.3.0')
+	eq(#actions(), 1)
+	mock.messages['suji-version']('0.3.0')
+	eq(#actions(), 2, 'sent again')
+	shown(actions()[2], 'Saltar opening ›')
+	-- Outside a range there is nothing to send.
+	mock.set('time-pos', 500)
+	local n = #actions()
+	mock.messages['suji-version']('0.3.0')
+	eq(#actions(), n)
+	eq(overlay(s).visible, false)
 end)
 
 test('suji 0.3.0: a new file drops the button; the next one in a range gets it again', function()
