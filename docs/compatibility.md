@@ -40,3 +40,15 @@ The installer always installs uosc, and hikari is made to sit on top of it. If u
 The selector needs **mpv 0.39 or newer**. On an older mpv without uosc, a menu key only shows a message saying the menu needs uosc or mpv 0.39, and a file you left half-watched starts from the beginning.
 
 What only uosc gives you: the buttons of the controls bar (they are uosc's), uosc's own menus, and the colours of the [palettes](features/palettes.md), which colour uosc. Without uosc the palette menu still opens and keeps your choice for when uosc is back; the skip button follows it.
+
+## hikari with suji (preview)
+
+suji is hikari's own interface for mpv, a controls bar written from scratch. It is still in development and has not been published: the installers do not install it, and nothing here changes while it is not there.
+
+If suji is installed and turned on, hikari finds it and uses it:
+
+- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji. When uosc is there too, suji wins.
+- The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`.
+- A palette also sets suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
+
+suji's row does not have hikari's buttons by default. To add them, copy `extras/suji.conf` from hikari's repository to `script-opts/suji.conf` in mpv's configuration folder, or copy its `controls=` line into the `suji.conf` you have. It has the same buttons as hikari's bar in uosc.
