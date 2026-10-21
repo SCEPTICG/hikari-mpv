@@ -2,9 +2,11 @@
 --
 -- script-modules/hikari-aniskip.lua (AniSkip lookups) and its use in
 -- hikari-skip.lua. The answers in tests/data/aniskip/ were recorded from the
--- real services (AniList, AniSkip) in October 2026 (AniSkip's with the
+-- real services (AniList, Kitsu, AniSkip) in October 2026 (AniSkip's with the
 -- episode length sent: 1470 for Frieren 5; 1442 and 0 for Shingeki no
--- Kyojin 1, to show what 0 gives), except the Jikan one,
+-- Kyojin 1, to show what 0 gives; 1434 for Boku no Hero Academia 5x06;
+-- Kitsu's Boku no Hero Academia cut to 5 of its 20 series and their
+-- mappings), except the Jikan one,
 -- written from Jikan's v4 documentation (api.jikan.moe was not reachable from
 -- the machine that recorded the others).
 package.path = './tests/?.lua;' .. package.path
