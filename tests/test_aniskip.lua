@@ -296,6 +296,16 @@ test('Kitsu: two MyAnimeList ids stop the lookup, one id twice does not', functi
 		{['10'] = '100', ['20'] = '200'})))
 	eq(#list, 2, 'one entry per id')
 	eq(m.pick(list, 'Show'), nil, 'one series, two ids')
+	-- Hostile: one series linked to 1000 ids. Only the first two give entries,
+	-- so pick does not normalise the same titles 1000 times.
+	local links, mappings = {}, {}
+	for i = 1, 1000 do
+		links[i] = tostring(i)
+		mappings[tostring(i)] = tostring(i)
+	end
+	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = links}}, mappings)))
+	eq(#list, 2, 'at most two entries per series')
+	eq(m.pick(list, 'Show'), nil, 'still ambiguous')
 	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = {'10', '20'}}},
 		{['10'] = '100', ['20'] = '100'})))
 	eq(#list, 1, 'the same id twice')
