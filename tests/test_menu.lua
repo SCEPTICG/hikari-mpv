@@ -515,6 +515,25 @@ test('suji turned on but its message fails (it died without its shutdown): uosc,
 	eq(mock.osd[1], 'Este menú necesita uosc o mpv 0.39 o posterior')
 end)
 
+test('user-data/suji/enabled nil while the script loads, true from the first file-loaded: read at each open', function()
+	-- hikari's scripts load before suji, which sets the property at the end of its start-up.
+	local menu = fresh(true, true)
+	mock.suji = true
+	eq(menu.suji(), false, 'not yet')
+	mock.props[SUJI_ENABLED] = true
+	eq(menu.suji(), true)
+	menu.open(sample())
+	eq(#mock.commands, 1)
+	eq(mock.commands[1][2], 'suji', 'the open after start-up goes to suji')
+	-- Turned off later (enabled=no), and on again.
+	mock.props[SUJI_ENABLED] = false
+	menu.open(sample({type = 'hikari-other'}))
+	eq(mock.commands[2][2], 'uosc')
+	mock.props[SUJI_ENABLED] = true
+	menu.open(sample({type = 'hikari-other'}))
+	eq(mock.commands[3][2], 'suji')
+end)
+
 test('suji and uosc both loaded: suji wins', function()
 	local menu = fresh_suji(true, true, true)
 	menu.open(sample())

@@ -34,8 +34,10 @@
 -- - suji (hikari's own interface, docs/api.md in its repository) takes the
 --   same messages and the same JSON, so the order is suji, then uosc, then
 --   the selector. suji only counts while SUJI_ENABLED is true: suji sets it
---   as it loads, false with its option enabled=no (when its open-menu does
---   nothing) and deletes it on shutdown. Anything else, and suji is not even
+--   at the end of its start-up, false with its option enabled=no (when its
+--   open-menu does nothing) and deletes it on shutdown. hikari's scripts load
+--   before suji and read nil there at start-up, true by the first
+--   file-loaded, so it is read at each open, never kept. Anything else, and suji is not even
 --   sent the message. A suji that died without its shutdown may leave it at
 --   true: then its `script-message-to` fails like uosc's above and the menu
 --   goes on to uosc or the selector. Both loaded: suji wins (someone put it

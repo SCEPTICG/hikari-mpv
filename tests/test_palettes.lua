@@ -467,7 +467,7 @@ test('suji loaded but turned off, or not there: no suji-accent at run time, the 
 	for _, value in ipairs(appended()) do assert(not value:find('^suji'), value) end
 end)
 
-test('suji starts after this script: suji-version sets the accent of the active palette', function()
+test('suji loads after this script (enabled nil at start-up): suji-version sets the accent of the active palette', function()
 	load_with_suji({[SCRIPT_NAME .. '-palette'] = 'dracula'}, nil, true)
 	eq(#appended(), 2, 'no suji yet')
 	mock.commands = {}
