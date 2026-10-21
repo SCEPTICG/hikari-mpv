@@ -1847,6 +1847,7 @@ check 'menus: digit hotkey 3 = versions, 0 = exit' test "$rc" = 0 -a -n "$(grep 
 # --no-menu on a terminal: numbers and typed answers.
 h=$(newhome nomenu)
 PTY_OPTS='--no-menu' pty_run "$h" '0\r'
+check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
 # The Interface menu: Down, Enter = suji; next time it starts on suji (Enter
 # keeps it); hotkey 1 = uosc; Esc leaves without doing anything.
 h=$(newhome menu-suji)
@@ -1862,7 +1863,6 @@ cp "$cfg/hikari-installed.txt" "$tmp/record-before-esc"
 PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b'
 check 'menus: Esc in the Interface menu: cancelled, nothing changed' \
     test "$rc" = 0 -a -n "$(grep Cancelled "$out")" -a "$(cmp -s "$tmp/record-before-esc" "$cfg/hikari-installed.txt" && echo same)" = same
-check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
 
 # --- the summary on a terminal: progress bars and spinners ----------------------
 

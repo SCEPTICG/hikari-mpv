@@ -4258,6 +4258,13 @@ function Install-HikariTarget {
         foreach ($d in $oldDisabled) { $disabled.Add($d) }
         $aside = New-Object System.Collections.Generic.List[string]
         foreach ($a in $oldAside) { $aside.Add($a) }
+        # A suji that is not hikari's, with suji chosen: set aside (never
+        # deleted), given back on uninstall; hikari installs its own (or puts
+        # back the one it set aside, below).
+        if ($iface -eq 'suji' -and $oldIface -ne 'suji' -and (Test-HikariSujiPresent $config)) {
+            $disabled.Add((Move-HikariToDisabled -Path (Join-HikariPath $scripts 'suji') -ConfigDir $config -Stamp $Stamp))
+            $sujiBefore = $false
+        }
         if ($oldIface -and $oldIface -ne $iface) {
             $items = $script:UoscItems
             if ($oldIface -eq 'suji') { $items = $script:SujiItems }
@@ -4274,12 +4281,6 @@ function Install-HikariTarget {
             # Something came back: is it exactly as pinned?
             $uoscUpToDate = ($iface -eq 'uosc' -and (Test-HikariUoscUpToDate -ConfigDir $config -Record $old))
             $sujiUpToDate = ($iface -eq 'suji' -and (Test-HikariSujiUpToDate -ConfigDir $config -Record $old))
-        }
-        # A suji that is not hikari's, with suji chosen: set aside (never
-        # deleted), given back on uninstall; hikari installs its own.
-        if ($iface -eq 'suji' -and $oldIface -ne 'suji' -and (Test-HikariSujiPresent $config)) {
-            $disabled.Add((Move-HikariToDisabled -Path (Join-HikariPath $scripts 'suji') -ConfigDir $config -Stamp $Stamp))
-            $sujiBefore = $false
         }
 
         # b. Interfaces that clash with uosc (or with suji, when it is chosen).

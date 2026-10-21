@@ -3553,6 +3553,14 @@ install_steps() {
     # before. With both, two rows of controls would be drawn.
     ASIDE=(${OLD_ASIDE[@]+"${OLD_ASIDE[@]}"})
     DISABLED=(${OLD_DISABLED[@]+"${OLD_DISABLED[@]}"})
+    # A suji that is not hikari's, with suji chosen: set aside (never
+    # deleted), given back on uninstall; hikari installs its own (or puts back
+    # the one it set aside, below).
+    if [ "$IFACE" = suji ] && [ "$OLD_IFACE" != suji ] && suji_present "$CFG"; then
+        move_to_disabled "$CFG/scripts/suji" || return 1
+        DISABLED[${#DISABLED[@]}]=$MOVED_PAIR
+        suji_before=0
+    fi
     if [ -n "$OLD_IFACE" ] && [ "$OLD_IFACE" != "$IFACE" ]; then
         if [ "$OLD_IFACE" = uosc ]; then set_aside "${UOSC_ITEMS[@]}" || return 1; else set_aside "${SUJI_ITEMS[@]}" || return 1; fi
     fi
@@ -3568,13 +3576,6 @@ install_steps() {
             UOSC_REC_SUMS=(${PICKED_SUMS[@]+"${PICKED_SUMS[@]}"})
         fi
         if [ "$IFACE" = suji ] && suji_uptodate "$CFG"; then SUJI_UPTODATE=1; fi
-    fi
-    # A suji that is not hikari's, with suji chosen: set aside (never
-    # deleted), given back on uninstall; hikari installs its own.
-    if [ "$IFACE" = suji ] && [ "$OLD_IFACE" != suji ] && suji_present "$CFG"; then
-        move_to_disabled "$CFG/scripts/suji" || return 1
-        DISABLED[${#DISABLED[@]}]=$MOVED_PAIR
-        suji_before=0
     fi
 
     # b. Interfaces that clash with uosc (or with suji, when it is chosen).
