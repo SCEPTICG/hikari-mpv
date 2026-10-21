@@ -84,6 +84,9 @@ make_zip "$fake/anime4k.zip" "${a4k_args[@]}" 'readme.txt=not a shader' '../Anim
 make_zip "$fake/uosc.zip" 'scripts/uosc/main.lua=-- fake uosc 5.13.0' 'scripts/uosc/lib/x.lua=-- lib' \
     'fonts/uosc_icons.otf=icons 5.13' 'fonts/uosc_textures.ttf=textures 5.13' 'script-opts/uosc.conf=# uosc default conf'
 printf '%s\n' '-- fake thumbfast' >"$fake/thumbfast.lua"
+# Like the real suji release: LICENSE and suji/ at the root.
+make_zip "$fake/suji.zip" 'LICENSE=LGPL-2.1' 'suji/main.lua=-- fake suji 0.2.0' 'suji/core/menu.lua=-- core' \
+    'suji/modules/time.lua=-- module'
 a4k_count=$(printf '%s\n' "$A4K_NAMES" | tr ' ' '\n' | grep -c .)
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
@@ -97,6 +100,7 @@ copy="$tmp/repo/install/hikari.sh"
 sed -e "s/^\(    UOSC_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/uosc.zip")'/" \
     -e "s/^\(    THUMBFAST_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/thumbfast.lua")'/" \
     -e "s/^\(    ANIME4K_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/anime4k.zip")'/" \
+    -e "s/^\(    SUJI_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/suji.zip")'/" \
     -e '$d' "$repo/install/hikari.sh" >"$copy"
 printf '. "$HIKARI_TEST_OVERRIDES"\n' >>"$copy"
 tail -n 1 "$repo/install/hikari.sh" >>"$copy"
@@ -111,6 +115,7 @@ hikari_fetch() {
         "$UOSC_URL") f=$FAKE/uosc.zip ;;
         "$THUMBFAST_URL") f=$FAKE/thumbfast.lua ;;
         "$ANIME4K_URL") f=$FAKE/anime4k.zip ;;
+        "$SUJI_URL") f=$FAKE/suji.zip ;;
         https://release-assets.githubusercontent.com/uosc.zip) f=$FAKE/uosc.zip ;;
         # A signed address, as GitHub sends: served only when it comes whole.
         https://release-assets.githubusercontent.com/uosc.zip\?*)
@@ -193,6 +198,13 @@ for pair in UoscVersion:UOSC_VERSION UoscUrl:UOSC_URL UoscSha256:UOSC_SHA256 Thu
     if [ -z "$a" ] || [ "$a" != "$b" ]; then same_pins=false; echo "     differs: $pair ($a / $b)"; fi
 done
 check 'uosc, thumbfast and Anime4K: same versions, URLs and SHA256 as hikari.ps1' $same_pins
+same_pins=true
+for pair in SujiVersion:SUJI_VERSION SujiUrl:SUJI_URL SujiSha256:SUJI_SHA256 SujiConf:SUJI_CONF; do
+    a=$(ps1_value "${pair%%:*}")
+    b=$(sh_value "${pair#*:}")
+    if [ -z "$a" ] || [ "$a" != "$b" ]; then same_pins=false; echo "     differs: $pair ($a / $b)"; fi
+done
+check 'suji: same version, URL, SHA256 and suji.conf as hikari.ps1' $same_pins
 # The files that show a folder is mpv's: the same list in both installers.
 ps1_cfg=$(sed -n "s/^\$script:MpvConfigFiles = @(\(.*\))\$/\1/p" "$repo/install/hikari.ps1" | tr -d "', ")
 sh_cfg=$(sed -n "s/^    MPV_CONFIG_FILES=(\(.*\))\$/\1/p" "$repo/install/hikari.sh" | tr -d "' ")
@@ -1563,6 +1575,155 @@ check 'summary, error: no line saying it was installed' test -z "$(grep -E 'inst
 HIKARI_TEST_FAIL_URL='https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua' run "$(newhome summary-dlerror)" --yes
 check 'summary, failed download: the row fails and the error says which URL' \
     test "$rc" = 1 -a -n "$(ascii_glyphs "$out" | grep -x '  thumbfast   x')" -a -n "$(grep -F 'Error: Could not download https://raw.githubusercontent.com/po5/thumbfast/' "$out")"
+
+# --- the interface: uosc or suji ----------------------------------------------------
+
+run "$h" --interface maybe
+check '--interface needs uosc or suji' test "$rc" = 2
+run "$h" --help
+check '--help names --interface' has "$out" '--interface uosc|suji'
+
+# A first install with suji, without questions.
+h=$(newhome suji)
+cfg="$h/.config/mpv"
+: >"$fake/downloads.log"
+run "$h" --yes --interface suji
+check 'suji: install exit 0' test "$rc" = 0
+[ "$rc" = 0 ] || show_out
+check 'suji: scripts/suji from the zip, no uosc' \
+    test "$(cat "$cfg/scripts/suji/main.lua")" = '-- fake suji 0.2.0' -a -f "$cfg/scripts/suji/core/menu.lua" -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/LICENSE"
+check 'suji: suji.conf with hikari'"'"'s row' same "$repo/portable_config/script-opts/suji.conf" "$cfg/script-opts/suji.conf"
+check 'suji: thumbfast too' same "$fake/thumbfast.lua" "$cfg/scripts/thumbfast.lua"
+check 'suji: uosc not downloaded' test -z "$(grep uosc.zip "$fake/downloads.log")" -a -n "$(grep -x 'https://github.com/SCEPTICG/suji/releases/download/v0.2.0/suji.zip' "$fake/downloads.log")"
+check 'suji: the summary has a suji row and no uosc row' \
+    test -n "$(ascii_glyphs "$out" | grep -x '  suji        + downloaded')" -a -z "$(grep '^  uosc ' "$out")"
+check 'suji: record' \
+    test "$(rec "$cfg" interface)|$(rec "$cfg" suji_version)|$(rec "$cfg" suji_sha256)|$(rec "$cfg" suji_preexisting)|$(rec "$cfg" suji_conf_preexisting)|$(rec "$cfg" uosc_version)" = "suji|0.2.0|$(sha "$fake/suji.zip")|no|no|"
+check 'suji: the hash of each suji file in the record' test "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
+: >"$fake/downloads.log"
+suji_inode=$(inode "$cfg/scripts/suji/main.lua")
+run "$h" --yes
+check 'suji, update without --interface: suji kept, nothing downloaded' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a ! -s "$fake/downloads.log" -a "$(inode "$cfg/scripts/suji/main.lua")" = "$suji_inode" -a ! -e "$cfg/scripts/uosc"
+check 'suji, update: said up to date' test -n "$(ascii_glyphs "$out" | grep -x '  suji        + up to date')"
+printf -- '-- changed\n' >>"$cfg/scripts/suji/core/menu.lua"
+: >"$fake/downloads.log"
+run "$h" --yes
+check 'suji changed: downloaded again, put back as pinned' \
+    test "$(cat "$fake/downloads.log")|$(cat "$cfg/scripts/suji/core/menu.lua")" = 'https://github.com/SCEPTICG/suji/releases/download/v0.2.0/suji.zip|-- core'
+
+# From suji to uosc and back: nothing is deleted, what was set aside comes back.
+suji_inode=$(inode "$cfg/scripts/suji/main.lua")
+run "$h" --yes --interface uosc
+check 'suji -> uosc: exit 0, uosc installed' test "$rc" = 0 -a -f "$cfg/scripts/uosc/main.lua" -a "$(rec "$cfg" interface)" = uosc
+check 'suji -> uosc: suji set aside, not deleted' \
+    test ! -e "$cfg/scripts/suji" -a "$(inode "$cfg/scripts-desactivados/suji/main.lua")" = "$suji_inode" -a "$(rec "$cfg" aside)" = 'scripts-desactivados/suji|scripts/suji'
+check 'suji -> uosc: suji.conf left, suji still in the record' \
+    test -f "$cfg/script-opts/suji.conf" -a "$(rec "$cfg" suji_version)" = 0.2.0 -a "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
+uosc_inode=$(inode "$cfg/scripts/uosc/main.lua")
+run "$h" --yes
+check 'uosc, update without --interface: uosc kept, suji stays aside' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a ! -e "$cfg/scripts/suji" -a -d "$cfg/scripts-desactivados/suji"
+: >"$fake/downloads.log"
+run "$h" --yes --interface suji
+check 'uosc -> suji: suji back in its place, not copied again' \
+    test "$rc" = 0 -a "$(inode "$cfg/scripts/suji/main.lua")" = "$suji_inode" -a "$(rec "$cfg" interface)" = suji
+check 'uosc -> suji: uosc and its fonts set aside, not deleted' \
+    test ! -e "$cfg/scripts/uosc" -a "$(inode "$cfg/scripts-desactivados/uosc/main.lua")" = "$uosc_inode" \
+    -a -f "$cfg/scripts-desactivados/fonts/uosc_icons.otf" -a -f "$cfg/scripts-desactivados/fonts/uosc_textures.ttf" -a ! -e "$cfg/fonts/uosc_icons.otf"
+check 'uosc -> suji: the three set aside recorded, the suji one gone' \
+    test "$(grep -c '^aside=' "$cfg/hikari-installed.txt")/$(grep -c '^aside=scripts-desactivados/suji' "$cfg/hikari-installed.txt")" = 3/0
+check 'uosc -> suji: uosc still in the record' test "$(rec "$cfg" uosc_version)" = 5.13.0 -a "$(grep -c '^sha256=scripts/uosc/' "$cfg/hikari-installed.txt")" = 2
+: >"$fake/downloads.log"
+run "$h" --yes --interface uosc
+check 'suji -> uosc again: uosc back, not copied again, suji aside' \
+    test "$rc" = 0 -a "$(inode "$cfg/scripts/uosc/main.lua")" = "$uosc_inode" -a -f "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/suji" -a -d "$cfg/scripts-desactivados/suji"
+run "$h" --yes --interface suji
+run "$h" --uninstall --yes
+check 'suji, uninstall: exit 0, suji, uosc (set aside), suji.conf and record gone' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts" -a ! -e "$cfg/fonts" -a ! -e "$cfg/scripts-desactivados" -a ! -e "$cfg/script-opts/suji.conf" -a ! -e "$cfg/hikari-installed.txt"
+
+# A uosc and a suji.conf of the user's own, then suji: set aside, and back on uninstall.
+h=$(newhome suji-mac)
+cfg="$h/.config/mpv"
+make_mac "$cfg"
+printf 'controls=mine\n' >"$cfg/script-opts/suji.conf"
+run "$h" --yes --interface suji --anime4k no
+check 'suji over a uosc of the user: exit 0' test "$rc" = 0
+check 'suji over a uosc of the user: it is set aside (not deleted), with its fonts' \
+    test ! -e "$cfg/scripts/uosc" -a "$(cat "$cfg/scripts-desactivados/uosc/main.lua")" = '-- old uosc' -a "$(cat "$cfg/scripts-desactivados/fonts/uosc_icons.otf")" = 'icons 2023'
+check 'suji over a uosc of the user: said it clashes with suji' has "$out" 'clash with suji'
+check 'suji over a uosc of the user: recorded as set aside, and as not there before (what goes there now is hikari'"'"'s)' \
+    test "$(grep -c '^disabled=scripts-desactivados/uosc|scripts/uosc$' "$cfg/hikari-installed.txt")/$(rec "$cfg" uosc_preexisting)" = 1/no
+check 'suji over a suji.conf of the user: kept aside, replaced' \
+    test "$(cat "$cfg/hikari-originales/script-opts/suji.conf")" = 'controls=mine' -a "$(rec "$cfg" suji_conf_preexisting)" = yes
+run "$h" --uninstall --yes
+check 'suji over a uosc of the user, uninstall: the uosc back as it was' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/uosc/main.lua")" = '-- old uosc' -a "$(cat "$cfg/fonts/uosc_icons.otf")" = 'icons 2023' -a ! -e "$cfg/scripts/suji"
+check 'suji over a suji.conf of the user, uninstall: given back' test "$(cat "$cfg/script-opts/suji.conf")" = 'controls=mine'
+
+# A suji of the user's own: with uosc it clashes (set aside, back on
+# uninstall); with suji it is set aside and hikari installs its own.
+h=$(newhome suji-own)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- my suji\n' >"$cfg/scripts/suji/main.lua"
+run "$h" --yes --anime4k no
+check 'a suji of the user, uosc: exit 0, uosc, suji set aside' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a ! -e "$cfg/scripts/suji" -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- my suji'
+check 'a suji of the user, uosc: no suji.conf' test ! -e "$cfg/script-opts/suji.conf"
+run "$h" --uninstall --yes
+check 'a suji of the user, uninstall: back, no question about it' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji' -a -z "$(grep 'Remove suji' "$out")"
+run "$h" --yes --interface suji --anime4k no
+check 'a suji of the user, suji: set aside, hikari'"'"'s installed' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- fake suji 0.2.0' -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- my suji'
+run "$h" --uninstall --yes
+check 'a suji of the user, suji, uninstall: hikari'"'"'s gone, the user'"'"'s back' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji' -a ! -e "$cfg/scripts-desactivados"
+
+# A suji download that does not match its SHA256: nothing is touched.
+h=$(newhome suji-badhash)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg"
+printf 'volume=40\n' >"$cfg/mpv.conf"
+cp "$fake/suji.zip" "$tmp/suji.keep"
+make_zip "$fake/suji.zip" 'suji/main.lua=-- tampered'
+run "$h" --yes --interface suji
+cp "$tmp/suji.keep" "$fake/suji.zip"
+check 'bad suji hash: exit 1, says so, nothing changed' \
+    test "$rc" = 1 -a -n "$(grep 'does not match its expected SHA256' "$out")" -a ! -e "$cfg/hikari-installed.txt" -a ! -e "$cfg/scripts" \
+    -a "$(cat "$cfg/mpv.conf")" = 'volume=40' -a -z "$(ls -d "$h"/.config/mpv-respaldo-* 2>/dev/null)"
+
+# The question (numbers and typed answers): after the folder; Enter takes the
+# one installed, uosc on a first install.
+h=$(newhome suji-ask)
+cfg="$h/.config/mpv"
+answers '1\n1\n2\n'
+run "$h" --anime4k no
+check 'Interface question: 2 installs suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
+check 'Interface question: asked with its two answers, Enter = uosc on a first install' \
+    test -n "$(grep -x 'Interface' "$out")" -a -n "$(grep -F '1) uosc (recommended)' "$out")" \
+    -a -n "$(grep -F "2) suji (experimental): hikari's own interface, still being tested" "$out")" -a -n "$(grep -F 'Choose an option (Enter: uosc):' "$out")"
+answers '1\n1\n\n'
+run "$h" --anime4k no
+check 'Interface question: Enter keeps suji, the one installed' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -n "$(grep -F '(Enter: suji)' "$out")"
+answers '1\n1\nx\n1\n'
+run "$h" --anime4k no
+check 'Interface question: an invalid answer is asked again, 1 = uosc' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a -n "$(grep 'Invalid option' "$out")" -a -d "$cfg/scripts-desactivados/suji"
+HIKARI_LANG=es answers '1\n1\n\n'
+HIKARI_LANG=es run "$h" --anime4k no
+check 'Interface question: in Spanish' test -n "$(grep -F '1) uosc (recomendada)' "$out")" -a -n "$(grep -F 'la interfaz propia de hikari, en pruebas' "$out")"
+answers '1\n1\n\n'
+run "$h" --anime4k no --interface suji
+check '--interface: no question' test "$rc" = 0 -a -z "$(grep -x 'Interface' "$out")" -a "$(rec "$cfg" interface)" = suji
+answers '2\n1\n'
+run "$h"
+check 'uninstall with suji: asks about suji and about the uosc set aside, yes by default' \
+    test "$rc" = 0 -a -n "$(grep -F 'Remove suji too? [Y/n]' "$out")" -a -n "$(grep -F 'Remove uosc too? [Y/n]' "$out")" \
+    -a ! -e "$cfg/scripts/suji" -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/scripts-desactivados"
+no_answers
 
 # --- keyboard menus (pseudo-terminal) ------------------------------------------
 

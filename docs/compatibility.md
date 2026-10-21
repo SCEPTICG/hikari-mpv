@@ -12,6 +12,7 @@ The installer always downloads these exact versions and checks each one against 
 | Component | Version |
 | --- | --- |
 | [uosc](https://github.com/tomasklaen/uosc) | 5.13.0 |
+| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.2.0 |
 | [thumbfast](https://github.com/po5/thumbfast) | commit `0f711de` |
 | [Anime4K](https://github.com/bloc97/Anime4K) (optional) | 4.0.1 |
 
@@ -31,7 +32,7 @@ uosc 5.13 itself needs mpv 0.33 or newer. hikari is only tested with the recent 
 
 ## hikari without uosc
 
-The installer always installs uosc, and hikari is made to sit on top of it. If uosc is not there anyway (you moved `scripts/uosc` away, or another OSC took its place), hikari keeps working:
+The installer installs uosc unless you choose [suji](#hikari-with-suji-experimental), and hikari is made to sit on top of it. If uosc is not there anyway (you moved `scripts/uosc` away, or another OSC took its place), hikari keeps working:
 
 - Its menus open in mpv's own selector instead of uosc's menus: `Alt+p` (palettes), `Alt+t` (subtitles), `Alt+r` (continue watching), `Alt+u` (update) and `Alt+l` (language). Type to filter, use the arrow keys and `Enter` to pick, `Esc` to close. The speed and Anime4K menus only have a button in uosc's bar; to reach them without uosc, bind `script-binding hikari_speed/open-menu` and `script-binding hikari_upscale/open-menu` to keys of your own in `input.conf` (the `Ctrl+1`...`Ctrl+0` Anime4K keys work as always).
 - The [continue watching](features/resume.md) question shows in that selector too; `Esc` starts from the beginning.
@@ -41,14 +42,18 @@ The selector needs **mpv 0.39 or newer**. On an older mpv without uosc, a menu k
 
 What only uosc gives you: the buttons of the controls bar (they are uosc's), uosc's own menus, and the colours of the [palettes](features/palettes.md), which colour uosc. Without uosc the palette menu still opens and keeps your choice for when uosc is back; the skip button follows it.
 
-## hikari with suji (preview)
+## hikari with suji (experimental)
 
-suji is hikari's own interface for mpv, a controls bar written from scratch. It is still in development and has not been published: the installers do not install it, and nothing here changes while it is not there.
+[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.2.0, experimental), so uosc stays the recommended one.
 
-If suji is installed and turned on, hikari finds it and uses it:
+The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.2.0 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
 
-- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji. When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them.
+With suji, hikari finds it and uses it:
+
+- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji, and its buttons sit in suji's row.
 - The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`.
-- A palette also sets suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
+- A palette only changes suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
 
-suji's row does not have hikari's buttons by default. To add them, copy `extras/suji.conf` from hikari's repository to `script-opts/suji.conf` in mpv's configuration folder, or copy its `controls=` line into the `suji.conf` you have. It has the same buttons as hikari's bar in uosc.
+What suji does not do yet: there are no thumbnails over the timeline, and the palettes do not colour the rest of the bar. When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them, as the installer does.
+
+If you installed suji yourself instead, the installer's `script-opts/suji.conf` is in `portable_config/script-opts/` of hikari's repository: copy it to `script-opts/suji.conf` in mpv's configuration folder, or copy its `controls=` line into the `suji.conf` you have. It has the same buttons as hikari's bar in uosc.

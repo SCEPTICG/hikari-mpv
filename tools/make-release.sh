@@ -96,13 +96,14 @@ fi
 # portable_config/ with scripts/hikari-*.lua, script-modules/hikari-*.lua (the
 # texts every script needs, the chapter kinds of hikari-skip and hikari-resume,
 # the release names of hikari-title and hikari-resume, and the menus of the
-# seven scripts that have one), script-opts/*.conf and the choice files.
-# LICENSE and README.md go along for whoever opens the zip.
+# seven scripts that have one), script-opts/*.conf (suji.conf among them, only
+# installed with suji) and the choice files. LICENSE and README.md go along for
+# whoever opens the zip.
 for f in portable_config/scripts/hikari-palettes.lua portable_config/script-modules/hikari-i18n.lua \
     portable_config/script-modules/hikari-chapters.lua portable_config/script-modules/hikari-release.lua \
     portable_config/script-modules/hikari-menu.lua \
     portable_config/hikari-palette.conf portable_config/hikari-subs.conf portable_config/hikari-language.conf \
-    portable_config/script-opts LICENSE README.md install/hikari.ps1 install/hikari.sh; do
+    portable_config/script-opts portable_config/script-opts/suji.conf LICENSE README.md install/hikari.ps1 install/hikari.sh; do
     git cat-file -e "HEAD:$f" 2>/dev/null || die "$f is not in the commit"
 done
 

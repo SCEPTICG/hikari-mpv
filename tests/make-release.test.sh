@@ -113,6 +113,14 @@ check 'nothing built without the menus module' test ! -e dist/hikari.ps1 -a ! -e
 git reset -q --hard "$base"
 git tag -f v1.2.3 "$base" >/dev/null
 
+git rm -q portable_config/script-opts/suji.conf
+commit_as 'no suji.conf'
+git tag -f v1.2.3 >/dev/null
+fails 'refuses a commit without script-opts/suji.conf' 'script-opts/suji.conf is not in the commit' tools/make-release.sh v1.2.3
+check 'nothing built without suji.conf' test ! -e dist/hikari.ps1 -a ! -e dist/hikari.zip
+git reset -q --hard "$base"
+git tag -f v1.2.3 "$base" >/dev/null
+
 # --- a good release ----------------------------------------------------------
 if tools/make-release.sh v1.2.3 >"$tmp/out.txt" 2>&1; then ok 'builds v1.2.3'; else fail 'builds v1.2.3'; cat "$tmp/out.txt"; fi
 check 'dist has the four files' test -f dist/hikari.zip -a -f dist/hikari.ps1 -a -f dist/hikari.sh -a -f dist/SHA256SUMS
@@ -137,6 +145,7 @@ unzip -Z1 dist/hikari.zip | grep -v '/$' | sort >"$tmp/zip.txt"
 git ls-files portable_config LICENSE README.md | sort >"$tmp/want.txt"
 check 'zip holds exactly portable_config, LICENSE and README.md' cmp -s "$tmp/zip.txt" "$tmp/want.txt"
 check 'zip has no install, tests or tools' bash -c "! grep -qE '^(install|tests|tools)/' '$tmp/zip.txt'"
+check 'zip has script-opts/suji.conf' grep -qx 'portable_config/script-opts/suji.conf' "$tmp/zip.txt"
 
 cp dist/hikari.zip "$tmp/first.zip"
 tools/make-release.sh v1.2.3 >/dev/null 2>&1
