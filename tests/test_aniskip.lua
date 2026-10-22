@@ -2,9 +2,11 @@
 --
 -- script-modules/hikari-aniskip.lua (AniSkip lookups) and its use in
 -- hikari-skip.lua. The answers in tests/data/aniskip/ were recorded from the
--- real services (AniList, AniSkip) in October 2026 (AniSkip's with the
+-- real services (AniList, Kitsu, AniSkip) in October 2026 (AniSkip's with the
 -- episode length sent: 1470 for Frieren 5; 1442 and 0 for Shingeki no
--- Kyojin 1, to show what 0 gives), except the Jikan one,
+-- Kyojin 1, to show what 0 gives; 1434 for Boku no Hero Academia 5x06;
+-- Kitsu's Boku no Hero Academia cut to 5 of its 20 series and their
+-- mappings), except the Jikan one,
 -- written from Jikan's v4 documentation (api.jikan.moe was not reachable from
 -- the machine that recorded the others).
 package.path = './tests/?.lua;' .. package.path
@@ -224,6 +226,165 @@ test('Jikan (documented format): same matching', function()
 	eq(m.pick(list, "Frieren: Beyond Journey's End", 2), 59978)
 	eq(m.parse_jikan('{"status":429,"type":"RateLimitException","message":"..."}'), nil, 'rate limit')
 	eq(m.parse_jikan('{"data":"x"}'), nil, 'data not a list')
+end)
+
+test('Kitsu (recorded): Boku no Hero Academia, its seasons and the final one', function()
+	local m = load_module()
+	local list = assert(m.parse_kitsu(data('kitsu-boku-no-hero-academia.json')))
+	eq(#list, 5, 'series')
+	local mal, episodes = m.pick(list, 'Boku no Hero Academia')
+	eq(mal, 31964, 'MHA 1'); eq(episodes, 13, 'episode count')
+	mal, episodes = m.pick(list, 'Boku no Hero Academia', 5)
+	eq(mal, 41587, '"Boku no Hero Academia 5"'); eq(episodes, 25)
+	eq(m.pick(list, 'My Hero Academia', 5), 41587, 'English, "Season 5"')
+	eq(m.pick(list, 'Boku no Hero Academia', 2), 33486, '"Boku no Hero Academia 2"')
+	eq(m.pick(list, 'Boku no Hero Academia', 8), 60098, 'FINAL SEASON, by its abbreviated title "Season 8"')
+	eq(m.pick(list, '僕のヒーローアカデミア'), 31964, 'Japanese title')
+	-- A special (Hero Note) is not a series, even by its abbreviated title.
+	eq(m.pick(list, 'Boku no Hero Academia Recap'), nil, 'special')
+	eq(m.pick(list, 'Boku no Hero Academia', 4), nil, 'season 4 is not in this answer')
+end)
+
+test('Kitsu (recorded): Frieren, a season without a MyAnimeList id, an ONA', function()
+	local m = load_module()
+	local list = assert(m.parse_kitsu(data('kitsu-sousou-no-frieren.json')))
+	eq(#list, 6, 'series')
+	local mal, episodes = m.pick(list, 'Sousou no Frieren')
+	eq(mal, 52991, 'season 1'); eq(episodes, 28)
+	eq(m.pick(list, 'Sousou no Frieren', 2), 59978, '2nd Season')
+	eq(m.pick(list, 'Sousou no Frieren', 3), nil, '3rd Season: no MyAnimeList mapping')
+	eq(m.pick(list, "Frieren - Beyond Journey's End"), 52991, 'English (’ in Kitsu)')
+	eq(m.pick(list, 'Frieren at the Funeral'), 52991, 'abbreviated title')
+	mal, episodes = m.pick(list, 'Sousou no Frieren: Marumaru no Mahou')
+	eq(mal, 56885, 'ONA'); eq(episodes, nil, 'episode count unknown (null)')
+	eq(m.pick(list, 'Yuusha'), nil, 'music')
+end)
+
+-- A Kitsu answer with `series` ({id, subtype, title, mappings = {mapping id,
+-- ...}}) and `mappings` (mapping id -> MyAnimeList id as given).
+local function kitsu(series, mappings)
+	local data, included = {}, {}
+	for _, s in ipairs(series) do
+		local links = {}
+		for _, id in ipairs(s.mappings or {}) do links[#links + 1] = {type = 'mappings', id = id} end
+		data[#data + 1] = {
+			id = s.id, type = 'anime',
+			attributes = {canonicalTitle = s.title, titles = {en_jp = s.title}, abbreviatedTitles = {},
+				subtype = s.subtype or 'TV', episodeCount = 12},
+			relationships = {mappings = {data = links}},
+		}
+	end
+	local ids = {}
+	for id in pairs(mappings or {}) do ids[#ids + 1] = id end
+	table.sort(ids)
+	for _, id in ipairs(ids) do
+		included[#included + 1] = {id = id, type = 'mappings',
+			attributes = {externalSite = 'myanimelist/anime', externalId = mappings[id]}}
+	end
+	return mock.format_json({data = data, included = included})
+end
+
+test('Kitsu: two MyAnimeList ids stop the lookup, one id twice does not', function()
+	local m = load_module()
+	local list = assert(m.parse_kitsu(kitsu({
+		{id = '1', title = 'Show', mappings = {'10'}}, {id = '2', title = 'Show', mappings = {'20'}},
+	}, {['10'] = '100', ['20'] = '200'})))
+	eq(#list, 2); eq(list[1].mal, 100); eq(list[2].mal, 200)
+	eq(m.pick(list, 'Show'), nil, 'two series, two ids')
+	-- One series mapped to two ids: ambiguous too.
+	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = {'10', '20'}}},
+		{['10'] = '100', ['20'] = '200'})))
+	eq(#list, 2, 'one entry per id')
+	eq(m.pick(list, 'Show'), nil, 'one series, two ids')
+	-- Hostile: one series linked to 1000 ids. Only the first two give entries,
+	-- so pick does not normalise the same titles 1000 times.
+	local links, mappings = {}, {}
+	for i = 1, 1000 do
+		links[i] = tostring(i)
+		mappings[tostring(i)] = tostring(i)
+	end
+	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = links}}, mappings)))
+	eq(#list, 2, 'at most two entries per series')
+	eq(m.pick(list, 'Show'), nil, 'still ambiguous')
+	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = {'10', '20'}}},
+		{['10'] = '100', ['20'] = '100'})))
+	eq(#list, 1, 'the same id twice')
+	eq(m.pick(list, 'Show'), 100)
+	-- Other sites' mappings and other subtypes do not count.
+	list = assert(m.parse_kitsu(mock.format_json({
+		data = {{id = '1', type = 'anime', attributes = {canonicalTitle = 'Show', subtype = 'TV'},
+			relationships = {mappings = {data = {{type = 'mappings', id = '10'}}}}}},
+		included = {{id = '10', type = 'mappings', attributes = {externalSite = 'anilist/anime', externalId = '5'}}},
+	})))
+	eq(list[1].mal, nil, 'an AniList id is not a MyAnimeList one')
+	list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', subtype = 'movie', mappings = {'10'}},
+		{id = '2', title = 'Show', subtype = 'OVA', mappings = {'20'}}}, {['10'] = '100', ['20'] = '200'})))
+	eq(m.pick(list, 'Show'), nil, 'movie and OVA')
+end)
+
+test('Kitsu: errors, broken JSON, wrong types and oversized answers are refused', function()
+	local m = load_module()
+	eq(m.parse_kitsu(nil), nil, 'no answer')
+	eq(m.parse_kitsu(''), nil, 'empty')
+	eq(m.parse_kitsu('<html>502 Bad Gateway</html>'), nil, 'HTML')
+	eq(m.parse_kitsu('{"data":[{"id":"1"'), nil, 'cut short')
+	eq(m.parse_kitsu('{"data":[]} trailing'), nil, 'trailing garbage')
+	eq(m.parse_kitsu('{"errors":[{"title":"Not acceptable","code":"406","status":"406"}]}'), nil, '406')
+	eq(m.parse_kitsu('{"errors":[{"title":"Invalid page value","status":"400"}],"data":[]}'), nil, 'errors with data')
+	eq(m.parse_kitsu('{"data":{"id":"1"}}'), nil, 'data not a list')
+	eq(m.parse_kitsu('{"data":[],"included":{"id":"1"}}'), nil, 'included not a list')
+	eq(m.parse_kitsu('[1,2,3]'), nil, 'an array')
+	local many = {}
+	for i = 1, 51 do many[i] = '{"id":"' .. i .. '"}' end
+	eq(m.parse_kitsu('{"data":[' .. table.concat(many, ',') .. ']}'), nil, 'too many series')
+	eq(m.parse_kitsu('{"data":[],"included":[' .. string.rep('{},', 1000) .. '{}]}'), nil, 'too many mappings')
+	eq(m.parse_kitsu('{"data":[],"x":"' .. string.rep('a', 262144) .. '"}'), nil, 'too long')
+	-- Nothing found: a valid, empty answer (with or without `included`).
+	eq(#assert(m.parse_kitsu('{"data":[],"meta":{"count":0}}')), 0, 'no series')
+	eq(#assert(m.parse_kitsu('{"data":[],"included":[]}')), 0, 'no series, empty included')
+end)
+
+test('Kitsu: MyAnimeList ids must be digits in range; series without mappings have none', function()
+	local m = load_module()
+	for _, bad in ipairs({'abc', '0', '-5', '12.5', '041587', '1e3', ' 41587', '41587 ', '0x10', '',
+		'1000000000', '99999999999999999999'}) do
+		local list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = {'10'}}}, {['10'] = bad})))
+		eq(list[1].mal, nil, 'id "' .. bad .. '"')
+		eq(m.pick(list, 'Show'), nil, 'no match with id "' .. bad .. '"')
+	end
+	local list = assert(m.parse_kitsu(kitsu({{id = '1', title = 'Show', mappings = {'10'}}}, {['10'] = '999999999'})))
+	eq(list[1].mal, 999999999, 'the largest id')
+	-- Not text: a number is refused too (Kitsu writes ids as text).
+	list = assert(m.parse_kitsu(mock.format_json({
+		data = {{id = '1', attributes = {canonicalTitle = 'Show', subtype = 'TV'},
+			relationships = {mappings = {data = {{type = 'mappings', id = '10'}}}}}},
+		included = {{id = '10', type = 'mappings', attributes = {externalSite = 'myanimelist/anime', externalId = 41587}}},
+	})))
+	eq(list[1].mal, nil, 'a number')
+	-- No mappings: none linked, no `relationships`, no `included`, a link to a
+	-- mapping that is not there, a link of another type.
+	for what, answer in pairs({
+		['none linked'] = kitsu({{id = '1', title = 'Show', mappings = {}}}, {['10'] = '100'}),
+		['no relationships'] = '{"data":[{"id":"1","attributes":{"canonicalTitle":"Show","subtype":"TV"}}]}',
+		['no included'] = '{"data":[{"id":"1","attributes":{"canonicalTitle":"Show","subtype":"TV"},'
+			.. '"relationships":{"mappings":{"data":[{"type":"mappings","id":"10"}]}}}]}',
+		['missing mapping'] = kitsu({{id = '1', title = 'Show', mappings = {'11'}}}, {['10'] = '100'}),
+		['link of another type'] = '{"data":[{"id":"1","attributes":{"canonicalTitle":"Show","subtype":"TV"},'
+			.. '"relationships":{"mappings":{"data":[{"type":"genres","id":"10"}]}}}],'
+			.. '"included":[{"id":"10","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"100"}}]}',
+		['mappings not a list'] = '{"data":[{"id":"1","attributes":{"canonicalTitle":"Show","subtype":"TV"},'
+			.. '"relationships":{"mappings":{"data":{"type":"mappings","id":"10"}}}}],'
+			.. '"included":[{"id":"10","type":"mappings","attributes":{"externalSite":"myanimelist/anime","externalId":"100"}}]}',
+	}) do
+		list = assert(m.parse_kitsu(answer), what)
+		eq(#list, 1, what); eq(list[1].mal, nil, what)
+		eq(m.pick(list, 'Show'), nil, what)
+	end
+	-- Wrong types inside a series are dropped, not trusted.
+	list = assert(m.parse_kitsu('{"data":[{"id":"1","attributes":{"canonicalTitle":7,"titles":"Show",'
+		.. '"abbreviatedTitles":"Show","subtype":["TV"],"episodeCount":"12"}},"not a table",{"attributes":"x"}]}'))
+	eq(#list, 1, 'tables with attributes kept')
+	eq(#list[1].names, 0, 'bad names dropped'); eq(list[1].format, nil); eq(list[1].episodes, nil)
 end)
 
 test('AniSkip (recorded): results, and "not found" as an empty list', function()
@@ -467,9 +628,10 @@ test('times expire after 30 days; a clock moved back counts as expired', functio
 	eq(#mock.async, 1, 'entries from the future are not trusted')
 end)
 
-test('AniList down: Jikan is asked, with the name percent-encoded', function()
+test('AniList and Kitsu down: Jikan is asked, with the name percent-encoded', function()
 	local m = load_module()
 	local got = lookup(m, {series = 'Sousou no Frieren', episode = 5, anime = true})
+	mock.finish_async(true, {status = 28, stdout = '', stderr = 'curl: (28) timed out', error_string = ''})
 	mock.finish_async(true, {status = 28, stdout = '', stderr = 'curl: (28) timed out', error_string = ''})
 	eq(#mock.async, 1, 'Jikan')
 	local args = mock.async[1].cmd.args
@@ -484,14 +646,101 @@ test('AniList down: Jikan is asked, with the name percent-encoded', function()
 	m = load_module()
 	lookup(m, {series = 'A&b=c d/../#?é', episode = 1, anime = true})
 	mock.finish_async(ok_answer('{"errors":[{"message":"Internal Server Error"}]}'))
+	mock.finish_async(ok_answer('{"errors":[{"title":"Internal Server Error","status":"500"}]}'))
 	args = mock.async[1].cmd.args
 	eq(args[#args], 'https://api.jikan.moe/v4/anime?limit=25&q=A%26b%3Dc%20d%2F..%2F%23%3F%C3%A9')
+end)
+
+-- AniList's answer to every request in October 2026 (HTTP 403, which curl
+-- without --fail gives as a body like any other).
+local ANILIST_DISABLED = '{"errors":[{"message":"The AniList API has been temporarily disabled due to severe'
+	.. ' stability issues.","status":403,"locations":[{"line":1,"column":1}]}],"data":null}'
+
+local function mha(episode, season)
+	return {series = 'Boku no Hero Academia', episode = episode, season = season, anime = true}
+end
+
+test('AniList disabled (403): Kitsu is asked, and its id goes to AniSkip', function()
+	local m = load_module()
+	local got = lookup(m, mha(6, 5), 1434)
+	eq(mock.async[1].cmd.args[#mock.async[1].cmd.args], 'https://graphql.anilist.co')
+	mock.finish_async(ok_answer(ANILIST_DISABLED))
+	eq(#mock.async, 1, 'Kitsu')
+	local cmd = mock.async[1].cmd
+	local args = cmd.args
+	eq(args[#args], 'https://kitsu.app/api/edge/anime?page%5Blimit%5D=20&include=mappings'
+		.. '&fields%5Banime%5D=canonicalTitle,titles,abbreviatedTitles,subtype,episodeCount,mappings'
+		.. '&fields%5Bmappings%5D=externalSite,externalId&filter%5Btext%5D=Boku%20no%20Hero%20Academia')
+	eq(args[arg_index(args, '-H') + 1], 'Accept: application/vnd.api+json', 'JSON:API, or Kitsu answers 406')
+	eq(args[2], '-q'); eq(args[arg_index(args, '--proto') + 1], '=https')
+	eq(args[arg_index(args, '--max-redirs') + 1], '0'); assert(arg_index(args, '--max-time'), 'timeout')
+	eq(cmd.stdin_data, nil, 'GET'); eq(arg_index(args, '--data-binary'), nil)
+	mock.finish_async(ok_answer(data('kitsu-boku-no-hero-academia.json')))
+	eq(#mock.async, 1, 'AniSkip asked')
+	args = mock.async[1].cmd.args
+	eq(args[#args], 'https://api.aniskip.com/v2/skip-times/41587/6'
+		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=1434')
+	mock.finish_async(ok_answer(data('aniskip-41587-6-1434.json')))
+	eq(got.called, true)
+	local ranges = m.select(got.results, 1434)
+	eq(#ranges, 2)
+	eq(ranges[1].kind, 'opening'); near(ranges[1].start, 97.75); near(ranges[1].finish, 188.25)
+	eq(ranges[2].kind, 'ending'); near(ranges[2].start, 1309.75); near(ranges[2].finish, 1400.25)
+	-- Cached as from any other source.
+	local cache = assert(mock.parse_json(read(CACHE)))
+	eq(cache.titles['boku no hero academia|5'].mal, 41587)
+	eq(cache.titles['boku no hero academia|5'].episodes, 25)
+	-- Kitsu's URL: nothing but the encoded name after filter[text]=.
+	m = load_module()
+	lookup(m, {series = 'A&b=c d/../#?é', episode = 1, anime = true})
+	mock.finish_async(ok_answer(ANILIST_DISABLED))
+	args = mock.async[1].cmd.args
+	eq(args[#args], m.KITSU_URL .. 'A%26b%3Dc%20d%2F..%2F%23%3F%C3%A9')
+end)
+
+test('Kitsu fails: Jikan is asked', function()
+	for what, answer in pairs({
+		['not reached'] = {true, {status = 6, stdout = '', stderr = 'Could not resolve host', error_string = ''}},
+		['error'] = {ok_answer('{"errors":[{"title":"Internal Server Error","status":"500"}]}')},
+		['not valid'] = {ok_answer('{"data":"x"}')},
+		['broken JSON'] = {ok_answer('{"data":[')},
+	}) do
+		local m = load_module()
+		local got = lookup(m, frieren(5))
+		mock.finish_async(ok_answer(ANILIST_DISABLED))
+		mock.finish_async(answer[1], answer[2])
+		eq(#mock.async, 1, what .. ': Jikan')
+		local args = mock.async[1].cmd.args
+		eq(args[#args], 'https://api.jikan.moe/v4/anime?limit=25&q=Sousou%20no%20Frieren', what)
+		eq(args[arg_index(args, '-H') + 1], 'Accept: application/json', what .. ': Jikan wants plain JSON')
+		mock.finish_async(ok_answer(data('jikan-sousou-no-frieren.json')))
+		args = mock.async[1].cmd.args
+		assert(args[#args]:find('/52991/5?', 1, true), what .. ': AniSkip with the id from Jikan')
+		mock.finish_async(ok_answer(data('aniskip-52991-5.json')))
+		eq(#got.results, 2, what)
+	end
+end)
+
+test('Kitsu says "no such series": Jikan is not asked, the miss is cached', function()
+	for what, answer in pairs({
+		['nothing found'] = '{"data":[],"meta":{"count":0},"links":{}}',
+		['no clear match'] = data('kitsu-sousou-no-frieren.json'),
+	}) do
+		local m = load_module()
+		local got = lookup(m, {series = 'Sousou no Frieren', season = 3, episode = 1, anime = true})
+		mock.finish_async(ok_answer(ANILIST_DISABLED))
+		mock.finish_async(ok_answer(answer))
+		eq(#mock.async, 0, what .. ': no Jikan, no AniSkip')
+		eq(got.called, true, what); eq(got.results, nil, what)
+		eq(assert(mock.parse_json(read(CACHE))).titles['sousou no frieren|3'].mal, 0, what .. ': cached as no match')
+	end
 end)
 
 test('no answer anywhere: nothing shown, nothing cached', function()
 	local m = load_module()
 	local got = lookup(m, frieren(5))
 	mock.finish_async(false, nil, 'killed')
+	mock.finish_async(true, {status = 7, stdout = '', stderr = 'Failed to connect', error_string = ''})
 	mock.finish_async(ok_answer('<html>down</html>'))
 	eq(got.called, true); eq(got.results, nil)
 	eq(read(CACHE), nil, 'no cache written')
