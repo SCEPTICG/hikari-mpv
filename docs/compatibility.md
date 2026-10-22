@@ -12,7 +12,7 @@ The installer always downloads these exact versions and checks each one against 
 | Component | Version |
 | --- | --- |
 | [uosc](https://github.com/tomasklaen/uosc) | 5.13.0 |
-| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.4.0 |
+| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.5.0 |
 | [thumbfast](https://github.com/po5/thumbfast) | commit `0f711de` |
 | [Anime4K](https://github.com/bloc97/Anime4K) (optional) | 4.0.1 |
 
@@ -44,9 +44,9 @@ What only uosc gives you: the buttons of the controls bar (they are uosc's), uos
 
 ## hikari with suji (experimental)
 
-[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.4.0, experimental), so uosc stays the recommended one.
+[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.5.0, experimental), so uosc stays the recommended one.
 
-The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.4.0 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
+The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.5.0 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
 
 With suji, hikari finds it and uses it:
 
@@ -54,6 +54,6 @@ With suji, hikari finds it and uses it:
 - The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`. With suji 0.3.0 or newer, suji draws the skip button itself, with its own look.
 - A palette only changes suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
 
-What suji does not do yet: there are no thumbnails over the timeline, and the palettes do not colour the rest of the bar. When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them, as the installer does.
+What suji does not do yet: the palettes do not colour the rest of the bar. Thumbnails over the timeline work as with uosc, through thumbfast (`thumbnails=no` in `suji.conf` turns them off). When uosc and suji are both loaded and turned on, hikari uses suji and its bar; better keep only one of them, as the installer does.
 
 If you installed suji yourself instead, the installer's `script-opts/suji.conf` is in `portable_config/script-opts/` of hikari's repository: copy it to `script-opts/suji.conf` in mpv's configuration folder, or copy its `controls=` line into the `suji.conf` you have. It has the same buttons as hikari's bar in uosc.
