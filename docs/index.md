@@ -8,7 +8,7 @@ hide:
 
 <div class="hk-hero" markdown>
 
-![hikari, a modern theme for the mpv video player built on uosc](images/banner.png)
+<img class="hk-logo" src="images/icon-512.png" alt="" width="72" height="72">
 
 # hikari, a modern theme for the mpv video player { .hk-title }
 
@@ -16,6 +16,12 @@ hide:
 
 [Install :material-download:](#quick-install){ .md-button .md-button--primary }
 [See it on GitHub :fontawesome-brands-github:](https://github.com/SCEPTICG/hikari-mpv){ .md-button }
+
+<div class="hk-shot" markdown>
+![mpv with hikari: filled timeline with chapters, title bar and hikari's buttons in the SCEPTIC palette](images/player.jpg)
+</div>
+
+<p class="hk-dots" aria-hidden="true"><span style="--c:#ffffff"></span><span style="--c:#cba6f7"></span><span style="--c:#7aa2f7"></span><span style="--c:#bd93f9"></span><span style="--c:#88c0d0"></span><span style="--c:#fabd2f"></span><span style="--c:#ebbcba"></span><span style="--c:#7e9cd8"></span><span style="--c:#61afef"></span><span style="--c:#a7c080"></span><span style="--c:#8839ef"></span><span style="--c:#af3a03"></span><span style="--c:#268bd2"></span><span style="--c:#5ad4e6"></span></p>
 
 </div>
 
@@ -111,7 +117,11 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
 </div>
 
-hikari speaks your language: its menus, buttons and messages come in the 13 languages of uosc (English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian, Simplified Chinese and Chinese from Hong Kong). It follows your system, and `Alt+l` changes it. It also picks the audio and subtitle tracks: a dub in your language when the file has one, otherwise Japanese with subtitles in your language, telling Spain from Latin America and Brazil from Portugal even when both tracks carry the same tag (your own `alang`/`slang` lines still win: hikari then only chooses between tracks they cannot tell apart); see [Languages](features/language.md). The installer itself speaks English or Spanish.
+## Speaks your language
+
+hikari's menus, buttons and messages come in the 13 languages of uosc. It follows your system, and `Alt+l` changes it. It also picks the audio and subtitle tracks for you: a dub in your language when the file has one, otherwise Japanese with subtitles in your language, telling Spain from Latin America and Brazil from Portugal. The installer speaks English or Spanish. [More about languages](features/language.md).
+
+<p class="hk-chips"><span>English</span><span>Español</span><span>Deutsch</span><span>Français</span><span>Italiano</span><span>Polski</span><span>Português</span><span>Română</span><span>Русский</span><span>Türkçe</span><span>Українська</span><span>简体中文</span><span>繁體中文 (香港)</span></p>
 
 ## hikari and other mpv themes
 

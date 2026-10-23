@@ -1083,6 +1083,8 @@ function Read-HikariLine {
     $script:HikariLastBlank = $false
     # In the summary the question is indented as the rest of it.
     if ($script:HikariFancy) { $Prompt = '  ' + $Prompt }
+    # Keys pressed before the question (during a download, say) never answer it.
+    & $script:HikariKeyFlush
     return (Read-Host -Prompt $Prompt)
 }
 
@@ -1143,8 +1145,8 @@ $script:HikariMenuRenderer = { param([object[]]$Lines, [int]$Previous) Write-Hik
 # Replaceable in tests: hide the cursor and take Ctrl+C as a key, and undo it.
 $script:HikariConsoleEnter = { Enter-HikariMenuConsole }
 $script:HikariConsoleExit = { param($State) Exit-HikariMenuConsole -State $State }
-# Replaceable in tests: throws away keys pressed before a menu opened (during a
-# download, say), so they never answer its question.
+# Replaceable in tests: throws away keys pressed before a menu opened or a
+# question was asked in writing (during a download, say), so they never answer it.
 $script:HikariKeyFlush = { Clear-HikariPendingKeys }
 
 function Test-HikariInteractiveConsole {

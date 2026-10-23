@@ -2246,6 +2246,19 @@ Test-Case 'keys pressed before a menu opens are thrown away' {
     finally { Remove-Item Function:\Read-HikariLine; Reset-FakeConsole }
 }
 
+Test-Case 'keys pressed before a question asked in writing are thrown away' {
+    function Read-Host { param([string]$Prompt) $script:PendingAtRead = $script:Pending.Count; return '2' }
+    try {
+        Use-FakeConsole
+        $script:Pending.Enqueue('1')
+        $script:Pending.Enqueue('Enter')
+        $script:PendingAtRead = -1
+        Assert-Equal (Read-HikariLine 'Choose an option') '2' 'the line typed after the question is the answer'
+        Assert-Equal $script:PendingAtRead 0 'flushed before Read-Host'
+    }
+    finally { Remove-Item Function:\Read-Host; Reset-FakeConsole }
+}
+
 Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {
     $e = [string][char]0x2026
     Assert-Equal (Format-HikariFit -Text 'short' -Max 10) 'short' 'fits'
