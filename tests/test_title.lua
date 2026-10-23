@@ -614,6 +614,164 @@ test('release info: hostile names stay fast and give nothing odd', function()
 	assert(r and not r.series:find('%c'), 'no control characters')
 end)
 
+-- suji's title in parts (suji 0.7.0 or newer) ------------------------------------
+
+-- The set-title messages sent to suji, in order, each as its list of arguments.
+local function suji_titles_sent()
+	local list = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'script-message-to' and c[2] == 'suji' and c[3] == 'set-title' then
+			list[#list + 1] = {select(4, unpack(c))}
+		end
+	end
+	return list
+end
+
+local function same_args(actual, expected, what)
+	eq(#actual, #expected, (what or 'arguments') .. ': count')
+	for i = 1, #expected do eq(actual[i], expected[i], (what or 'arguments') .. ' #' .. i) end
+end
+
+-- suji as it is after loading: there, on or off, and its version published.
+local function suji(version, on)
+	mock.suji = true
+	mock.props['user-data/suji/version'] = version
+	mock.props['user-data/suji/enabled'] = on ~= false
+end
+
+test('suji 0.7: set-title with the series and the label, and the name only when there is one', function()
+	load()
+	suji('0.7.0')
+	eq(start('/a/[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'), 'Sousou no Frieren · E05', 'title on screen')
+	local sent = suji_titles_sent()
+	eq(#sent, 1, 'one message')
+	same_args(sent[1], {'Sousou no Frieren', 'E05'}, 'no name')
+	mock.events['file-loaded']()
+	eq(#suji_titles_sent(), 1, 'not again on file-loaded')
+	mock.events['end-file'](); mock.end_file()
+	eq(start('/a/Show - S01E06 - The Name [1080p].mkv'), 'Show · T1 E06 · The Name', 'title on screen, unchanged')
+	sent = suji_titles_sent()
+	eq(#sent, 2, 'sent again for the next file')
+	same_args(sent[2], {'Show', 'T1 E06', 'The Name'}, 'with the name')
+	mock.events['end-file'](); mock.end_file()
+	start('https://h/x?token=a&filename=Show.S02E03.1080p.WEB-DL.mkv')
+	same_args(suji_titles_sent()[3], {'Show', 'T2 E03'}, 'from filename=')
+end)
+
+test('suji 0.6, turned off, missing or of an unknown version: nothing is sent', function()
+	for _, case in ipairs({
+		{'0.6.1', true}, {'0.7.0', false}, {nil, nil}, {'x', true}, {'', true}, {'0.6.9', true},
+	}) do
+		load()
+		if case[1] or case[2] ~= nil then suji(case[1], case[2]) end
+		eq(start('/a/Show.S01E05.mkv'), 'Show · T1 E05', 'title on screen as before')
+		mock.events['file-loaded']()
+		eq(#suji_titles_sent(), 0, tostring(case[1]) .. '/' .. tostring(case[2]))
+	end
+	-- A version that is there but not valid wins over the message, as in hikari-skip.
+	load()
+	suji('junk')
+	mock.messages['suji-version']('0.7.0')
+	start('/a/Show.S01E05.mkv')
+	eq(#suji_titles_sent(), 0, 'invalid property over a good message')
+end)
+
+test('suji versions are compared by number; the message counts without the property', function()
+	for _, version in ipairs({'0.10.0', '1.0.0', '0.7.1'}) do
+		load()
+		suji(version)
+		start('/a/Show.S01E05.mkv')
+		eq(#suji_titles_sent(), 1, version)
+	end
+	load()
+	mock.suji = true
+	mock.props['user-data/suji/enabled'] = true
+	mock.messages['suji-version']('0.7.0')
+	start('/a/Show.S01E05.mkv')
+	same_args(suji_titles_sent()[1], {'Show', 'T1 E05'}, 'version from the message')
+end)
+
+test('suji: no episode, the fallback or pretty=no: nothing is sent, media-title shows', function()
+	load()
+	suji('0.7.0')
+	eq(start('/a/Movie.Name.2023.1080p.BluRay.x264-GRP.mkv'), 'Movie Name (2023)', 'film')
+	mock.events['end-file'](); mock.end_file()
+	eq(start('https://h/live/master.m3u8?token=abc'), 'master.m3u8', 'fallback')
+	mock.props['metadata/by-key/title'] = 'Live'
+	mock.events['file-loaded']()
+	eq(mock.props['force-media-title'], '', 'fallback withdrawn')
+	eq(#suji_titles_sent(), 0, 'nothing for a film or the fallback')
+	load({['hikari-title-pretty'] = 'no'})
+	suji('0.7.0')
+	start('https://h/x?token=a&filename=Show.S01E05.mkv')
+	eq(#suji_titles_sent(), 0, 'pretty=no')
+end)
+
+test('suji: a title of the user or of the playlist entry: nothing is sent', function()
+	load()
+	suji('0.7.0')
+	mock.props['force-media-title'] = 'Mi título'
+	eq(start('/a/Show.S01E05.mkv'), 'Mi título')
+	mock.events['file-loaded']()
+	eq(#suji_titles_sent(), 0, 'force-media-title of the user')
+	load()
+	suji('0.7.0')
+	mock.props['playlist-playing-pos'] = 0
+	mock.props['playlist/0/title'] = 'Capítulo 1'
+	eq(start('/a/Show.S01E05.mkv'), nil)
+	mock.events['file-loaded']()
+	eq(#suji_titles_sent(), 0, 'playlist title')
+end)
+
+test('suji: control characters are gone and each part is cut', function()
+	local t = load()
+	suji('0.7.0')
+	local long = string.rep('Ñame ', 100)
+	start('/a/[G] Bad\27Se\226\128\174ries\7\127 - S01E05 - Na\226\128\139me\1 ' .. long .. '[1080p].mkv')
+	local sent = suji_titles_sent()
+	eq(#sent, 1, 'one message')
+	eq(#sent[1], 3, 'three parts')
+	for i, part in ipairs(sent[1]) do
+		assert(not part:find('%c'), 'control character in part ' .. i)
+		assert(not part:find('\226\128[\139\174]'), 'invisible character in part ' .. i)
+		assert(utf8_len(part) <= t.MAX_CHARS + 1, 'part ' .. i .. ' too long: ' .. utf8_len(part))
+	end
+	eq(sent[1][1], 'BadSeries')
+	eq(sent[1][2], 'T1 E05')
+	assert(sent[1][3]:find('^Name Ñame') and sent[1][3]:sub(-3) == '…', 'the long name is cut, with an ellipsis: ' .. sent[1][3])
+end)
+
+test('suji: late, turned off and on, a new language, and a title replaced by another script', function()
+	load()
+	start('/a/Show.S01E05.mkv')
+	eq(#suji_titles_sent(), 0, 'no suji yet')
+	-- suji sets its properties after this script's start-file.
+	mock.suji = true
+	mock.set('user-data/suji/version', '0.7.0')
+	eq(#suji_titles_sent(), 0, 'not on yet')
+	mock.set('user-data/suji/enabled', true)
+	local sent = suji_titles_sent()
+	eq(#sent, 1, 'sent once suji is there'); same_args(sent[1], {'Show', 'T1 E05'})
+	mock.set('user-data/suji/enabled', false)
+	sent = suji_titles_sent()
+	eq(#sent, 2, 'taken back when turned off'); same_args(sent[2], {'', ''})
+	mock.set('user-data/suji/enabled', true)
+	sent = suji_titles_sent()
+	eq(#sent, 3, 'sent again when turned on'); same_args(sent[3], {'Show', 'T1 E05'})
+	mock.messages['suji-version']('0.7.0')
+	sent = suji_titles_sent()
+	eq(#sent, 4, 'suji started again'); same_args(sent[4], {'Show', 'T1 E05'})
+	mock.set_script_opt('hikari-language', 'en')
+	sent = suji_titles_sent()
+	eq(#sent, 5, 'new language'); same_args(sent[5], {'Show', 'S1 E05'})
+	mock.set('force-media-title', 'Changed by another script')
+	sent = suji_titles_sent()
+	eq(#sent, 6, 'taken back'); same_args(sent[6], {'', ''})
+	mock.set_script_opt('hikari-language', 'es')
+	eq(#suji_titles_sent(), 6, 'nothing more')
+	eq(mock.props['force-media-title'], 'Changed by another script')
+end)
+
 test('the script avoids os.execute, io.popen and load*', function()
 	local f = assert(io.open(SCRIPT, 'rb')); local src = f:read('*a'); f:close()
 	for _, bad in ipairs({'os.execute', 'io.popen', 'loadstring', 'loadfile', 'dofile', 'load('}) do

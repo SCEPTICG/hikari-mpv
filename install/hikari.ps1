@@ -70,6 +70,13 @@
     Without it, -Yes installs Anime4K where there is none and leaves one
     installed by hand alone. Never used for AnimeJaNai.
 
+.PARAMETER HikariInterface
+    Use it as -Interface (alias). uosc or suji: the interface to install
+    instead of asking. uosc is the usual one; suji is hikari's own,
+    experimental. The other one, if hikari installed it, is set aside (never
+    deleted). Without it, -Yes keeps in each folder the one hikari installed
+    there (uosc on a first install).
+
 .NOTES
     Exit codes: 0 done (or cancelled by the user), 1 at least one folder failed,
     2 wrong usage or nothing to work on.
@@ -77,7 +84,8 @@
 # The parameters are named Hikari* on purpose: run through iex, a param block
 # creates its variables in the caller's session, so they get names nobody else
 # uses and are removed again at the end (see the finally below). The aliases
-# keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K, -Version.
+# keep the public names: -Action, -Target, -Yes, -NoMenu, -Anime4K, -Interface,
+# -Version.
 # -Verbose is PowerShell's own common parameter (CmdletBinding): it is read
 # from $VerbosePreference and passed on as -Detail.
 [CmdletBinding()]
@@ -94,6 +102,9 @@ param(
     [Alias('Anime4K')]
     [ValidateSet('', 'yes', 'no')]
     [string]$HikariAnime4K = '',
+    [Alias('Interface')]
+    [ValidateSet('', 'uosc', 'suji')]
+    [string]$HikariInterface = '',
     [Alias('Version')]
     [switch]$HikariShowVersion
 )
@@ -111,6 +122,7 @@ param(
     [switch]$Yes,
     [switch]$NoMenu,
     [string]$Anime4K = '',
+    [string]$Interface = '',
     [switch]$ShowVersion,
     [switch]$Detail
 )
@@ -145,6 +157,21 @@ $script:UoscSha256 = '4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28ee
 # What uosc's own installer puts in the config folder (installers/windows.ps1),
 # minus its uosc.conf: hikari ships its own.
 $script:UoscFonts = @('uosc_icons.otf', 'uosc_textures.ttf')
+
+# suji, hikari's own interface (experimental), installed instead of uosc when
+# chosen (-Interface suji or the Interface question). Its zip holds LICENSE and
+# suji\, which goes to scripts\suji. Fixed release, verified by SHA256.
+$script:SujiVersion = '0.7.1'
+$script:SujiUrl = 'https://github.com/SCEPTICG/suji/releases/download/v0.7.1/suji.zip'
+$script:SujiSha256 = '66b08548cbb93c6aac3a15b94017138e305cfba817422d4ca01e888428345910'
+# hikari's row of controls for suji: in portable_config, only installed with suji.
+$script:SujiConf = 'suji.conf'
+# What hikari's uosc and suji are in the folder (one at a time: with both, two
+# rows of controls would be drawn). The other one is set aside.
+$script:UoscItems = @('scripts/uosc', 'fonts/uosc_icons.otf', 'fonts/uosc_textures.ttf')
+$script:SujiItems = @('scripts/suji')
+# -Interface: '' (ask; -Yes keeps the one of each folder), 'uosc' or 'suji'.
+$script:HikariInterfaceChoice = ''
 
 # thumbfast: fixed commit, verified by SHA256.
 $script:ThumbfastCommit = '0f711de3138c9bd6718209d819ac54022c23ded2'
@@ -519,6 +546,16 @@ $script:HikariStringsEn = @{
     ui_removing           = 'Removing'
     ui_installed          = 'hikari {0} installed in {1}'
     ui_removed            = 'hikari removed from {0}'
+    interface_title       = 'Interface'
+    interface_uosc        = 'uosc (recommended)'
+    interface_suji        = 'suji (experimental)'
+    interface_suji_note   = 'hikari''s own interface, still being tested'
+    interface_prompt      = 'Choose an option (Enter: {0})'
+    conflicts_found_suji  = 'These scripts replace the mpv controls and clash with suji:'
+    conflicts_kept_suji   = 'Left in place: suji and that interface will both draw controls.'
+    suji_done             = 'suji {0} installed.'
+    suji_uptodate         = 'suji {0} is already installed, unchanged: not downloaded or copied again.'
+    ask_remove_suji       = 'Remove suji too?'
 }
 
 $script:HikariStringsEs = @{
@@ -700,6 +737,16 @@ $script:HikariStringsEs = @{
     ui_removing           = 'Quitando'
     ui_installed          = 'hikari {0} instalado en {1}'
     ui_removed            = 'hikari quitado de {0}'
+    interface_title       = 'Interfaz'
+    interface_uosc        = 'uosc (recomendada)'
+    interface_suji        = 'suji (experimental)'
+    interface_suji_note   = 'la interfaz propia de hikari, en pruebas'
+    interface_prompt      = 'Elige una opci\u00f3n (Intro: {0})'
+    conflicts_found_suji  = 'Estos scripts sustituyen los controles de mpv y chocan con suji:'
+    conflicts_kept_suji   = 'Se quedan donde est\u00e1n: suji y esa interfaz dibujar\u00e1n controles a la vez.'
+    suji_done             = 'suji {0} instalado.'
+    suji_uptodate         = 'suji {0} ya est\u00e1 instalado y sin cambios: no se vuelve a descargar ni a copiar.'
+    ask_remove_suji       = '\u00bfQuitar tambi\u00e9n suji?'
 }
 
 function Get-HikariLanguage {
@@ -1036,6 +1083,8 @@ function Read-HikariLine {
     $script:HikariLastBlank = $false
     # In the summary the question is indented as the rest of it.
     if ($script:HikariFancy) { $Prompt = '  ' + $Prompt }
+    # Keys pressed before the question (during a download, say) never answer it.
+    & $script:HikariKeyFlush
     return (Read-Host -Prompt $Prompt)
 }
 
@@ -1096,8 +1145,8 @@ $script:HikariMenuRenderer = { param([object[]]$Lines, [int]$Previous) Write-Hik
 # Replaceable in tests: hide the cursor and take Ctrl+C as a key, and undo it.
 $script:HikariConsoleEnter = { Enter-HikariMenuConsole }
 $script:HikariConsoleExit = { param($State) Exit-HikariMenuConsole -State $State }
-# Replaceable in tests: throws away keys pressed before a menu opened (during a
-# download, say), so they never answer its question.
+# Replaceable in tests: throws away keys pressed before a menu opened or a
+# question was asked in writing (during a download, say), so they never answer it.
 $script:HikariKeyFlush = { Clear-HikariPendingKeys }
 
 function Test-HikariInteractiveConsole {
@@ -2407,6 +2456,7 @@ function Read-HikariRecord {
     $commented = New-Object System.Collections.Generic.List[string]
     $commentedMpv = New-Object System.Collections.Generic.List[string]
     $sums = New-Object System.Collections.Generic.List[string]
+    $aside = New-Object System.Collections.Generic.List[string]
     foreach ($line in ((Read-HikariText $path).Text -split "`r?`n")) {
         if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
         $idx = $line.IndexOf('=')
@@ -2421,6 +2471,14 @@ function Read-HikariRecord {
             if ($pair.Count -eq 2 -and (Test-HikariRecordPath $pair[0]) -and (Test-HikariRecordPath $pair[1])) {
                 if ($key -eq 'disabled') { $disabled.Add($value) } else { $broken.Add($value) }
             }
+            elseif (-not $NoWarn) { Write-HikariWarn (T 'record_bad' @($line)) }
+        }
+        elseif ($key -eq 'aside') {
+            # hikari's own uosc or suji, set aside when the other one was chosen:
+            # scripts-desactivados/...|<one of UoscItems or SujiItems>.
+            $pair = $value -split '\|'
+            if ($pair.Count -eq 2 -and (Test-HikariRecordPath $pair[0]) -and (Test-HikariRecordPath $pair[1]) -and
+                $pair[0].StartsWith($script:DisabledDir + '/') -and (@($script:UoscItems) + @($script:SujiItems)) -ccontains $pair[1]) { $aside.Add($value) }
             elseif (-not $NoWarn) { Write-HikariWarn (T 'record_bad' @($line)) }
         }
         elseif ($key -eq 'a4k_moved') {
@@ -2447,17 +2505,20 @@ function Read-HikariRecord {
         else { $values[$key] = $value }
     }
     return [pscustomobject]@{ Values = $values; Files = $files.ToArray(); Disabled = $disabled.ToArray(); Moved = $moved.ToArray()
-        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray(); Sums = $sums.ToArray() }
+        Commented = $commented.ToArray(); CommentedMpv = $commentedMpv.ToArray(); Broken = $broken.ToArray(); Sums = $sums.ToArray()
+        Aside = $aside.ToArray() }
 }
 
 function Write-HikariRecord {
     param([string]$ConfigDir, [System.Collections.Specialized.OrderedDictionary]$Values, [string[]]$Files, [string[]]$Disabled,
-        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @(), [string[]]$Sums = @())
+        [string[]]$Moved = @(), [string[]]$Commented = @(), [string[]]$CommentedMpv = @(), [string[]]$Broken = @(), [string[]]$Sums = @(),
+        [string[]]$Aside = @())
     $eol = "`r`n"
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('# Written by the hikari installer (install/hikari.ps1). Used to update and uninstall; do not edit.' + $eol)
     foreach ($key in $Values.Keys) { [void]$sb.Append($key + '=' + $Values[$key] + $eol) }
     foreach ($d in $Disabled) { [void]$sb.Append('disabled=' + $d + $eol) }
+    foreach ($a in $Aside) { [void]$sb.Append('aside=' + $a + $eol) }
     foreach ($b in $Broken) { [void]$sb.Append('broken=' + $b + $eol) }
     foreach ($m in $Moved) { [void]$sb.Append('a4k_moved=' + $m + $eol) }
     foreach ($c in $Commented) { [void]$sb.Append('a4k_commented=' + $c + $eol) }
@@ -2757,11 +2818,14 @@ function Get-HikariReleaseSource {
     throw (T 'source_missing' @($dest))
 }
 
-# Downloads and verifies uosc and thumbfast once for every target, unless no
-# folder needs them ($NeedUosc, $NeedThumbfast: see Get-HikariDownloadPlan).
-# UoscSums: "path|sha256" of each uosc file that Install-HikariUosc copies.
+# Downloads and verifies uosc, suji and thumbfast once for every target, unless
+# no folder needs them ($NeedUosc, $NeedSuji, $NeedThumbfast: see
+# Get-HikariDownloadPlan). $UsesUosc and $UsesSuji: some folder gets that
+# interface (otherwise its row is not shown). UoscSums and SujiSums: "path|sha256"
+# of each file that Install-HikariUosc and Install-HikariSuji copy.
 function Get-HikariArtifacts {
-    param([string]$TempDir, [bool]$NeedUosc = $true, [bool]$NeedThumbfast = $true)
+    param([string]$TempDir, [bool]$NeedUosc = $true, [bool]$NeedThumbfast = $true, [bool]$NeedSuji = $false,
+        [bool]$UsesUosc = $true, [bool]$UsesSuji = $false)
     $uoscDir = ''
     $sums = @()
     if ($NeedUosc) {
@@ -2774,7 +2838,20 @@ function Get-HikariArtifacts {
         }
         $sums = @(Get-HikariUoscManifest $uoscDir)
     }
-    else { Write-HikariRow -Label 'uosc' -Ok $true -Text (T 'ui_uptodate') }
+    elseif ($UsesUosc) { Write-HikariRow -Label 'uosc' -Ok $true -Text (T 'ui_uptodate') }
+    $sujiDir = ''
+    $sujiSums = @()
+    if ($NeedSuji) {
+        $zip = Join-HikariPath $TempDir 'suji.zip'
+        Invoke-HikariVerifiedDownload -Url $script:SujiUrl -Sha256 $script:SujiSha256 -OutFile $zip -Label 'suji'
+        $sujiDir = Join-HikariPath $TempDir 'suji'
+        Expand-HikariZip -Zip $zip -Destination $sujiDir
+        if (-not (Test-Path -LiteralPath (Join-HikariPath $sujiDir @('suji', 'main.lua')) -PathType Leaf)) {
+            throw (T 'source_missing' @($script:SujiUrl))
+        }
+        $sujiSums = @(Get-HikariSujiManifest $sujiDir)
+    }
+    elseif ($UsesSuji) { Write-HikariRow -Label 'suji' -Ok $true -Text (T 'ui_uptodate') }
     $thumb = ''
     if ($NeedThumbfast) {
         $thumb = Join-HikariPath $TempDir 'thumbfast.lua'
@@ -2782,7 +2859,85 @@ function Get-HikariArtifacts {
     }
     else { Write-HikariRow -Label 'thumbfast' -Ok $true -Text (T 'ui_uptodate') }
     # Anime4K is only downloaded when a folder needs it (Get-HikariAnime4KSource).
-    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb; TempDir = $TempDir; Anime4KDir = ''; UoscSums = $sums }
+    return [pscustomobject]@{ UoscDir = $uoscDir; ThumbfastFile = $thumb; TempDir = $TempDir; Anime4KDir = ''; UoscSums = $sums
+        SujiDir = $sujiDir; SujiSums = $sujiSums }
+}
+
+# "path|sha256" (path as in the config folder) of every file of the extracted
+# suji zip that Install-HikariSuji copies: scripts/suji/... Empty when a name is
+# odd: such a suji is then never up to date.
+function Get-HikariSujiManifest {
+    param([string]$SujiDir)
+    $out = New-Object System.Collections.Generic.List[string]
+    $root = Join-HikariPath $SujiDir 'suji'
+    $files = Get-HikariTreeFiles $root
+    if ($null -eq $files) { return @() }
+    foreach ($f in $files) {
+        $rel = 'scripts/suji/' + (Get-HikariRelativePath -Path $f -Root $root)
+        if (-not (Test-HikariRecordPath $rel)) { return @() }
+        $out.Add($rel + '|' + (Get-HikariFileSha256 $f))
+    }
+    return $out.ToArray()
+}
+
+# The entries of $Sums whose path starts with one of $Prefixes.
+function Select-HikariSumsByPrefix {
+    param([string[]]$Sums, [string[]]$Prefixes)
+    return @($Sums | Where-Object { $p = ($_ -split '\|')[0]; @($Prefixes | Where-Object { $p.StartsWith($_) }).Count -gt 0 })
+}
+
+# Is the suji of the folder exactly the pinned one, as hikari installed it? The
+# same checks as Test-HikariUoscUpToDate: its record says this version and this
+# zip and lists the hash of every file it copied, all of them there, unchanged,
+# not links, and nothing else in scripts\suji.
+function Test-HikariSujiUpToDate {
+    param([string]$ConfigDir, $Record)
+    if ($null -eq $Record) { return $false }
+    if ([string]$Record.Values['suji_version'] -ne $script:SujiVersion) { return $false }
+    if ([string]$Record.Values['suji_sha256'] -cne $script:SujiSha256.ToLowerInvariant()) { return $false }
+    $dir = Join-HikariPath $ConfigDir @('scripts', 'suji')
+    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
+    $entries = @(Select-HikariSumsByPrefix -Sums @($Record.Sums) -Prefixes @('scripts/suji/'))
+    if ($entries.Count -eq 0) { return $false }
+    $files = Get-HikariTreeFiles $dir
+    if ($null -eq $files -or @($files).Count -ne $entries.Count) { return $false }
+    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+}
+
+# Is $Dir (scripts/uosc or scripts/suji) exactly what hikari copied there, by
+# the hashes of its record ($Sums)? Every file listed under $Dir/ (and under
+# $Prefixes: fonts/uosc_) is there, unchanged, not a link, and $Dir holds
+# nothing else. The version is not checked: only whether it is hikari's copy.
+# 0 intact, 1 not (changed, someone else's), 2 the record has no hashes for it
+# (one written before hikari 0.8: it cannot tell).
+function Test-HikariCopyIntact {
+    param([string]$ConfigDir, [string]$Dir, [string[]]$Prefixes = @(), [string[]]$Sums = @())
+    $entries = @(Select-HikariSumsByPrefix -Sums $Sums -Prefixes (@($Dir + '/') + @($Prefixes)))
+    if ($entries.Count -eq 0) { return 2 }
+    $inside = @($entries | Where-Object { $_.StartsWith($Dir + '/') })
+    $item = Get-Item -LiteralPath (Join-HikariPath $ConfigDir ($Dir -split '/')) -Force -ErrorAction SilentlyContinue
+    if ($inside.Count -eq 0 -or $null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return 1 }
+    $files = Get-HikariTreeFiles $item.FullName
+    if ($null -eq $files -or @($files).Count -ne $inside.Count) { return 1 }
+    if (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries) { return 0 }
+    return 1
+}
+
+# The interface hikari installed in a folder, from its record: suji, or uosc
+# (also with no record, a record from before suji or an odd value).
+function Get-HikariRecordedInterface {
+    param($Record)
+    if ($null -ne $Record -and [string]$Record.Values['interface'] -ceq 'suji') { return 'suji' }
+    return 'uosc'
+}
+
+# The interface for a folder: the one chosen for this run ($Chosen: -Interface
+# or the Interface question), else the one hikari installed there, else uosc.
+function Get-HikariTargetInterface {
+    param($Record, [string]$Chosen = '')
+    if ($Chosen -eq 'uosc' -or $Chosen -eq 'suji') { return $Chosen.ToLowerInvariant() }
+    return (Get-HikariRecordedInterface $Record)
 }
 
 # "path|sha256" (path as in the config folder, '/'-separated) of every file of
@@ -3971,12 +4126,47 @@ function Test-HikariUoscPresent {
         (Test-Path -LiteralPath (Join-HikariPath $ConfigDir @('scripts', 'uosc.lua')) -PathType Leaf))
 }
 
+# Anything at scripts\suji (a broken link too).
+function Test-HikariSujiPresent {
+    param([string]$ConfigDir)
+    return ($null -ne (Get-Item -LiteralPath (Join-HikariPath $ConfigDir @('scripts', 'suji')) -Force -ErrorAction SilentlyContinue))
+}
+
+function Install-HikariSuji {
+    param([string]$ConfigDir, [string]$SujiDir)
+    $scripts = Join-HikariPath $ConfigDir 'scripts'
+    New-HikariDirectory $scripts
+    $dest = Join-HikariPath $scripts 'suji'
+    Remove-HikariItem -Path $dest -Root $ConfigDir
+    Copy-HikariTree -From (Join-HikariPath $SujiDir 'suji') -To $dest
+}
+
+# Moves those paths of the folder (relative, '/'-separated, the ones that are
+# there) into scripts-desactivados and returns their "moved|original" entries,
+# each added to the record at once, so a failure later in the run never loses
+# one. Nothing is deleted: they come back when that interface is chosen again,
+# or on uninstall.
+function Move-HikariInterfaceAside {
+    param([string]$ConfigDir, [string[]]$Items, [string]$Stamp)
+    $out = @()
+    foreach ($rel in $Items) {
+        $p = Join-HikariPath $ConfigDir ($rel -split '/')
+        if ($null -eq (Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue)) { continue }
+        $pair = Move-HikariToDisabled -Path $p -ConfigDir $ConfigDir -Stamp $Stamp
+        Add-HikariRecordEntries -ConfigDir $ConfigDir -Entries @('aside=' + $pair)
+        $out += $pair
+    }
+    return $out
+}
+
 function Install-HikariTarget {
     param(
         [Parameter(Mandatory = $true)]$Candidate,
         [Parameter(Mandatory = $true)]$Source,
         [Parameter(Mandatory = $true)]$Artifacts,
-        [string]$Stamp = ''
+        [string]$Stamp = '',
+        # '' : the one hikari installed here, uosc on a first install.
+        [string]$Interface = ''
     )
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $config = Get-HikariFullPath $Candidate.ConfigDir
@@ -4010,7 +4200,17 @@ function Install-HikariTarget {
         # Checked before anything in the folder changes: uosc and thumbfast
         # exactly as pinned are not copied again.
         $uoscUpToDate = Test-HikariUoscUpToDate -ConfigDir $config -Record $old
+        $sujiUpToDate = Test-HikariSujiUpToDate -ConfigDir $config -Record $old
         $thumbUpToDate = Test-HikariThumbfastUpToDate $config
+        # The interface hikari installed here before ('' on a first install)
+        # and the one it installs now.
+        $oldIface = ''
+        # Only a whole record says what hikari installed (one cut short by a
+        # failed first run only has the entries added on the way).
+        if ($null -ne $old -and $old.Values.ContainsKey('hikari_version')) { $oldIface = Get-HikariRecordedInterface $old }
+        $iface = Get-HikariTargetInterface -Record $old -Chosen $Interface
+        $oldAside = @()
+        if ($null -ne $old) { $oldAside = @($old.Aside) }
         $oldSums = @()
         if ($null -ne $old) { $oldSums = @($old.Sums) }
         $oldValues = @{}
@@ -4055,20 +4255,107 @@ function Install-HikariTarget {
             $key = ($c -replace '\.conf$', '') + '_conf_preexisting'
             $confBefore[$c] = & $prev $key (Test-Path -LiteralPath (Join-HikariPath $opts $c) -PathType Leaf)
         }
+        # suji and its suji.conf: recorded once hikari has installed suji here.
+        $sujiKnown = (-not $first -and $oldValues.ContainsKey('suji_preexisting'))
+        $sujiConfKnown = (-not $first -and $oldValues.ContainsKey('suji_conf_preexisting'))
+        $sujiBefore = & $prev 'suji_preexisting' (Test-HikariSujiPresent $config)
+        $sujiConfBefore = & $prev 'suji_conf_preexisting' (Test-Path -LiteralPath (Join-HikariPath $opts $script:SujiConf) -PathType Leaf)
+        # What the record says of the uosc or suji hikari installed, for the one
+        # not installed now: kept, it describes the copy set aside.
+        $sujiRecVersion = [string]$oldValues['suji_version']
+        $sujiRecSha = [string]$oldValues['suji_sha256']
+        $sujiSums = @(Select-HikariSumsByPrefix -Sums $oldSums -Prefixes @('scripts/suji/'))
+        $uoscRecVersion = $script:UoscVersion
+        $uoscZipSha = $script:UoscSha256.ToLowerInvariant()
+        $uoscSums = @()
+        if ($iface -eq 'suji') {
+            $uoscRecVersion = [string]$oldValues['uosc_version']
+            $uoscZipSha = [string]$oldValues['uosc_sha256']
+            $uoscSums = @(Select-HikariUoscSums $oldSums)
+        }
 
-        # b. Interfaces that clash with uosc.
+        # a2. uosc or suji: hikari's copy of the one not chosen is set aside
+        # (never deleted), and the chosen one comes back if hikari set it aside
+        # before. With both, two rows of controls would be drawn.
         $disabled = New-Object System.Collections.Generic.List[string]
         foreach ($d in $oldDisabled) { $disabled.Add($d) }
+        $aside = New-Object System.Collections.Generic.List[string]
+        foreach ($a in $oldAside) { $aside.Add($a) }
+        # A suji that is not hikari's, with suji chosen: set aside (never
+        # deleted), given back on uninstall; hikari installs its own (or puts
+        # back the one it set aside, below).
+        if ($iface -eq 'suji' -and $oldIface -ne 'suji' -and (Test-HikariSujiPresent $config)) {
+            $pair = Move-HikariToDisabled -Path (Join-HikariPath $scripts 'suji') -ConfigDir $config -Stamp $Stamp
+            $disabled.Add($pair)
+            # Recorded at once: a failure later in the run never loses it.
+            Add-HikariRecordEntries -ConfigDir $config -Entries @('disabled=' + $pair)
+            $sujiBefore = $false
+        }
+        if ($oldIface -and $oldIface -ne $iface) {
+            $items = $script:UoscItems
+            if ($oldIface -eq 'suji') { $items = $script:SujiItems }
+            foreach ($a in (Move-HikariInterfaceAside -ConfigDir $config -Items $items -Stamp $Stamp)) { $aside.Add($a) }
+        }
+        $chosenItems = $script:UoscItems
+        if ($iface -eq 'suji') { $chosenItems = $script:SujiItems }
+        $back = @($aside | Where-Object { $chosenItems -ccontains ($_ -split '\|')[1] })
+        if ($back.Count -gt 0) {
+            Restore-HikariPairs -ConfigDir $config -Pairs $back
+            # The sub-folder the set aside fonts went to (scripts-desactivados\fonts),
+            # when putting them back left it empty.
+            foreach ($b in $back) {
+                $parent = Split-Path -Path (Join-HikariPath $config (($b -split '\|')[0] -split '/')) -Parent
+                if (Test-HikariSamePath $parent (Join-HikariPath $config $script:DisabledDir)) { continue }
+                $item = Get-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+                if ($null -ne $item -and $item.PSIsContainer -and -not (Test-HikariLink $item) -and
+                    @(Get-ChildItem -LiteralPath $parent -Force).Count -eq 0) { Remove-HikariItem -Path $parent -Root $config }
+            }
+            $still = @($aside | Where-Object { $null -ne (Get-Item -LiteralPath (Join-HikariPath $config (($_ -split '\|')[0] -split '/')) -Force -ErrorAction SilentlyContinue) })
+            $aside.Clear()
+            foreach ($a in $still) { $aside.Add($a) }
+            # Something came back: is it exactly as pinned?
+            $uoscUpToDate = ($iface -eq 'uosc' -and (Test-HikariUoscUpToDate -ConfigDir $config -Record $old))
+            $sujiUpToDate = ($iface -eq 'suji' -and (Test-HikariSujiUpToDate -ConfigDir $config -Record $old))
+        }
+
+        # b. Interfaces that clash with uosc (or with suji, when it is chosen).
         $conflicts = @(Find-HikariConflicts $config)
+        $userIface = $false
+        if ($iface -eq 'suji') {
+            # uosc when it is not hikari's (hikari's was set aside above), and uosc 4.
+            foreach ($rel in (@($script:UoscItems) + @($script:UoscLegacy | ForEach-Object { 'scripts/' + $_ }))) {
+                $p = Join-HikariPath $config ($rel -split '/')
+                if ($null -eq (Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue)) { continue }
+                $conflicts += $p
+                if ($rel -eq 'scripts/uosc') { $userIface = $true }
+            }
+        }
+        elseif (Test-HikariSujiPresent $config) {
+            # A suji that is not hikari's (hikari's was set aside above).
+            $conflicts += (Join-HikariPath $scripts 'suji')
+            $userIface = $true
+        }
+        $userMoved = $false
         if ($conflicts.Count -gt 0) {
-            Write-HikariWarn (T 'conflicts_found')
+            if ($iface -eq 'suji') { Write-HikariWarn (T 'conflicts_found_suji') } else { Write-HikariWarn (T 'conflicts_found') }
             foreach ($c in $conflicts) { Write-HikariWarn ('  - ' + (Get-HikariRelativePath -Path $c -Root $config)) }
             if (Confirm-Hikari -Question (T 'conflicts_confirm' @($script:DisabledDir)) -Default $true) {
                 foreach ($c in $conflicts) { $disabled.Add((Move-HikariToDisabled -Path $c -ConfigDir $config -Stamp $Stamp)) }
+                $userMoved = $userIface
+            }
+            elseif ($iface -eq 'suji') {
+                Write-HikariWarn (T 'conflicts_kept_suji')
             }
             else {
                 Write-HikariWarn (T 'conflicts_kept')
             }
+        }
+        # The user's uosc (or suji) moved aside above was there before hikari,
+        # but what goes to its place from now on is hikari's: on uninstall
+        # hikari's is removed by default and the user's comes back.
+        if ($userMoved) {
+            if ($iface -eq 'suji') { if (-not (Test-HikariUoscPresent $config)) { $uoscBefore = $false } }
+            elseif (-not (Test-HikariSujiPresent $config)) { $sujiBefore = $false }
         }
 
         # b2. Scripts that are the error page of a failed download: set aside
@@ -4087,10 +4374,22 @@ function Install-HikariTarget {
             }
         }
 
-        # c. uosc.
-        $uoscSums = @()
-        $uoscZipSha = $script:UoscSha256.ToLowerInvariant()
-        if ($uoscUpToDate) {
+        # c. uosc or suji.
+        if ($iface -eq 'suji') {
+            if ($sujiUpToDate) {
+                Write-HikariDetail (T 'suji_uptodate' @($script:SujiVersion))
+            }
+            else {
+                $sujiDir = Get-HikariArtifactValue $Artifacts 'SujiDir'
+                if (-not $sujiDir) { throw (T 'source_missing' @($script:SujiUrl)) }
+                Install-HikariSuji -ConfigDir $config -SujiDir $sujiDir
+                $sujiSums = @(Get-HikariArtifactValue $Artifacts 'SujiSums' | Where-Object { $_ })
+                Write-HikariDetailOk (T 'suji_done' @($script:SujiVersion))
+            }
+            $sujiRecVersion = $script:SujiVersion
+            $sujiRecSha = $script:SujiSha256.ToLowerInvariant()
+        }
+        elseif ($uoscUpToDate) {
             Write-HikariDetail (T 'uosc_uptodate' @($script:UoscVersion))
             $uoscSums = @(Select-HikariUoscSums $oldSums)
         }
@@ -4142,7 +4441,14 @@ function Install-HikariTarget {
                 $installed.Add('script-opts/' + $f.Name)
                 continue
             }
-            if ($first -and $script:SharedConfs -contains $f.Name -and (Test-Path -LiteralPath $dest -PathType Leaf)) {
+            # suji.conf only goes with suji, and is kept aside like uosc.conf the
+            # first time hikari installs it here (also on an update).
+            $keepOriginal = ($first -and $script:SharedConfs -contains $f.Name)
+            if ($f.Name -eq $script:SujiConf) {
+                if ($iface -ne 'suji') { continue }
+                $keepOriginal = -not $sujiConfKnown
+            }
+            if ($keepOriginal -and (Test-Path -LiteralPath $dest -PathType Leaf)) {
                 New-HikariDirectory $origDir
                 Copy-Item -LiteralPath $dest -Destination (Join-HikariPath $origDir $f.Name) -Force
             }
@@ -4203,8 +4509,13 @@ function Install-HikariTarget {
         $values = [ordered]@{}
         $values['hikari_version'] = $Source.Version
         $values['hikari_commit'] = $Source.Commit
-        $values['uosc_version'] = $script:UoscVersion
+        $values['interface'] = $iface
+        $values['uosc_version'] = $uoscRecVersion
         $values['uosc_sha256'] = $uoscZipSha
+        if ($sujiRecVersion) {
+            $values['suji_version'] = $sujiRecVersion
+            $values['suji_sha256'] = $sujiRecSha
+        }
         $values['thumbfast_commit'] = $script:ThumbfastCommit
         $values['installed_at'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
         $values['player'] = $Candidate.Kind
@@ -4213,6 +4524,8 @@ function Install-HikariTarget {
         $values['thumbfast_preexisting'] = ConvertTo-HikariYesNo $thumbBefore
         $values['uosc_conf_preexisting'] = ConvertTo-HikariYesNo $confBefore['uosc.conf']
         $values['thumbfast_conf_preexisting'] = ConvertTo-HikariYesNo $confBefore['thumbfast.conf']
+        if ($iface -eq 'suji' -or $sujiKnown) { $values['suji_preexisting'] = ConvertTo-HikariYesNo $sujiBefore }
+        if ($iface -eq 'suji' -or $sujiConfKnown) { $values['suji_conf_preexisting'] = ConvertTo-HikariYesNo $sujiConfBefore }
         $values['mpv_conf_preexisting'] = ConvertTo-HikariYesNo $mpvConfBefore
         $values['input_conf_preexisting'] = ConvertTo-HikariYesNo $inputConfBefore
         $values['mpv_conf_final_eol'] = $finalEol['mpv_conf']
@@ -4225,7 +4538,8 @@ function Install-HikariTarget {
         $values['last_backup'] = $backup
         $allFiles = @($installed.ToArray()) + @($a4k.Files)
         Write-HikariRecord -ConfigDir $config -Values $values -Files $allFiles -Disabled $disabled.ToArray() -Moved @($a4k.Moved) `
-            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray() -Sums (@($uoscSums) + @($a4k.Sums))
+            -Commented @($a4k.Commented) -CommentedMpv @($a4k.CommentedMpv) -Broken $broken.ToArray() -Sums (@($uoscSums) + @($sujiSums) + @($a4k.Sums)) `
+            -Aside $aside.ToArray()
     }
     catch {
         Stop-HikariStep 'fail'
@@ -4341,10 +4655,11 @@ function Uninstall-HikariTarget {
         $commentedA4k = @()
         $commentedMpvA4k = @()
         $brokenPairs = @()
+        $asidePairs = @()
         if ($null -ne $record) {
             $values = $record.Values; $disabled = @($record.Disabled); $recordFiles = @($record.Files)
             $movedA4k = @($record.Moved); $commentedA4k = @($record.Commented); $commentedMpvA4k = @($record.CommentedMpv)
-            $brokenPairs = @($record.Broken)
+            $brokenPairs = @($record.Broken); $asidePairs = @($record.Aside)
         }
         if ($backup) {
             $protect = @()
@@ -4376,9 +4691,11 @@ function Uninstall-HikariTarget {
         }
 
         $originals = Join-HikariPath $config @($script:OriginalsDir, 'script-opts')
-        foreach ($c in $script:SharedConfs) {
+        foreach ($c in (@($script:SharedConfs) + @($script:SujiConf))) {
             $p = Join-HikariPath $opts $c
             $before = & $wasThere (($c -replace '\.conf$', '') + '_conf_preexisting')
+            # suji.conf only when hikari installed it (with suji) at some point.
+            if ($c -eq $script:SujiConf -and $null -eq $before) { continue }
             $orig = Join-HikariPath $originals $c
             if ($before -eq $true -and (Test-Path -LiteralPath $orig -PathType Leaf)) {
                 Copy-Item -LiteralPath $orig -Destination $p -Force
@@ -4402,6 +4719,18 @@ function Uninstall-HikariTarget {
         Remove-HikariManagedFile -Path (Join-HikariPath $config 'input.conf') -Root $config -CreatedByHikari ((& $wasThere 'input_conf_preexisting') -eq $false) `
             -NoFinalEol ((& $wasThere 'input_conf_final_eol') -eq $false)
 
+        # hikari's uosc or suji, set aside when the other one was chosen: back in
+        # its place first, so the questions below take care of it.
+        if ($asidePairs.Count -gt 0) { Restore-HikariPairs -ConfigDir $config -Pairs $asidePairs }
+        # hikari's suji that could not be put back (something else is in its
+        # place): what is there is not hikari's.
+        $sujiStuck = $false
+        foreach ($a in $asidePairs) {
+            $pair = $a -split '\|'
+            if ($pair[1] -ne 'scripts/suji') { continue }
+            if ($null -ne (Get-Item -LiteralPath (Join-HikariPath $config ($pair[0] -split '/')) -Force -ErrorAction SilentlyContinue)) { $sujiStuck = $true }
+        }
+
         $uoscBefore = & $wasThere 'uosc_preexisting'
         $removeUosc = $false
         if (Test-HikariUoscPresent $config) {
@@ -4410,6 +4739,18 @@ function Uninstall-HikariTarget {
                 Remove-HikariItem -Path (Join-HikariPath $scripts 'uosc') -Root $config
                 foreach ($font in $script:UoscFonts) { Remove-HikariItem -Path (Join-HikariPath $config @('fonts', $font)) -Root $config }
             }
+        }
+        # suji, only when hikari installed it here at some point (a suji of the
+        # user's own is left alone). Yes by default only for hikari's own copy,
+        # exactly as it copied it (by the hashes of the record): a suji of
+        # someone else in its place, or one with changed files, is kept unless
+        # the user says otherwise.
+        $removeSuji = $false
+        if ((Test-HikariSujiPresent $config) -and [string]$values['suji_version']) {
+            $sujiDefault = ((& $wasThere 'suji_preexisting') -eq $false -and -not $sujiStuck -and
+                (Test-HikariCopyIntact -ConfigDir $config -Dir 'scripts/suji' -Sums @($record.Sums)) -eq 0)
+            $removeSuji = Confirm-Hikari -Question (T 'ask_remove_suji') -Default $sujiDefault
+            if ($removeSuji) { Remove-HikariItem -Path (Join-HikariPath $scripts 'suji') -Root $config }
         }
         $thumb = Join-HikariPath $scripts 'thumbfast.lua'
         if (Test-Path -LiteralPath $thumb -PathType Leaf) {
@@ -4421,7 +4762,8 @@ function Uninstall-HikariTarget {
         $pending = @($disabled | Where-Object { $_ -match '\|' })
         if ($pending.Count -gt 0) {
             $names = [string]::Join(', ', @($pending | ForEach-Object { ($_ -split '\|')[1] }))
-            if (Confirm-Hikari -Question (T 'ask_restore' @($names)) -Default $removeUosc) {
+            $restoreDefault = ($removeUosc -or ($removeSuji -and -not (Test-HikariUoscPresent $config)))
+            if (Confirm-Hikari -Question (T 'ask_restore' @($names)) -Default $restoreDefault) {
                 Restore-HikariPairs -ConfigDir $config -Pairs $pending
             }
         }
@@ -4432,11 +4774,12 @@ function Uninstall-HikariTarget {
             }
         }
 
-        # Without uosc, an osc=no of the user's own leaves the player without
-        # controls: offer to put back an interface, or to turn that line off.
-        # With -Yes it only warns.
+        # Without uosc (or suji), an osc=no of the user's own leaves the player
+        # without controls: offer to put back an interface, or to turn that line
+        # off. With -Yes it only warns.
         $mpvConf = Join-HikariPath $config 'mpv.conf'
-        if ($removeUosc -and (Test-Path -LiteralPath $mpvConf -PathType Leaf)) {
+        $noControls = (($removeUosc -and -not (Test-HikariSujiPresent $config)) -or ($removeSuji -and -not (Test-HikariUoscPresent $config)))
+        if ($noControls -and (Test-Path -LiteralPath $mpvConf -PathType Leaf)) {
             $oscOff = @(Find-HikariOscOffLines (Read-HikariText $mpvConf).Text)
             if ($oscOff.Count -gt 0 -and @(Find-HikariConflicts $config).Count -eq 0) {
                 Write-HikariWarn (T 'osc_orphan' @($oscOff[0].Content.Trim()))
@@ -4677,6 +5020,49 @@ function Read-HikariNoPlayerChoice {
     Write-HikariInfo (T 'opt_quit')
     Write-HikariInfo (T 'none_link')
     return (Read-HikariLine (T 'menu_prompt'))
+}
+
+# The interface for this run: -Interface, or the answer to the Interface
+# question ('uosc' or 'suji'). With -Yes and without -Interface, '': each folder
+# then keeps the one hikari installed there, uosc on a first install
+# (Get-HikariTargetInterface). The question starts on suji only when hikari
+# installed suji in every folder chosen. $null when the user leaves it (Esc).
+function Read-HikariInterfaceChoice {
+    param([object[]]$Targets)
+    if ($script:HikariInterfaceChoice) { return $script:HikariInterfaceChoice }
+    if ($script:NonInteractive) { return '' }
+    $default = 'suji'
+    foreach ($t in $Targets) {
+        $config = Get-HikariFullPath $t.ConfigDir
+        $record = $null
+        if (Test-Path -LiteralPath $config -PathType Container) { $record = Read-HikariRecord $config -NoWarn }
+        if ($null -eq $record -or (Get-HikariRecordedInterface $record) -ne 'suji') { $default = 'uosc'; break }
+    }
+    $r = Invoke-HikariMenuOrNumbers {
+        $items = @(
+            (New-HikariMenuItem -Label (T 'interface_uosc') -Summary 'uosc' -Hotkey '1'),
+            (New-HikariMenuItem -Label (T 'interface_suji') -Details @(T 'interface_suji_note') -Summary 'suji' -Hotkey '2')
+        )
+        $start = 0
+        if ($default -eq 'suji') { $start = 1 }
+        $m = Invoke-HikariListMenu -Items $items -Start $start -Title @(T 'interface_title')
+        if ($m.Cancelled) { return $null }
+        return @('uosc', 'suji')[$m.Index]
+    }
+    if (-not (Test-HikariUseNumbers $r)) { return $r }
+    while ($true) {
+        Write-HikariInfo (T 'interface_title')
+        Write-HikariInfo (' 1) ' + (T 'interface_uosc'))
+        Write-HikariInfo (' 2) ' + (T 'interface_suji') + ': ' + (T 'interface_suji_note'))
+        $answer = Read-HikariLine (T 'interface_prompt' @($default))
+        if ($null -eq $answer) { return $default }
+        switch ($answer.Trim()) {
+            '' { return $default }
+            '1' { return 'uosc' }
+            '2' { return 'suji' }
+        }
+        Write-HikariWarn (T 'invalid')
+    }
 }
 
 function Read-HikariFolder {
@@ -4936,18 +5322,28 @@ function Show-HikariVersions {
 }
 
 # What the downloads must bring, decided before anything is downloaded or
-# touched: NeedUosc and NeedThumbfast (some folder lacks them exactly as
-# pinned) and Anime4KUpToDate (every folder has hikari's Anime4K exactly as
+# touched: UsesUosc and UsesSuji (some folder gets that interface, see
+# Get-HikariTargetInterface), NeedUosc, NeedSuji and NeedThumbfast (such a
+# folder lacks it exactly as pinned) and Anime4KUpToDate (every folder has hikari's Anime4K exactly as
 # pinned: the summary says so; Anime4K itself is only downloaded when a
 # folder needs it, see Get-HikariAnime4KSource).
 function Get-HikariDownloadPlan {
-    param([object[]]$Targets)
-    $plan = [pscustomobject]@{ NeedUosc = $false; NeedThumbfast = $false; Anime4KUpToDate = (@($Targets).Count -gt 0) }
+    param([object[]]$Targets, [string]$Interface = '')
+    $plan = [pscustomobject]@{ NeedUosc = $false; NeedThumbfast = $false; Anime4KUpToDate = (@($Targets).Count -gt 0)
+        NeedSuji = $false; UsesUosc = $false; UsesSuji = $false }
     foreach ($t in $Targets) {
         $config = Get-HikariFullPath $t.ConfigDir
         $record = $null
         if (Test-Path -LiteralPath $config -PathType Container) { $record = Read-HikariRecord $config -NoWarn }
-        if (-not (Test-HikariUoscUpToDate -ConfigDir $config -Record $record)) { $plan.NeedUosc = $true }
+        # Only the interface each folder gets (UsesUosc, UsesSuji).
+        if ((Get-HikariTargetInterface -Record $record -Chosen $Interface) -eq 'suji') {
+            $plan.UsesSuji = $true
+            if (-not (Test-HikariSujiUpToDate -ConfigDir $config -Record $record)) { $plan.NeedSuji = $true }
+        }
+        else {
+            $plan.UsesUosc = $true
+            if (-not (Test-HikariUoscUpToDate -ConfigDir $config -Record $record)) { $plan.NeedUosc = $true }
+        }
         if (-not (Test-HikariThumbfastUpToDate $config)) { $plan.NeedThumbfast = $true }
         if (-not (Test-HikariAnime4KUpToDate -Candidate $t -ConfigDir $config -Record $record)) { $plan.Anime4KUpToDate = $false }
     }
@@ -4956,11 +5352,13 @@ function Get-HikariDownloadPlan {
 
 function Invoke-HikariMain {
     param([string]$Action, [string[]]$Target, [bool]$Yes, [bool]$NoMenu = $false, [string]$Anime4K = '', [bool]$ShowVersion = $false,
-        [bool]$Detail = $script:HikariVerbose)
+        [bool]$Detail = $script:HikariVerbose, [string]$Interface = '')
     $script:HikariVerbose = $Detail
     Initialize-HikariUi
     $script:NonInteractive = $Yes
     $script:HikariAnime4KChoice = $Anime4K
+    # ValidateSet takes any case (-Interface SUJI): the record only knows lower case.
+    $script:HikariInterfaceChoice = ([string]$Interface).ToLowerInvariant()
     # Keyboard menus only on a real interactive console; numbers otherwise.
     $script:HikariMenu = $false
     if (-not $Yes -and -not $NoMenu) { $script:HikariMenu = [bool](& $script:HikariConsoleProbe) }
@@ -5017,6 +5415,16 @@ function Invoke-HikariMain {
         Write-HikariSay (T 'cancelled')
         return 0
     }
+    # The interface: -Interface, the answer to the question, or '' (each folder
+    # keeps its own). $null: the user left the question.
+    $chosenInterface = ''
+    if ($Action -eq 'install') {
+        $chosenInterface = Read-HikariInterfaceChoice -Targets $targets
+        if ($null -eq $chosenInterface) {
+            Write-HikariSay (T 'cancelled')
+            return 0
+        }
+    }
 
     $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
     $ok = 0
@@ -5032,8 +5440,9 @@ function Invoke-HikariMain {
             try {
                 $source = Get-HikariSource -TempDir $temp
                 # Only what some folder lacks is downloaded.
-                $plan = Get-HikariDownloadPlan -Targets $targets
-                $artifacts = Get-HikariArtifacts -TempDir $temp -NeedUosc $plan.NeedUosc -NeedThumbfast $plan.NeedThumbfast
+                $plan = Get-HikariDownloadPlan -Targets $targets -Interface $chosenInterface
+                $artifacts = Get-HikariArtifacts -TempDir $temp -NeedUosc $plan.NeedUosc -NeedThumbfast $plan.NeedThumbfast `
+                    -NeedSuji $plan.NeedSuji -UsesUosc $plan.UsesUosc -UsesSuji $plan.UsesSuji
                 if ($plan.Anime4KUpToDate) { Write-HikariRow -Label 'Anime4K' -Ok $true -Text (T 'ui_uptodate') }
                 Write-HikariUi
             }
@@ -5051,7 +5460,7 @@ function Invoke-HikariMain {
             $first = $false
             try {
                 if ($Action -eq 'install') {
-                    [void](Install-HikariTarget -Candidate $t -Source $source -Artifacts $artifacts -Stamp $stamp)
+                    [void](Install-HikariTarget -Candidate $t -Source $source -Artifacts $artifacts -Stamp $stamp -Interface $chosenInterface)
                 }
                 else {
                     [void](Uninstall-HikariTarget -Candidate $t -Stamp $stamp)
@@ -5099,7 +5508,7 @@ $savedTls = $null
 try { $savedTls = [System.Net.ServicePointManager]::SecurityProtocol } catch { }
 try {
     $code = Invoke-HikariMain -Action $Action -Target $Target -Yes ([bool]$Yes) -NoMenu ([bool]$NoMenu) -Anime4K $Anime4K `
-        -ShowVersion ([bool]$ShowVersion) -Detail ([bool]$Detail)
+        -ShowVersion ([bool]$ShowVersion) -Detail ([bool]$Detail) -Interface $Interface
 }
 finally {
     if ($null -ne $savedTls) { try { [System.Net.ServicePointManager]::SecurityProtocol = $savedTls } catch { } }
@@ -5109,8 +5518,8 @@ finally {
 # exit: through iex, exit would close the user's PowerShell window.
 if ({ }.File) { exit $code }
 $global:LASTEXITCODE = $code
-} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K -ShowVersion:$HikariShowVersion `
-    -Detail:($VerbosePreference -eq 'Continue')
+} -Action $HikariAction -Target $HikariTarget -Yes:$HikariYes -NoMenu:$HikariNoMenu -Anime4K $HikariAnime4K -Interface $HikariInterface `
+    -ShowVersion:$HikariShowVersion -Detail:($VerbosePreference -eq 'Continue')
 }
 catch {
     # An unexpected error that got this far. Same rule as above: exit only when
@@ -5121,5 +5530,5 @@ catch {
 }
 finally {
     # Through iex the parameters above are variables of the caller's session.
-    if (-not { }.File) { Remove-Variable -Name HikariAction, HikariTarget, HikariYes, HikariNoMenu, HikariAnime4K, HikariShowVersion -Scope 0 -ErrorAction SilentlyContinue }
+    if (-not { }.File) { Remove-Variable -Name HikariAction, HikariTarget, HikariYes, HikariNoMenu, HikariAnime4K, HikariInterface, HikariShowVersion -Scope 0 -ErrorAction SilentlyContinue }
 }

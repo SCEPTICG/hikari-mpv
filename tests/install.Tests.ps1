@@ -222,7 +222,23 @@ function New-FakeAnime4KZip {
     return $zip
 }
 
-# Prepares fake uosc/thumbfast/Anime4K downloads with matching hashes; returns artifacts.
+# A zip like suji's release: LICENSE and suji\ at the root.
+function New-FakeSujiZip {
+    param([string]$Dir)
+    $src = P @($Dir, 'suji-src')
+    Set-TestFile (P @($src, 'LICENSE')) 'LGPL-2.1'
+    Set-TestFile (P @($src, 'suji', 'main.lua')) '-- fake suji main'
+    Set-TestFile (P @($src, 'suji', 'core', 'menu.lua')) '-- fake suji core'
+    Set-TestFile (P @($src, 'suji', 'modules', 'time.lua')) '-- fake suji module'
+    $zip = P @($Dir, 'suji.zip')
+    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($src, $zip)
+    return $zip
+}
+
+# Prepares fake uosc/suji/thumbfast/Anime4K downloads with matching hashes;
+# returns artifacts (without suji: see New-FakeSujiArtifacts).
 function New-FakeArtifacts {
     param([string]$Dir)
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
@@ -230,21 +246,34 @@ function New-FakeArtifacts {
     $thumb = P @($Dir, 'thumbfast-src.lua')
     Set-TestFile $thumb '-- fake thumbfast'
     $a4k = New-FakeAnime4KZip (P @($Dir, 'a4k'))
+    $suji = New-FakeSujiZip $Dir
     $script:UoscSha256 = Get-HikariFileSha256 $zip
     $script:ThumbfastSha256 = Get-HikariFileSha256 $thumb
     $script:Anime4KSha256 = Get-HikariFileSha256 $a4k
+    $script:SujiSha256 = Get-HikariFileSha256 $suji
     $script:FakeDownloads = @{}
     $script:FakeDownloads[$script:UoscUrl] = $zip
     $script:FakeDownloads[$script:ThumbfastUrl] = $thumb
     $script:FakeDownloads[$script:Anime4KUrl] = $a4k
+    $script:FakeDownloads[$script:SujiUrl] = $suji
     $work = P @($Dir, 'work')
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     return (Get-HikariArtifacts -TempDir $work)
 }
 
+# The same downloads, with suji in the artifacts too.
+function New-FakeSujiArtifacts {
+    param([string]$Dir)
+    [void](New-FakeArtifacts $Dir)
+    $work = P @($Dir, 'work-suji')
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    return (Get-HikariArtifacts -TempDir $work -NeedSuji $true)
+}
+
 $OriginalUoscSha = $script:UoscSha256
 $OriginalThumbSha = $script:ThumbfastSha256
 $OriginalAnime4KSha = $script:Anime4KSha256
+$OriginalSujiSha = $script:SujiSha256
 # The graphics card the tests see unless they say otherwise.
 $script:HikariGpuProbe = { @('Intel(R) UHD Graphics 620') }
 # The Windows display language the tests see unless they say otherwise.
@@ -1174,6 +1203,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')) -PathType Leaf) 'continue watching options'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')) -PathType Leaf) 'chapters module'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-release.lua')) -PathType Leaf) 'release names module'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-menu.lua')) -PathType Leaf) 'menus module'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json')))) 'continue watching list not created by the installer'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'hikari-update.lua')) -PathType Leaf) 'update check script'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-update.conf')) -PathType Leaf) 'update check options'
@@ -1186,7 +1216,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-Equal $rec.Values['player_exe'] $exe 'record exe'
     Assert-Equal $rec.Values['hikari_commit'] $Source.Commit 'record commit'
     Assert-True (@($rec.Files) -contains 'scripts/hikari-skip.lua') 'record files'
-    foreach ($f in @('scripts/hikari-resume.lua', 'script-opts/hikari-resume.conf', 'script-modules/hikari-chapters.lua', 'script-modules/hikari-release.lua')) {
+    foreach ($f in @('scripts/hikari-resume.lua', 'script-opts/hikari-resume.conf', 'script-modules/hikari-chapters.lua', 'script-modules/hikari-release.lua', 'script-modules/hikari-menu.lua')) {
         Assert-True (@($rec.Files) -contains $f) ('record has ' + $f)
     }
     Assert-Equal @($rec.Disabled).Count 3 'record disabled'
@@ -1235,6 +1265,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')))) 'continue watching options gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')))) 'chapters module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-release.lua')))) 'release names module gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-menu.lua')))) 'menus module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt')))) 'update check state gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt.tmp')))) 'update check temporary file gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json')))) 'AniSkip cache gone'
@@ -1336,8 +1367,9 @@ Test-Case 'interactive: menu, no player found, typed folder, then uninstall from
     $cfg = P @($d, 'Mis cosas', 'mpv config')
     New-Item -ItemType Directory -Path (P @($d, 'Mis cosas')) | Out-Null
     $script:Answers = New-Object System.Collections.Generic.Queue[string]
-    # The last answer takes the default for Anime4K (install it).
-    foreach ($a in @('9', '1', '2', $cfg, '')) { $script:Answers.Enqueue($a) }
+    # The last two answers take the defaults for the interface (uosc) and for
+    # Anime4K (install it).
+    foreach ($a in @('9', '1', '2', $cfg, '', '')) { $script:Answers.Enqueue($a) }
     function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
     function Read-HikariLine { param([string]$Prompt) return $script:Answers.Dequeue() }
     $script:NonInteractive = $false
@@ -1354,7 +1386,7 @@ Test-Case 'interactive: menu, no player found, typed folder, then uninstall from
         Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'uosc removed by default'
         # Detected player: pick it by number, then exit from the menu.
         Set-TestFile (P @($script:FakeEnvBase, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
-        foreach ($a in @('1', '1', '')) { $script:Answers.Enqueue($a) }
+        foreach ($a in @('1', '1', '', '')) { $script:Answers.Enqueue($a) }
         $code = Invoke-HikariMain -Action '' -Target @() -Yes $false
         Assert-Equal $code 0 'install by number'
         $net = P @($script:FakeEnvBase, 'Roaming', 'mpv.net')
@@ -1421,7 +1453,7 @@ Test-Case 'winget output never ends up as a target (it used to crash with Strict
         # Whole flow: menu -> install -> winget -> install into %APPDATA%\mpv.net.
         Remove-Item -LiteralPath $exeDir -Recurse -Force
         [void](New-FakeArtifacts (P @($d, 'dl')))
-        foreach ($a in @('1', '1', '', '')) { $script:Answers.Enqueue($a) }
+        foreach ($a in @('1', '1', '', '', '')) { $script:Answers.Enqueue($a) }
         $code = Invoke-HikariMain -Action '' -Target @() -Yes $false
         Assert-Equal $code 0 'exit code'
         Assert-True (Test-Path -LiteralPath (P @($base, 'Roaming', 'mpv.net', 'scripts', 'hikari-skip.lua'))) 'installed for mpv.net'
@@ -1581,7 +1613,8 @@ Test-Case 'refused targets: drive root, user profile, and folders that are not m
     [void](New-FakeArtifacts (P @($d, 'dl')))
     $script:FakeEnvBase = $d
     function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
-    function Read-HikariLine { param([string]$Prompt) return $script:Reply }
+    # Enter (the default, uosc) for the Interface question, $script:Reply to the rest.
+    function Read-HikariLine { param([string]$Prompt) if ($Prompt -like 'Choose an option (Enter: *') { return '' } return $script:Reply }
     try {
         Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($docs) -Yes $true) 2 '-Yes refuses a non-mpv folder'
         Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($e.UserProfile) -Yes $true) 2 '-Yes refuses the profile'
@@ -2024,9 +2057,9 @@ Test-Case 'menus end to end: install from the list, then uninstall answering wit
     function New-HikariEnvironment { return (New-FakeEnv $script:FakeEnvBase) }
     function Read-HikariLine { param([string]$Prompt) throw 'a number question was asked' }
     try {
-        # Install (first entry), the only player (Enter with nothing ticked), then
-        # "move the clashing interface?" with its default (yes).
-        Use-FakeConsole @('Enter', 'Enter', 'Enter')
+        # Install (first entry), the only player (Enter with nothing ticked), the
+        # interface (uosc), then "move the clashing interface?" with its default (yes).
+        Use-FakeConsole @('Enter', 'Enter', 'Enter', 'Enter')
         $script:HikariConsoleProbe = { $true }
         Assert-Equal (Invoke-HikariMain -Action '' -Target @() -Yes $false) 0 'install exit code'
         Assert-Equal $script:Keys.Count 0 'all keys used'
@@ -2211,6 +2244,19 @@ Test-Case 'keys pressed before a menu opens are thrown away' {
         & $script:HikariKeyFlush
     }
     finally { Remove-Item Function:\Read-HikariLine; Reset-FakeConsole }
+}
+
+Test-Case 'keys pressed before a question asked in writing are thrown away' {
+    function Read-Host { param([string]$Prompt) $script:PendingAtRead = $script:Pending.Count; return '2' }
+    try {
+        Use-FakeConsole
+        $script:Pending.Enqueue('1')
+        $script:Pending.Enqueue('Enter')
+        $script:PendingAtRead = -1
+        Assert-Equal (Read-HikariLine 'Choose an option') '2' 'the line typed after the question is the answer'
+        Assert-Equal $script:PendingAtRead 0 'flushed before Read-Host'
+    }
+    finally { Remove-Item Function:\Read-Host; Reset-FakeConsole }
 }
 
 Test-Case 'text fitting: middle ellipsis for paths, end ellipsis otherwise' {
@@ -3420,8 +3466,8 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
     try {
         $script:HikariFancyProbe = { $true }
         $script:HikariVersion = 'preview-abc1234'
-        # Install (Enter), the highlighted folder (Enter).
-        Use-FakeConsole @('Enter', 'Enter')
+        # Install (Enter), the highlighted folder (Enter), the interface (Enter: uosc).
+        Use-FakeConsole @('Enter', 'Enter', 'Enter')
         $script:HikariConsoleProbe = { $true }
         $text = Get-ShownText { $script:SummaryCode = Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $false }
         Assert-Equal $script:SummaryCode 0 'exit code'
@@ -3432,7 +3478,7 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
         Assert-True (-not $text.Contains('Install or update') -and -not $text.Contains('folders found')) ('nothing of the menus written; output: ' + $text)
         Assert-True ($script:Frames[2].StartsWith('  Players and config folders found:' + "`n")) ('the title is part of the menu: ' + $script:Frames[2])
         $empty = @($script:Frames | Where-Object { $_ -eq '' }).Count
-        Assert-Equal $empty 2 ('both menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
+        Assert-Equal $empty 3 ('the three menus taken off the screen; frames: ' + [string]::Join(' || ', $script:Frames))
         # Esc in the folders menu: only "Cancelled." after the notices.
         Use-FakeConsole @('Enter', 'Escape')
         $script:HikariConsoleProbe = { $true }
@@ -3442,11 +3488,13 @@ Test-Case 'summary on a console: the menus and their title go once answered, the
         Assert-Equal ([string]::Join('|', (Get-SummaryLines $text))) ([string]::Join('|', $want)) 'Esc: the title, the notice and "Cancelled."'
         Assert-Equal (Get-LastFrame) '' 'Esc: the menu taken off the screen'
         # -Verbose: the title written above the menu, the choice left in its place.
-        Use-FakeConsole @('Enter', 'Enter')
+        Use-FakeConsole @('Enter', 'Enter', 'Enter')
         $script:HikariConsoleProbe = { $true }
         $text = Get-ShownText { [void](Invoke-HikariMain -Action '' -Target @() -Yes $false -Anime4K 'no' -Detail $true) }
         Assert-True ((Get-ScreenLines $text) -contains 'Players and config folders found:') ('-Verbose: the title stays; output: ' + $text)
-        Assert-True ($script:Frames[0] -ne '' -and (Get-LastFrame).StartsWith($Ptr + ' mpv.net (')) ('-Verbose: the choice stays: ' + (Get-LastFrame))
+        $chosen = @($script:Frames | Where-Object { $_.StartsWith($Ptr + ' mpv.net (') })
+        Assert-True ($script:Frames[0] -ne '' -and $chosen.Count -eq 1) ('-Verbose: the choice stays: ' + [string]::Join(' || ', $script:Frames))
+        Assert-Equal (Get-LastFrame) ($Ptr + ' uosc') '-Verbose: the interface chosen stays too'
     }
     finally {
         $script:HikariFancyProbe = $savedFancy
@@ -4198,6 +4246,258 @@ Test-Case 'as administrator, a linked hikari-originales: refused before any fold
     finally { $script:HikariElevated = $false }
     Assert-Equal @(Get-ChildItem -LiteralPath $outside -Force).Count 0 'no folder made outside'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'sosc-originales', 'script-opts', 'uosc.conf'))) 'uosc.conf not moved'
+}
+
+# ---------------------------------------------------------------------------
+# The interface: uosc or suji
+# ---------------------------------------------------------------------------
+
+Test-Case 'suji: pinned release, and suji.conf in the hikari files' {
+    Assert-Equal $script:SujiUrl 'https://github.com/SCEPTICG/suji/releases/download/v0.7.1/suji.zip' 'URL'
+    Assert-True ($OriginalSujiSha -cmatch '\A[0-9a-f]{64}\z') 'SHA256'
+    Assert-True (Test-Path -LiteralPath (P @($RepoRoot, 'portable_config', 'script-opts', 'suji.conf')) -PathType Leaf) 'suji.conf in portable_config'
+}
+
+Test-Case 'suji: install, update, switch to uosc and back (nothing deleted), uninstall' {
+    $d = New-TestDir 'suji-e2e'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`n"
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-100000' -Interface 'suji')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- fake suji main' 'suji installed'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua'))) 'suji core'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'suji', 'LICENSE')))) 'only suji\ copied'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'no uosc'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'fonts', 'uosc_icons.otf')))) 'no uosc fonts'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'thumbfast.lua'))) '-- fake thumbfast' 'thumbfast too'
+    Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'suji.conf'))) (Get-TestText (P @($RepoRoot, 'portable_config', 'script-opts', 'suji.conf'))) 'suji.conf'
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal $rec.Values['interface'] 'suji' 'record interface'
+    Assert-Equal $rec.Values['suji_version'] '0.7.1' 'record suji version'
+    Assert-Equal $rec.Values['suji_sha256'] $script:SujiSha256 'record suji zip'
+    Assert-Equal $rec.Values['suji_preexisting'] 'no' 'record suji before'
+    Assert-Equal $rec.Values['suji_conf_preexisting'] 'no' 'record suji.conf before'
+    Assert-Equal $rec.Values['uosc_version'] '' 'no uosc in the record'
+    Assert-Equal @($rec.Sums | Where-Object { $_.StartsWith('scripts/suji/') }).Count 3 'suji hashes'
+    Assert-True (Test-HikariSujiUpToDate -ConfigDir $cfg -Record $rec) 'up to date'
+
+    # An update without -Interface keeps suji; a changed file is put back.
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua')) '-- changed'
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-100100')
+    Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' 'suji remembered'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua'))) '-- fake suji core' 'changed file put back'
+
+    # To uosc: suji set aside, not deleted.
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-100200' -Interface 'uosc')
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc', 'main.lua'))) 'uosc installed'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'suji')))) 'suji not in scripts'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'suji', 'main.lua'))) '-- fake suji main' 'suji set aside'
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal $rec.Values['interface'] 'uosc' 'record uosc'
+    Assert-Equal ([string]::Join(',', $rec.Aside)) 'scripts-desactivados/suji|scripts/suji' 'aside recorded'
+    Assert-Equal $rec.Values['suji_version'] '0.7.1' 'suji kept in the record'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'suji.conf'))) 'suji.conf left'
+
+    # Back to suji: suji back in place, uosc and its fonts set aside.
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-100300' -Interface 'suji')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- fake suji main' 'suji back'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'suji')))) 'nothing of suji left aside'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'uosc', 'main.lua'))) 'uosc set aside'
+    Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados', 'fonts', 'uosc_icons.otf'))) 'uosc font set aside'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'fonts', 'uosc_icons.otf')))) 'uosc font not in fonts'
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal @($rec.Aside).Count 3 'uosc and its two fonts recorded as set aside'
+    Assert-Equal $rec.Values['uosc_version'] $script:UoscVersion 'uosc kept in the record'
+
+    # Uninstall with the default answers: everything of hikari goes.
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-100400')
+    foreach ($rel in @(@('scripts'), @('fonts'), @('scripts-desactivados'), @('script-opts', 'suji.conf'), @('hikari-installed.txt'))) {
+        Assert-True (-not (Test-Path -LiteralPath (P (@($cfg) + $rel)))) ('gone: ' + [string]::Join('/', $rel))
+    }
+    Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) "volume=50`n" 'mpv.conf as before'
+}
+
+Test-Case 'suji over a uosc and a suji.conf of the user: set aside, and back on uninstall' {
+    $d = New-TestDir 'suji-user'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'main.lua')) '-- my uosc'
+    Set-TestFile (P @($cfg, 'fonts', 'uosc_icons.otf')) 'my icons'
+    Set-TestFile (P @($cfg, 'script-opts', 'suji.conf')) "controls=mine`n"
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-110000' -Interface 'suji')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'uosc', 'main.lua'))) '-- my uosc' 'the user uosc set aside'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'fonts', 'uosc_icons.otf'))) 'my icons' 'its font too'
+    Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*clash with suji*' }).Count -eq 1) 'said it clashes with suji'
+    $rec = Read-HikariRecord $cfg
+    Assert-True (@($rec.Disabled) -contains 'scripts-desactivados/uosc|scripts/uosc') 'recorded as set aside'
+    Assert-Equal $rec.Values['uosc_preexisting'] 'no' 'what goes to scripts\uosc from now on is hikari''s'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-originales', 'script-opts', 'suji.conf'))) "controls=mine`n" 'the user suji.conf kept aside'
+    Assert-Equal $rec.Values['suji_conf_preexisting'] 'yes' 'suji.conf was there'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-110100')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'uosc', 'main.lua'))) '-- my uosc' 'the user uosc back'
+    Assert-Equal (Get-TestText (P @($cfg, 'fonts', 'uosc_icons.otf'))) 'my icons' 'its font back'
+    Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'suji.conf'))) "controls=mine`n" 'the user suji.conf back'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'suji')))) 'hikari''s suji gone'
+}
+
+Test-Case 'a suji of the user: with uosc it clashes, with suji it is set aside; back on uninstall' {
+    $d = New-TestDir 'suji-own'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'main.lua')) '-- my suji'
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-120000')
+    Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'uosc' 'uosc on a first install'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'suji', 'main.lua'))) '-- my suji' 'set aside as a clashing interface'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'suji.conf')))) 'no suji.conf with uosc'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-120100')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- my suji' 'back on uninstall'
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-120200' -Interface 'suji')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- fake suji main' 'hikari''s suji installed'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'suji', 'main.lua'))) '-- my suji' 'the user suji set aside'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-120300')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- my suji' 'the user suji back'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts-desactivados')))) 'nothing left aside'
+}
+
+Test-Case 'uninstall takes only hikari''s own suji by default (not someone else''s, not a changed one); uosc as ever' {
+    $d = New-TestDir 'suji-notours'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $env1 = New-FakeEnv $d
+    # A suji of someone else where hikari's (set aside) was.
+    $cfg = P @($d, 'a')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130000' -Interface 'suji')
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130100' -Interface 'uosc')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'main.lua')) '-- mine'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130200')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'main.lua'))) '-- mine' 'the other suji kept'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts-desactivados', 'suji', 'main.lua'))) '-- fake suji main' 'hikari''s left aside'
+    # hikari's suji with a changed file.
+    $cfg = P @($d, 'b')
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130300' -Interface 'suji')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua')) '-- my change'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130400')
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'suji', 'core', 'menu.lua'))) '-- my change' 'a changed suji kept'
+    # uosc goes by the record alone, as ever (it may have updated itself): one
+    # hikari installed, with main.lua changed, is removed and ModernX comes back.
+    $cfg = P @($d, 'c')
+    Set-TestFile (P @($cfg, 'scripts', 'ModernX.lua')) '-- modernx'
+    $cand = New-HikariCandidate -Env $env1 -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-130500')
+    Set-TestFile (P @($cfg, 'scripts', 'uosc', 'main.lua')) '-- uosc, updated'
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261021-130600')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'a changed uosc removed'
+    Assert-Equal (Get-TestText (P @($cfg, 'scripts', 'ModernX.lua'))) '-- modernx' 'ModernX back'
+}
+
+Test-Case 'a suji of the user set aside is recorded at once, and -Interface SUJI is suji' {
+    $d = New-TestDir 'suji-early'
+    $art = New-FakeSujiArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'scripts', 'suji', 'main.lua')) '-- my suji'
+    Set-TestFile (P @($cfg, 'mpv.conf')) ($BlockB + "`nosc=no`n")
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-Throws { Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261021-140000' -Interface 'suji' } '*incomplete*' 'malformed mpv.conf'
+    Assert-True (@((Read-HikariRecord $cfg).Disabled) -contains 'scripts-desactivados/suji|scripts/suji') 'recorded before the failure'
+    $cfg2 = P @($d, 'upper')
+    Set-TestFile (P @($cfg2, 'mpv.conf')) "volume=50`n"
+    Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg2) -Yes $true -Interface 'SUJI') 0 'install'
+    Assert-Equal (Read-HikariRecord $cfg2).Values['interface'] 'suji' 'recorded in lower case'
+    Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg2) -Yes $true) 0 'update'
+    Assert-Equal (Read-HikariRecord $cfg2).Values['interface'] 'suji' 'still suji on the next update'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg2, 'scripts', 'uosc')))) 'no uosc'
+}
+
+Test-Case 'Invoke-HikariMain -Interface: only suji downloaded, remembered with -Yes, bad hash refused' {
+    $d = New-TestDir 'suji-main'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`n"
+    $script:Fetched = New-Object System.Collections.Generic.List[string]
+    $realDownloader = $script:HikariDownloader
+    $script:HikariDownloader = {
+        param([string]$Url, [string]$OutFile)
+        $script:Fetched.Add($Url)
+        Copy-Item -LiteralPath $script:FakeDownloads[$Url] -Destination $OutFile -Force
+    }
+    try {
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true -Interface 'suji') 0 'install'
+        Assert-True ($script:Fetched -contains $script:SujiUrl) 'suji downloaded'
+        Assert-True (-not ($script:Fetched -contains $script:UoscUrl)) 'uosc not downloaded'
+        Assert-True (Test-Path -LiteralPath (P @($cfg, 'scripts', 'suji', 'main.lua'))) 'suji installed'
+        $script:Fetched.Clear()
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true) 0 'update'
+        Assert-Equal $script:Fetched.Count 0 'nothing downloaded: suji up to date'
+        Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' 'suji remembered'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'still no uosc'
+        Assert-Equal (Invoke-HikariMain -Action 'uninstall' -Target @($cfg) -Yes $true) 0 'uninstall'
+        $script:SujiSha256 = '0' * 64
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $true -Interface 'suji') 1 'bad suji hash: exit 1'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts')))) 'nothing installed'
+        Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-installed.txt')))) 'no record'
+    }
+    finally { $script:HikariDownloader = $realDownloader }
+}
+
+Test-Case 'the Interface question: numbers, Enter takes the one installed, uosc on a first install' {
+    $d = New-TestDir 'suji-ask'
+    [void](New-FakeArtifacts (P @($d, 'dl')))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'mpv.conf')) "volume=50`n"
+    $script:Lines = New-Object System.Collections.Generic.Queue[string]
+    $script:Prompts = New-Object System.Collections.Generic.List[string]
+    function Read-HikariLine { param([string]$Prompt) $script:Prompts.Add($Prompt); if ($script:Lines.Count -eq 0) { return $null } return $script:Lines.Dequeue() }
+    try {
+        # As administrator (the Windows runners), the installer first asks whether to go on.
+        foreach ($a in (@($AdminAnswer) + @('x', '2'))) { $script:Lines.Enqueue($a) }
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'install'
+        Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' '2 = suji'
+        Assert-True ($script:Prompts -contains 'Choose an option (Enter: uosc)') 'Enter = uosc on a first install'
+        Assert-True (@($script:HikariWarnings | Where-Object { $_ -eq 'Invalid option.' }).Count -eq 1) 'invalid answer asked again'
+        $script:Prompts.Clear()
+        foreach ($a in $AdminAnswer) { $script:Lines.Enqueue($a) }
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'update, end of input'
+        Assert-True ($script:Prompts -contains 'Choose an option (Enter: suji)') 'Enter = suji, the one installed'
+        Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' 'kept'
+        foreach ($a in (@($AdminAnswer) + @('1'))) { $script:Lines.Enqueue($a) }
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'to uosc'
+        Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'uosc' '1 = uosc'
+        $script:Prompts.Clear()
+        foreach ($a in $AdminAnswer) { $script:Lines.Enqueue($a) }
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -Interface 'suji' -NoMenu $true) 0 '-Interface'
+        Assert-Equal @($script:Prompts | Where-Object { $_ -like 'Choose an option*' }).Count 0 'no question with -Interface'
+        Set-HikariLanguage 'es'
+        try { Assert-Equal (T 'interface_uosc') 'uosc (recomendada)' 'in Spanish' }
+        finally { Set-HikariLanguage 'en' }
+    }
+    finally { Remove-Item Function:\Read-HikariLine }
+}
+
+Test-Case 'the Interface menu: Down and Enter = suji, starts on the one installed, Esc leaves' {
+    $d = New-TestDir 'suji-menu'
+    $cfg = P @($d, 'mpv')
+    New-Item -ItemType Directory -Path $cfg -Force | Out-Null
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    # No -Interface (Invoke-HikariMain sets it on every run).
+    $script:HikariInterfaceChoice = ''
+    try {
+        Use-FakeConsole @('DownArrow', 'Enter')
+        Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) 'suji' 'Down, Enter'
+        Assert-True ($script:Frames[0].StartsWith('  Interface' + "`n" + $Ptr + ' uosc (recommended)') -or $script:Frames[0].Contains($Ptr + ' uosc (recommended)')) ('starts on uosc: ' + $script:Frames[0])
+        Assert-True ($script:Frames[0].Contains("hikari's own interface, still being tested")) 'suji note'
+        Use-FakeConsole @('Escape')
+        Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) $null 'Esc'
+        Set-TestFile (P @($cfg, 'hikari-installed.txt')) "interface=suji`r`n"
+        Use-FakeConsole @('Enter')
+        Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) 'suji' 'starts on suji when installed'
+        Use-FakeConsole @('1')
+        Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) 'uosc' 'hotkey 1'
+    }
+    finally { Reset-FakeConsole }
 }
 
 # ---------------------------------------------------------------------------

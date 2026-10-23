@@ -84,6 +84,9 @@ make_zip "$fake/anime4k.zip" "${a4k_args[@]}" 'readme.txt=not a shader' '../Anim
 make_zip "$fake/uosc.zip" 'scripts/uosc/main.lua=-- fake uosc 5.13.0' 'scripts/uosc/lib/x.lua=-- lib' \
     'fonts/uosc_icons.otf=icons 5.13' 'fonts/uosc_textures.ttf=textures 5.13' 'script-opts/uosc.conf=# uosc default conf'
 printf '%s\n' '-- fake thumbfast' >"$fake/thumbfast.lua"
+# Like the real suji release: LICENSE and suji/ at the root.
+make_zip "$fake/suji.zip" 'LICENSE=LGPL-2.1' 'suji/main.lua=-- fake suji 0.2.0' 'suji/core/menu.lua=-- core' \
+    'suji/modules/time.lua=-- module'
 a4k_count=$(printf '%s\n' "$A4K_NAMES" | tr ' ' '\n' | grep -c .)
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
@@ -97,6 +100,7 @@ copy="$tmp/repo/install/hikari.sh"
 sed -e "s/^\(    UOSC_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/uosc.zip")'/" \
     -e "s/^\(    THUMBFAST_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/thumbfast.lua")'/" \
     -e "s/^\(    ANIME4K_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/anime4k.zip")'/" \
+    -e "s/^\(    SUJI_SHA256='\)[0-9a-f]\{64\}'\$/\1$(sha "$fake/suji.zip")'/" \
     -e '$d' "$repo/install/hikari.sh" >"$copy"
 printf '. "$HIKARI_TEST_OVERRIDES"\n' >>"$copy"
 tail -n 1 "$repo/install/hikari.sh" >>"$copy"
@@ -111,6 +115,7 @@ hikari_fetch() {
         "$UOSC_URL") f=$FAKE/uosc.zip ;;
         "$THUMBFAST_URL") f=$FAKE/thumbfast.lua ;;
         "$ANIME4K_URL") f=$FAKE/anime4k.zip ;;
+        "$SUJI_URL") f=$FAKE/suji.zip ;;
         https://release-assets.githubusercontent.com/uosc.zip) f=$FAKE/uosc.zip ;;
         # A signed address, as GitHub sends: served only when it comes whole.
         https://release-assets.githubusercontent.com/uosc.zip\?*)
@@ -193,6 +198,13 @@ for pair in UoscVersion:UOSC_VERSION UoscUrl:UOSC_URL UoscSha256:UOSC_SHA256 Thu
     if [ -z "$a" ] || [ "$a" != "$b" ]; then same_pins=false; echo "     differs: $pair ($a / $b)"; fi
 done
 check 'uosc, thumbfast and Anime4K: same versions, URLs and SHA256 as hikari.ps1' $same_pins
+same_pins=true
+for pair in SujiVersion:SUJI_VERSION SujiUrl:SUJI_URL SujiSha256:SUJI_SHA256 SujiConf:SUJI_CONF; do
+    a=$(ps1_value "${pair%%:*}")
+    b=$(sh_value "${pair#*:}")
+    if [ -z "$a" ] || [ "$a" != "$b" ]; then same_pins=false; echo "     differs: $pair ($a / $b)"; fi
+done
+check 'suji: same version, URL, SHA256 and suji.conf as hikari.ps1' $same_pins
 # The files that show a folder is mpv's: the same list in both installers.
 ps1_cfg=$(sed -n "s/^\$script:MpvConfigFiles = @(\(.*\))\$/\1/p" "$repo/install/hikari.ps1" | tr -d "', ")
 sh_cfg=$(sed -n "s/^    MPV_CONFIG_FILES=(\(.*\))\$/\1/p" "$repo/install/hikari.sh" | tr -d "' ")
@@ -283,6 +295,8 @@ check 'clean install: continue watching: script, options, chapters and release n
 check 'clean install: continue watching: in the record' \
     test "$(grep -cxE 'file=(scripts/hikari-resume\.lua|script-opts/hikari-resume\.conf|script-modules/hikari-chapters\.lua|script-modules/hikari-release\.lua)' "$cfg/hikari-installed.txt")" = 4
 check 'clean install: continue watching: no list created by the installer' test ! -e "$cfg/hikari-resume.json"
+check 'clean install: the menus module installed and recorded' \
+    test -f "$cfg/script-modules/hikari-menu.lua" -a "$(grep -cx 'file=script-modules/hikari-menu\.lua' "$cfg/hikari-installed.txt")" = 1
 check 'clean install: the repository input.conf has the same bindings' bash -c "grep -v '^#' '$tmp/want-input.conf' | while IFS= read -r l; do grep -qxF \"\$l\" '$repo/portable_config/input.conf' || exit 1; done"
 count_glob() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
 check "clean install: the $a4k_count Anime4K shaders" test "$(count_glob "$cfg"/shaders/Anime4K_*.glsl)" = "$a4k_count"
@@ -388,6 +402,7 @@ check 'created by hikari: a file of the user named like the list stays' test "$(
 rm -f "$cfg/hikari-resume.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
 check 'created by hikari: AniSkip cache removed (no question)' test ! -e "$cfg/hikari-aniskip.json" -a ! -e "$cfg/hikari-aniskip.json.tmp" -a ! -e "$cfg/script-modules/hikari-aniskip.lua"
+check 'uninstall: the menus module removed' test ! -e "$cfg/script-modules/hikari-menu.lua"
 check 'created by hikari: mpv.conf and input.conf removed' test ! -e "$cfg/mpv.conf" -a ! -e "$cfg/input.conf"
 
 # --- mpv.conf that ends inside a profile ------------------------------------
@@ -565,14 +580,14 @@ check 'Mac, uninstall: exit 0' test "$rc" = 0
 check_mac_restored 'Mac, uninstall'
 
 # The same answering the questions (numbers and typed answers, as without
-# arrows): 1 install, 1 the folder, then Enter (yes) for the broken script,
+# arrows): 1 install, 1 the folder, Enter for the interface (uosc), then Enter (yes) for the broken script,
 # y to let hikari take care of Anime4K, Enter for the keys and the mpv.conf lines.
 h=$(newhome mac3)
 cfg="$h/.config/mpv"
 snap="$tmp/snap-mac3"
 make_mac "$cfg"
 snapshot "$cfg" "$snap"
-answers '1\n1\n\ny\n\n\n'
+answers '1\n1\n\n\ny\n\n\n'
 run "$h"
 check 'Mac, interactive: exit 0' test "$rc" = 0
 check 'Mac, interactive: asked to take care of Anime4K, default no' has "$out" 'Let hikari take care of it?'
@@ -1561,6 +1576,200 @@ HIKARI_TEST_FAIL_URL='https://raw.githubusercontent.com/po5/thumbfast/0f711de313
 check 'summary, failed download: the row fails and the error says which URL' \
     test "$rc" = 1 -a -n "$(ascii_glyphs "$out" | grep -x '  thumbfast   x')" -a -n "$(grep -F 'Error: Could not download https://raw.githubusercontent.com/po5/thumbfast/' "$out")"
 
+# --- the interface: uosc or suji ----------------------------------------------------
+
+run "$h" --interface maybe
+check '--interface needs uosc or suji' test "$rc" = 2
+run "$h" --help
+check '--help names --interface' has "$out" '--interface uosc|suji'
+
+# A first install with suji, without questions.
+h=$(newhome suji)
+cfg="$h/.config/mpv"
+: >"$fake/downloads.log"
+run "$h" --yes --interface suji
+check 'suji: install exit 0' test "$rc" = 0
+[ "$rc" = 0 ] || show_out
+check 'suji: scripts/suji from the zip, no uosc' \
+    test "$(cat "$cfg/scripts/suji/main.lua")" = '-- fake suji 0.2.0' -a -f "$cfg/scripts/suji/core/menu.lua" -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/LICENSE"
+check 'suji: suji.conf with hikari'"'"'s row' same "$repo/portable_config/script-opts/suji.conf" "$cfg/script-opts/suji.conf"
+check 'suji: thumbfast too' same "$fake/thumbfast.lua" "$cfg/scripts/thumbfast.lua"
+check 'suji: uosc not downloaded' test -z "$(grep uosc.zip "$fake/downloads.log")" -a -n "$(grep -x 'https://github.com/SCEPTICG/suji/releases/download/v0.7.1/suji.zip' "$fake/downloads.log")"
+check 'suji: the summary has a suji row and no uosc row' \
+    test -n "$(ascii_glyphs "$out" | grep -x '  suji        + downloaded')" -a -z "$(grep '^  uosc ' "$out")"
+check 'suji: record' \
+    test "$(rec "$cfg" interface)|$(rec "$cfg" suji_version)|$(rec "$cfg" suji_sha256)|$(rec "$cfg" suji_preexisting)|$(rec "$cfg" suji_conf_preexisting)|$(rec "$cfg" uosc_version)" = "suji|0.7.1|$(sha "$fake/suji.zip")|no|no|"
+check 'suji: the hash of each suji file in the record' test "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
+: >"$fake/downloads.log"
+suji_inode=$(inode "$cfg/scripts/suji/main.lua")
+run "$h" --yes
+check 'suji, update without --interface: suji kept, nothing downloaded' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a ! -s "$fake/downloads.log" -a "$(inode "$cfg/scripts/suji/main.lua")" = "$suji_inode" -a ! -e "$cfg/scripts/uosc"
+check 'suji, update: said up to date' test -n "$(ascii_glyphs "$out" | grep -x '  suji        + up to date')"
+printf -- '-- changed\n' >>"$cfg/scripts/suji/core/menu.lua"
+: >"$fake/downloads.log"
+run "$h" --yes
+check 'suji changed: downloaded again, put back as pinned' \
+    test "$(cat "$fake/downloads.log")|$(cat "$cfg/scripts/suji/core/menu.lua")" = 'https://github.com/SCEPTICG/suji/releases/download/v0.7.1/suji.zip|-- core'
+
+# From suji to uosc and back: nothing is deleted, what was set aside comes back.
+suji_inode=$(inode "$cfg/scripts/suji/main.lua")
+run "$h" --yes --interface uosc
+check 'suji -> uosc: exit 0, uosc installed' test "$rc" = 0 -a -f "$cfg/scripts/uosc/main.lua" -a "$(rec "$cfg" interface)" = uosc
+check 'suji -> uosc: suji set aside, not deleted' \
+    test ! -e "$cfg/scripts/suji" -a "$(inode "$cfg/scripts-desactivados/suji/main.lua")" = "$suji_inode" -a "$(rec "$cfg" aside)" = 'scripts-desactivados/suji|scripts/suji'
+check 'suji -> uosc: suji.conf left, suji still in the record' \
+    test -f "$cfg/script-opts/suji.conf" -a "$(rec "$cfg" suji_version)" = 0.7.1 -a "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
+uosc_inode=$(inode "$cfg/scripts/uosc/main.lua")
+run "$h" --yes
+check 'uosc, update without --interface: uosc kept, suji stays aside' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a ! -e "$cfg/scripts/suji" -a -d "$cfg/scripts-desactivados/suji"
+: >"$fake/downloads.log"
+run "$h" --yes --interface suji
+check 'uosc -> suji: suji back in its place, not copied again' \
+    test "$rc" = 0 -a "$(inode "$cfg/scripts/suji/main.lua")" = "$suji_inode" -a "$(rec "$cfg" interface)" = suji
+check 'uosc -> suji: uosc and its fonts set aside, not deleted' \
+    test ! -e "$cfg/scripts/uosc" -a "$(inode "$cfg/scripts-desactivados/uosc/main.lua")" = "$uosc_inode" \
+    -a -f "$cfg/scripts-desactivados/fonts/uosc_icons.otf" -a -f "$cfg/scripts-desactivados/fonts/uosc_textures.ttf" -a ! -e "$cfg/fonts/uosc_icons.otf"
+check 'uosc -> suji: the three set aside recorded, the suji one gone' \
+    test "$(grep -c '^aside=' "$cfg/hikari-installed.txt")/$(grep -c '^aside=scripts-desactivados/suji' "$cfg/hikari-installed.txt")" = 3/0
+check 'uosc -> suji: uosc still in the record' test "$(rec "$cfg" uosc_version)" = 5.13.0 -a "$(grep -c '^sha256=scripts/uosc/' "$cfg/hikari-installed.txt")" = 2
+: >"$fake/downloads.log"
+run "$h" --yes --interface uosc
+check 'suji -> uosc again: uosc back, not copied again, suji aside' \
+    test "$rc" = 0 -a "$(inode "$cfg/scripts/uosc/main.lua")" = "$uosc_inode" -a -f "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/suji" -a -d "$cfg/scripts-desactivados/suji"
+check 'suji -> uosc again: the fonts folder of scripts-desactivados, left empty, goes' test ! -e "$cfg/scripts-desactivados/fonts"
+run "$h" --yes --interface suji
+run "$h" --uninstall --yes
+check 'suji, uninstall: exit 0, suji, uosc (set aside), suji.conf and record gone' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts" -a ! -e "$cfg/fonts" -a ! -e "$cfg/scripts-desactivados" -a ! -e "$cfg/script-opts/suji.conf" -a ! -e "$cfg/hikari-installed.txt"
+
+# A uosc and a suji.conf of the user's own, then suji: set aside, and back on uninstall.
+h=$(newhome suji-mac)
+cfg="$h/.config/mpv"
+make_mac "$cfg"
+printf 'controls=mine\n' >"$cfg/script-opts/suji.conf"
+run "$h" --yes --interface suji --anime4k no
+check 'suji over a uosc of the user: exit 0' test "$rc" = 0
+check 'suji over a uosc of the user: it is set aside (not deleted), with its fonts' \
+    test ! -e "$cfg/scripts/uosc" -a "$(cat "$cfg/scripts-desactivados/uosc/main.lua")" = '-- old uosc' -a "$(cat "$cfg/scripts-desactivados/fonts/uosc_icons.otf")" = 'icons 2023'
+check 'suji over a uosc of the user: said it clashes with suji' has "$out" 'clash with suji'
+check 'suji over a uosc of the user: recorded as set aside, and as not there before (what goes there now is hikari'"'"'s)' \
+    test "$(grep -c '^disabled=scripts-desactivados/uosc|scripts/uosc$' "$cfg/hikari-installed.txt")/$(rec "$cfg" uosc_preexisting)" = 1/no
+check 'suji over a suji.conf of the user: kept aside, replaced' \
+    test "$(cat "$cfg/hikari-originales/script-opts/suji.conf")" = 'controls=mine' -a "$(rec "$cfg" suji_conf_preexisting)" = yes
+run "$h" --uninstall --yes
+check 'suji over a uosc of the user, uninstall: the uosc back as it was' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/uosc/main.lua")" = '-- old uosc' -a "$(cat "$cfg/fonts/uosc_icons.otf")" = 'icons 2023' -a ! -e "$cfg/scripts/suji"
+check 'suji over a suji.conf of the user, uninstall: given back' test "$(cat "$cfg/script-opts/suji.conf")" = 'controls=mine'
+
+# A suji of the user's own: with uosc it clashes (set aside, back on
+# uninstall); with suji it is set aside and hikari installs its own.
+h=$(newhome suji-own)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- my suji\n' >"$cfg/scripts/suji/main.lua"
+run "$h" --yes --anime4k no
+check 'a suji of the user, uosc: exit 0, uosc, suji set aside' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a ! -e "$cfg/scripts/suji" -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- my suji'
+check 'a suji of the user, uosc: no suji.conf' test ! -e "$cfg/script-opts/suji.conf"
+run "$h" --uninstall --yes
+check 'a suji of the user, uninstall: back, no question about it' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji' -a -z "$(grep 'Remove suji' "$out")"
+run "$h" --yes --interface suji --anime4k no
+check 'a suji of the user, suji: set aside, hikari'"'"'s installed' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- fake suji 0.2.0' -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- my suji'
+run "$h" --uninstall --yes
+check 'a suji of the user, suji, uninstall: hikari'"'"'s gone, the user'"'"'s back' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji' -a ! -e "$cfg/scripts-desactivados"
+
+# Uninstall only takes hikari's own copy by default: not a suji of someone
+# else in its place, not one with a file changed, not a changed uosc.
+h=$(newhome suji-notours)
+cfg="$h/.config/mpv"
+run "$h" --yes --interface suji --anime4k no
+run "$h" --yes --interface uosc --anime4k no
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- mine\n' >"$cfg/scripts/suji/main.lua"
+run "$h" --uninstall --yes
+check 'uninstall: a suji of someone else where hikari'"'"'s was: kept, hikari'"'"'s left aside' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- mine' -a "$(cat "$cfg/scripts-desactivados/suji/main.lua")" = '-- fake suji 0.2.0'
+h=$(newhome suji-changed)
+cfg="$h/.config/mpv"
+run "$h" --yes --interface suji --anime4k no
+printf -- '-- my change\n' >>"$cfg/scripts/suji/core/menu.lua"
+run "$h" --uninstall --yes
+check 'uninstall: hikari'"'"'s suji with a changed file: kept' test "$rc" = 0 -a -n "$(grep -F -- '-- my change' "$cfg/scripts/suji/core/menu.lua")"
+# uosc goes by the record alone, as ever (it may have updated itself): one
+# hikari installed, with main.lua changed, is removed and ModernX comes back.
+h=$(newhome uosc-changed)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts"
+printf -- '-- modernx\n' >"$cfg/scripts/ModernX.lua"
+run "$h" --yes --anime4k no
+printf -- '-- uosc, updated\n' >"$cfg/scripts/uosc/main.lua"
+run "$h" --uninstall --yes
+check 'uninstall: hikari'"'"'s uosc with main.lua changed: removed, ModernX back' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/fonts/uosc_icons.otf" -a "$(cat "$cfg/scripts/ModernX.lua")" = '-- modernx'
+# A suji of the user's own set aside, then the run fails: already recorded,
+# so uninstall gives it back.
+h=$(newhome suji-own-fail)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/scripts/suji"
+printf -- '-- my suji\n' >"$cfg/scripts/suji/main.lua"
+printf 'a=1\n# >>> hikari (managed block, do not edit) >>>\nosc=no\n' >"$cfg/mpv.conf"
+run "$h" --yes --interface suji --anime4k no
+check 'a suji of the user set aside, then a failure: recorded at once' \
+    test "$rc" = 1 -a "$(rec "$cfg" disabled)" = 'scripts-desactivados/suji|scripts/suji'
+printf 'a=1\n' >"$cfg/mpv.conf"
+run "$h" --yes --interface suji --anime4k no
+run "$h" --uninstall --yes
+check 'a suji of the user set aside, then a failure: back on uninstall after the next install' \
+    test "$rc" = 0 -a "$(cat "$cfg/scripts/suji/main.lua")" = '-- my suji'
+
+# A suji download that does not match its SHA256: nothing is touched.
+h=$(newhome suji-badhash)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg"
+printf 'volume=40\n' >"$cfg/mpv.conf"
+cp "$fake/suji.zip" "$tmp/suji.keep"
+make_zip "$fake/suji.zip" 'suji/main.lua=-- tampered'
+run "$h" --yes --interface suji
+cp "$tmp/suji.keep" "$fake/suji.zip"
+check 'bad suji hash: exit 1, says so, nothing changed' \
+    test "$rc" = 1 -a -n "$(grep 'does not match its expected SHA256' "$out")" -a ! -e "$cfg/hikari-installed.txt" -a ! -e "$cfg/scripts" \
+    -a "$(cat "$cfg/mpv.conf")" = 'volume=40' -a -z "$(ls -d "$h"/.config/mpv-respaldo-* 2>/dev/null)"
+
+# The question (numbers and typed answers): after the folder; Enter takes the
+# one installed, uosc on a first install.
+h=$(newhome suji-ask)
+cfg="$h/.config/mpv"
+answers '1\n1\n2\n'
+run "$h" --anime4k no
+check 'Interface question: 2 installs suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
+check 'Interface question: asked with its two answers, Enter = uosc on a first install' \
+    test -n "$(grep -x 'Interface' "$out")" -a -n "$(grep -F '1) uosc (recommended)' "$out")" \
+    -a -n "$(grep -F "2) suji (experimental): hikari's own interface, still being tested" "$out")" -a -n "$(grep -F 'Choose an option (Enter: uosc):' "$out")"
+answers '1\n1\n\n'
+run "$h" --anime4k no
+check 'Interface question: Enter keeps suji, the one installed' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -n "$(grep -F '(Enter: suji)' "$out")"
+answers '1\n1\nx\n1\n'
+run "$h" --anime4k no
+check 'Interface question: an invalid answer is asked again, 1 = uosc' \
+    test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a -n "$(grep 'Invalid option' "$out")" -a -d "$cfg/scripts-desactivados/suji"
+HIKARI_LANG=es answers '1\n1\n\n'
+HIKARI_LANG=es run "$h" --anime4k no
+check 'Interface question: in Spanish' test -n "$(grep -F '1) uosc (recomendada)' "$out")" -a -n "$(grep -F 'la interfaz propia de hikari, en pruebas' "$out")"
+answers '1\n1\n\n'
+run "$h" --anime4k no --interface suji
+check '--interface: no question' test "$rc" = 0 -a -z "$(grep -x 'Interface' "$out")" -a "$(rec "$cfg" interface)" = suji
+answers '2\n1\n'
+run "$h"
+check 'uninstall with suji: asks about suji and about the uosc set aside, yes by default' \
+    test "$rc" = 0 -a -n "$(grep -F 'Remove suji too? [Y/n]' "$out")" -a -n "$(grep -F 'Remove uosc too? [Y/n]' "$out")" \
+    -a ! -e "$cfg/scripts/suji" -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/scripts-desactivados"
+no_answers
+
 # --- keyboard menus (pseudo-terminal) ------------------------------------------
 
 # pty_run <home> <keys...>: runs the installer on a pseudo-terminal (100x40),
@@ -1570,8 +1779,10 @@ check 'summary, failed download: the row fails and the error says which URL' \
 # key is only sent once a menu is open: the installer has hidden the cursor
 # (menu_enter) and not shown it again, and has drawn something since then (the
 # menu, drawn after the keys are thrown away). On a slow machine (a CI runner)
-# a fixed pause is not enough. With --no-menu the questions read whole lines,
-# so the keys are sent after a pause instead.
+# a fixed pause is not enough. With --no-menu the questions read whole lines
+# and also throw away what was typed before them, so a key is only sent once a
+# question has been written and nothing after it: the output ends in ": " (a
+# number or a folder) or "] " (a yes/no).
 cat >"$tmp/pty.py" <<'PY'
 import os, pty, sys, time, select, signal, fcntl, termios, struct
 argv = [sys.argv[1], sys.argv[2]] + os.environ.get('PTY_OPTS', '').split()
@@ -1613,6 +1824,16 @@ def wait_menu(limit):
         if not drain(0.05):
             return False
     return True
+def prompt_ready():
+    return out.endswith(b': ') or out.endswith(b'] ')
+def wait_prompt(limit):
+    end = time.time() + limit
+    while time.time() < end:
+        if prompt_ready():
+            return True
+        if not drain(0.05):
+            return False
+    return True
 alive = drain(1.5)
 # PTY_INTR_AT: Ctrl+C once that text has been drawn.
 intr = os.environ.get('PTY_INTR_AT', '').encode()
@@ -1626,6 +1847,8 @@ if intr:
 for k in keys:
     if alive and menus:
         alive = wait_menu(30)
+    elif alive:
+        alive = wait_prompt(30)
     if not alive:
         break
     os.write(fd, k)
@@ -1658,8 +1881,9 @@ pty_run() {
 
 h=$(newhome menu)
 cfg="$h/.config/mpv"
-# Main menu: Enter (install); folders: Enter (the highlighted one); Anime4K: n.
-pty_run "$h" '\r' '\r' 'n'
+# Main menu: Enter (install); folders: Enter (the highlighted one); interface:
+# Enter (uosc); Anime4K: n.
+pty_run "$h" '\r' '\r' '\r' 'n'
 check 'menus: install through the keyboard menus' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
 check 'menus: help line shown' has "$out" '↑/↓ to move · Enter to choose · Esc to exit'
 check 'menus: N answered no (Anime4K declined)' test "$(rec "$cfg" anime4k)" = declined
@@ -1683,6 +1907,34 @@ check 'menus: digit hotkey 3 = versions, 0 = exit' test "$rc" = 0 -a -n "$(grep 
 h=$(newhome nomenu)
 PTY_OPTS='--no-menu' pty_run "$h" '0\r'
 check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
+# A line typed before a question asked in writing never answers it: 1 (install)
+# with a 0 (exit) typed right after it, before the folders are asked; then 1.
+PTY_OPTS='--no-menu --anime4k no --interface uosc' pty_run "$h" '1\r0\r' '1\r'
+check '--no-menu: a line typed before the folders were asked does not answer them' \
+    test "$rc" = 0 -a -f "$h/.config/mpv/hikari-installed.txt" -a -z "$(grep Cancelled "$out")"
+# The same for a yes/no: a y typed with the folder, before "Use it anyway?"; then n.
+h=$(newhome typeahead-notmpv)
+ta_dir="$h/notmpv"
+mkdir -p "$ta_dir"
+printf 'x' >"$ta_dir/letter.txt"
+PTY_OPTS='--no-menu --anime4k no --interface uosc' MPV_HOME="$ta_dir" pty_run "$h" '1\r' '1\ry\r' 'n\r'
+check '--no-menu: a y typed before a yes/no question does not answer it' \
+    test "$rc" = 0 -a "$(ls "$ta_dir")" = letter.txt -a -n "$(grep -F "Skipping $ta_dir." "$out")"
+# The Interface menu: Down, Enter = suji; next time it starts on suji (Enter
+# keeps it); hotkey 1 = uosc; Esc leaves without doing anything.
+h=$(newhome menu-suji)
+cfg="$h/.config/mpv"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b[B' '\r'
+check 'menus: Interface, Down and Enter install suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
+check 'menus: the Interface menu shows suji'"'"'s note' has "$out" "hikari's own interface, still being tested"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\r'
+check 'menus: Interface starts on the one installed (Enter keeps suji)' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '1'
+check 'menus: Interface hotkey 1 = uosc' test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a -d "$cfg/scripts-desactivados/suji"
+cp "$cfg/hikari-installed.txt" "$tmp/record-before-esc"
+PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b'
+check 'menus: Esc in the Interface menu: cancelled, nothing changed' \
+    test "$rc" = 0 -a -n "$(grep Cancelled "$out")" -a "$(cmp -s "$tmp/record-before-esc" "$cfg/hikari-installed.txt" && echo same)" = same
 
 # --- the summary on a terminal: progress bars and spinners ----------------------
 
@@ -1792,7 +2044,7 @@ screen "$out" | grep -E '%|\^C' | sed 's/^/     | /'
 h=$(newhome fancy-ask)
 cfg="$h/.config/mpv"
 make_mac "$cfg"
-LC_ALL=C PTY_OPTS='--install' pty_run "$h" '\r' '\r' 'n'
+LC_ALL=C PTY_OPTS='--install' pty_run "$h" '\r' '\r' '\r' 'n'
 check 'terminal with questions: installs, the answer taken' test "$rc" = 0 -a "$(rec "$cfg" anime4k)" = manual
 screen "$out" >"$tmp/fancy-ask-screen"
 check 'terminal with questions: warnings, question and steps on their own lines' \
@@ -1800,11 +2052,12 @@ check 'terminal with questions: warnings, question and steps on their own lines'
     -a -z "$(grep -E '[|/\\-] Installing\.\.\..+' "$tmp/fancy-ask-screen")"
 # Menus in the summary: once answered, the menu and its title go (the folder
 # block says what was chosen); the notices stay, indented, with a blank line
-# before the folder. A preview build on a Mac with IINA, chosen with Enter twice.
+# before the folder. A preview build on a Mac with IINA, chosen with Enter three
+# times (install, the folder, uosc).
 h=$(newhome fancy-menus)
 cfg="$h/.config/mpv"
 copy="$tmp/build-preview/install/hikari.sh"
-HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r'
+HIKARI_TEST_IINA=1 LC_ALL=C PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\r'
 copy=$dev_copy
 screen "$out" >"$tmp/fancy-menus-screen"
 check 'terminal, menus: installs' test "$rc" = 0 -a -f "$cfg/hikari-installed.txt"
@@ -1837,7 +2090,7 @@ h=$(newhome fancy-ctl)
 esc=$(printf '\033')
 ctl_dir="$h/cu${esc}[31mstom"
 mkdir -p "$ctl_dir"
-LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r'
+LC_ALL=C PTY_OPTS='--anime4k no' MPV_HOME="$ctl_dir" pty_run "$h" '\r' '\r' '\r'
 check 'terminal, MPV_HOME with an escape sequence: installs into it' test "$rc" = 0 -a -f "$ctl_dir/hikari-installed.txt"
 check 'terminal, MPV_HOME with an escape sequence: not written to the terminal' hasnt "$out" "${esc}[31mstom"
 # shellcheck disable=SC2088 # a ~ as shown, not to expand.
@@ -1882,7 +2135,7 @@ check 'no tty, MPV_HOME not mpv'"'"'s with an escape sequence: refused, not writ
     test "$rc" = 2 -a "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "$h/nm]0;PWNED\\x does not look" "$out")"
 # Typed answers in the summary are indented as it is: the folder of "Other
 # folder..." and a yes/no asked in writing.
-sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
+sed -n '/^drop_pending_keys() {/,/^}/p; /^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
     "$repo/install/hikari.sh" >"$tmp/ask-funcs.sh"
 ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
     NONINTERACTIVE=0; MENU=0; HAVE_INPUT=1; FANCY=1; exec 3</dev/null
@@ -1890,7 +2143,7 @@ ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
 check 'terminal, typed answers: indented in the summary only' \
     test "$ask_out" = "$(printf '  Folder: \n  Go on? [Y/n] \nFolder: \n|')"
 # --verbose keeps the menus' title and the line with the choice.
-LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r'
+LC_ALL=C PTY_OPTS='--verbose --anime4k no' pty_run "$(newhome fancy-menus-verbose)" '\r' '\r' '\r'
 check 'terminal, --verbose: the title of the folders and the chosen entries stay' \
     test "$rc" = 0 -a -n "$(screen "$out" | grep -x 'Config folders found:')" -a -n "$(screen "$out" | grep -xE '[^ ]+ Install or update')"
 # No real terminal: nothing animated and no escape sequence, also on a terminal.

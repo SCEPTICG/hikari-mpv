@@ -36,6 +36,23 @@ M.pick = nil
 -- Choice options whose choices include yes and no: like mpv, set_property
 -- stores those two as flags, so get_property_native gives true/false.
 M.flag_choices = {['subs-with-matching-audio'] = true}
+-- Whether uosc is loaded: when false, `script-message-to uosc ...` fails as in
+-- mpv (mp.commandv returns nil) and hikari-menu falls back to mp.input.
+M.uosc = true
+-- Whether a script called suji is loaded: when false (the default), `script-message-to
+-- suji ...` fails as for uosc. suji's own user-data/suji/enabled is a property the
+-- tests set (M.props or M.set), as suji would: true while it is turned on.
+M.suji = false
+-- mp.input (mpv 0.39+): missing unless a test calls M.enable_input(). Then a
+-- small console stands in for console.lua: select() and terminate() only queue
+-- what the console would do, M.console() does it, and M.choose(i) and
+-- M.escape() act as the user on the menu on screen. As in mpv 0.39, a select
+-- while the console is open is ignored, events go to the handler registered
+-- last, and `closed` unregisters it.
+M.selects = {}       -- every mp.input.select table, in order
+M.on_screen = nil    -- the select table the console shows
+M.terminates = 0     -- input.terminate calls
+local console_queue, input_handler = {}, nil
 
 local function json_string(s)
 	return '"' .. s:gsub('[%c"\\]', function(c)
@@ -178,6 +195,54 @@ local function parse_json(text)
 	return result
 end
 
+local function console_event(kind, ...)
+	local t = input_handler
+	if t and t[kind] then t[kind](...) end
+	if kind == 'closed' then input_handler = nil end
+end
+
+local input_mock = {
+	select = function(t)
+		table.insert(M.selects, t)
+		input_handler = t
+		table.insert(console_queue, function()
+			if M.on_screen then return end
+			M.on_screen = t
+			console_event('opened')
+		end)
+	end,
+	terminate = function()
+		M.terminates = M.terminates + 1
+		table.insert(console_queue, function()
+			if not M.on_screen then return end
+			M.on_screen = nil
+			console_event('closed')
+		end)
+	end,
+}
+
+function M.enable_input() package.loaded['mp.input'] = input_mock end
+
+-- Lets the console answer what the script asked for (open, close), in order.
+function M.console()
+	while #console_queue > 0 do table.remove(console_queue, 1)() end
+end
+
+-- The user picks line `index` of the menu on screen: submit, then the console closes.
+function M.choose(index)
+	assert(M.on_screen, 'no menu on screen')
+	M.on_screen = nil
+	console_event('submit', index)
+	console_event('closed')
+end
+
+-- The user presses Esc on the menu on screen.
+function M.escape()
+	assert(M.on_screen, 'no menu on screen')
+	M.on_screen = nil
+	console_event('closed')
+end
+
 function M.install(script_name)
 	M.commands, M.osd = {}, {}
 	M.logs = {warn = {}, error = {}, info = {}}
@@ -190,19 +255,36 @@ function M.install(script_name)
 	M.config_files = {}
 	M.sets = {}
 	M.tracks, M.pick = nil, nil
+	M.uosc = true
+	M.suji = false
+	M.selects, M.on_screen, M.terminates = {}, nil, 0
+	console_queue, input_handler = {}, nil
+	package.loaded['mp.input'] = nil
 	-- The shared texts module is per script in mpv (one Lua state each): load it
 	-- again for every script the tests load, from the repository.
 	package.loaded['hikari-i18n'] = nil
 	package.loaded['hikari-aniskip'] = nil
 	package.loaded['hikari-chapters'] = nil
 	package.loaded['hikari-release'] = nil
+	package.loaded['hikari-menu'] = nil
 	M.expand['~~/script-modules'] = M.expand['~~/script-modules'] or 'portable_config/script-modules'
 
 	local function logger(level) return function(...) table.insert(M.logs[level], table.concat({...}, ' ')) end end
 
 	mp = {
 		get_script_name = function() return script_name end,
-		commandv = function(...) table.insert(M.commands, {...}) end,
+		-- True, as mpv on success; a script-message-to uosc without uosc fails,
+		-- and so does one to suji without suji.
+		commandv = function(...)
+			local args = {...}
+			table.insert(M.commands, args)
+			if args[1] == 'script-message-to' and ((args[2] == 'uosc' and not M.uosc)
+				or (args[2] == 'suji' and not M.suji)) then
+				return nil, 'error running command'
+			end
+			return true
+		end,
+		command = function(text) table.insert(M.commands, {text}) return true end,
 		command_native = function(cmd)
 			if cmd[1] == 'expand-path' then return M.expand[cmd[2]] or cmd[2] end
 		end,

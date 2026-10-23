@@ -1,7 +1,8 @@
--- hikari-upscale: Anime4K mode and quality picker for uosc.
+-- hikari-upscale: Anime4K mode and quality picker.
 --
--- Opens a uosc menu with two groups (mode, quality). Picking an option applies
--- it on the fly, keeps the menu open and refreshes it, and saves the choice to
+-- Opens a menu with two groups (mode, quality): uosc's, or mpv's own selector
+-- without uosc (script-modules/hikari-menu.lua). Picking an option applies it
+-- on the fly, keeps the menu open and refreshes it, and saves the choice to
 -- `~~/hikari-upscale.conf`, which mpv.conf includes on the next start.
 --
 -- Anime4K (https://github.com/bloc97/Anime4K, MIT) is not bundled: the hikari
@@ -46,7 +47,6 @@
 -- same order: Alta = High-end (HQ), Rápida = Low-end (Fast).
 
 local msg = require('mp.msg')
-local utils = require('mp.utils')
 local options = require('mp.options')
 
 -- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
@@ -62,6 +62,21 @@ local i18n = (function()
 	local ok, module = pcall(require, 'hikari-i18n')
 	package.path = saved
 	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	return module
+end)()
+
+-- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
+-- without uosc), loaded like the texts above.
+local menu = (function()
+	local dir = mp.command_native({'expand-path', '~~/script-modules'})
+	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		error('hikari: unusable script-modules folder: ' .. tostring(dir))
+	end
+	local saved = package.path
+	package.path = dir .. '/?.lua;' .. saved
+	local ok, module = pcall(require, 'hikari-menu')
+	package.path = saved
+	if not ok then error('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module)) end
 	return module
 end)()
 
@@ -406,18 +421,9 @@ local function menu_data()
 	return {type = MENU_TYPE, title = i18n.t('upscale_title'), keep_open = true, items = items}
 end
 
-local function send_menu(message)
-	local json, err = utils.format_json(menu_data())
-	if not json then
-		msg.error('Could not build the upscale menu: ' .. tostring(err))
-		return
-	end
-	mp.commandv('script-message-to', 'uosc', message, json)
-end
-
 local function open_menu()
 	refresh_installed()
-	send_menu('open-menu')
+	menu.open(menu_data())
 end
 
 -- Ids come from outside (menu, input.conf), so they must match a table.
@@ -435,7 +441,7 @@ local function set_mode(id)
 		save()
 		mp.osd_message(osd_text(mode, active.quality), 2)
 		-- uosc only updates a menu of this type if it is still open.
-		send_menu('update-menu')
+		menu.update(menu_data())
 	end
 end
 
@@ -456,7 +462,7 @@ local function set_quality(id)
 		elseif active.mode.id ~= 'off' then
 			mp.osd_message(osd_text(active.mode, quality), 2)
 		end
-		send_menu('update-menu')
+		menu.update(menu_data())
 	end
 end
 
@@ -472,7 +478,7 @@ mp.register_script_message('set-quality', set_quality)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 -- Another language: an open upscale menu is redrawn in it.
 i18n.on_change(function()
-	if mp.get_property_native('user-data/uosc/menu/type') == MENU_TYPE then send_menu('update-menu') end
+	if menu.is_open(MENU_TYPE) then menu.update(menu_data()) end
 end)
 mp.register_event('file-loaded', on_video_change)
 mp.observe_property('height', 'native', on_video_change)

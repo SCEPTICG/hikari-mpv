@@ -288,5 +288,71 @@ test('the script avoids os.execute, io.popen and load*', function()
 	end
 end)
 
+-- Without uosc -------------------------------------------------------------------
+
+-- Like load, with no uosc loaded and mpv 0.39+'s mp.input.
+local function load_without_uosc(opts)
+	mock.install(SCRIPT_NAME)
+	mock.uosc = false
+	mock.enable_input()
+	mock.script_opts = opts or {}
+	mock.config_files['script-opts/uosc.conf'] = UOSC_CONF
+	HIKARI_LANGUAGE_TEST = true
+	return assert(loadfile(SCRIPT))()
+end
+
+test('without uosc: the texts switch; no uosc-controls, no restart notice', function()
+	local path = os.tmpname()
+	local l = load_without_uosc({['hikari-language'] = 'es', ['uosc-languages'] = 'es,en'})
+	eq(#appended('uosc-controls'), 0, 'not at start-up')
+	mock.expand['~~/hikari-language.conf'] = path
+	l.select_language('fr')
+	eq(appended('hikari-language')[1], 'fr', 'option set at once')
+	eq(read(path), l.persist_content('fr'), 'saved as with uosc, for when it is back')
+	eq(#mock.osd, 0, 'no restart notice')
+	mock.set_script_opt('hikari-language', 'fr')
+	eq(l.i18n.language(), 'fr', 'hikari speaks French')
+	eq(#appended('uosc-controls'), 0, 'not after the switch')
+	eq(#appended('uosc-languages'), 0)
+	os.remove(path)
+	mock.expand['~~/hikari-language.conf'] = nil
+end)
+
+test('without uosc: the menu in mpv\'s selector stays open and follows the language', function()
+	local path = os.tmpname()
+	load_without_uosc({['hikari-language'] = 'es-ES'})
+	mock.expand['~~/hikari-language.conf'] = path
+	mock.bindings['open-menu']()
+	local t = assert(mock.selects[1], 'selector')
+	eq(t.prompt, 'Idioma:')
+	eq(t.items[2], '• Español (España)  ·  actual')
+	eq(t.default_item, 2)
+	mock.console()
+	mock.choose(5)
+	eq(table.concat(mock.commands[#mock.commands], ' '), 'script-message-to hikari_language select-language fr')
+	mock.messages['select-language']('fr')
+	-- mpv then notifies every script of the option.
+	mock.set_script_opt('hikari-language', 'fr')
+	mock.advance(1)
+	mock.console()
+	local again = mock.on_screen
+	assert(again and again == mock.selects[#mock.selects], 'back on screen')
+	eq(again.prompt, 'Langue:')
+	eq(again.items[5], '• Français  ·  actuelle')
+	eq(again.default_item, 5)
+	os.remove(path)
+	mock.expand['~~/hikari-language.conf'] = nil
+end)
+
+test('uosc starting after hikari-language: the tooltips come when it announces itself', function()
+	load_without_uosc({['hikari-language'] = 'es'})
+	eq(#appended('uosc-controls'), 0, 'not there yet')
+	mock.uosc = true
+	mock.messages['uosc-version']('5.13.0')
+	local list = appended('uosc-controls')
+	eq(#list, 1, 'set then')
+	assert(list[1]:find('?Paletas', 1, true), 'translated')
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)
