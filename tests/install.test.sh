@@ -1683,6 +1683,19 @@ check 'menus: digit hotkey 3 = versions, 0 = exit' test "$rc" = 0 -a -n "$(grep 
 h=$(newhome nomenu)
 PTY_OPTS='--no-menu' pty_run "$h" '0\r'
 check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
+# A line typed before a question asked in writing never answers it: 1 (install)
+# with a 0 (exit) typed right after it, before the folders are asked; then 1.
+PTY_OPTS='--no-menu --anime4k no' pty_run "$h" '1\r0\r' '1\r'
+check '--no-menu: a line typed before the folders were asked does not answer them' \
+    test "$rc" = 0 -a -f "$h/.config/mpv/hikari-installed.txt" -a -z "$(grep Cancelled "$out")"
+# The same for a yes/no: a y typed with the folder, before "Use it anyway?"; then n.
+h=$(newhome typeahead-notmpv)
+ta_dir="$h/notmpv"
+mkdir -p "$ta_dir"
+printf 'x' >"$ta_dir/letter.txt"
+PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$ta_dir" pty_run "$h" '1\r' '1\ry\r' 'n\r'
+check '--no-menu: a y typed before a yes/no question does not answer it' \
+    test "$rc" = 0 -a "$(ls "$ta_dir")" = letter.txt -a -n "$(grep -F "Skipping $ta_dir." "$out")"
 
 # --- the summary on a terminal: progress bars and spinners ----------------------
 
@@ -1882,7 +1895,7 @@ check 'no tty, MPV_HOME not mpv'"'"'s with an escape sequence: refused, not writ
     test "$rc" = 2 -a "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "$h/nm]0;PWNED\\x does not look" "$out")"
 # Typed answers in the summary are indented as it is: the folder of "Other
 # folder..." and a yes/no asked in writing.
-sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
+sed -n '/^drop_pending_keys() {/,/^}/p; /^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
     "$repo/install/hikari.sh" >"$tmp/ask-funcs.sh"
 ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
     NONINTERACTIVE=0; MENU=0; HAVE_INPUT=1; FANCY=1; exec 3</dev/null

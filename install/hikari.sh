@@ -923,6 +923,20 @@ io_setup() {
     fi
 }
 
+# Keys pressed before a question was asked (during a download, say) never
+# answer it: what is waiting on the terminal is thrown away, a bounded amount
+# (a key held down keeps it coming), and its settings are left as they were.
+# Not when the answers come from a pipe or a file: those are the answers.
+drop_pending_keys() {
+    [ -t 3 ] || return 0
+    local saved
+    saved=$(stty -g <&3 2>/dev/null) || return 0
+    [ -n "$saved" ] || return 0
+    stty -icanon min 0 time 0 <&3 2>/dev/null
+    dd bs=256 count=8 <&3 >/dev/null 2>&1
+    stty "$saved" <&3 2>/dev/null
+}
+
 # Reads a line into REPLY_LINE (fails at the end of the input).
 read_line() {
     REPLY_LINE=''
@@ -930,6 +944,7 @@ read_line() {
     # In the summary the question is indented as the rest of it.
     if [ "$FANCY" = 1 ]; then printf '  %s: ' "$1"; else printf '%s: ' "$1"; fi
     if [ "$HAVE_INPUT" != 1 ]; then printf '\n'; return 1; fi
+    drop_pending_keys
     if IFS= read -r REPLY_LINE <&3; then
         [ -t 3 ] || printf '%s\n' "$REPLY_LINE"
         return 0
@@ -977,6 +992,7 @@ confirm_ask() {
     while :; do
         printf '%s%s' "$pre" "$question$suffix"
         REPLY_LINE=''
+        drop_pending_keys
         if ! IFS= read -r REPLY_LINE <&3 && [ -z "$REPLY_LINE" ]; then
             printf '\n'
             [ "$default" = yes ]
@@ -1012,10 +1028,7 @@ menu_enter() {
     STTY_SAVED=$(stty -g <&3 2>/dev/null)
     stty -icanon -echo -isig min 1 time 0 <&3 2>/dev/null
     printf '\033[?25l'
-    # Keys pressed before the menu opened (during a download, say) never answer it.
-    stty min 0 time 0 <&3 2>/dev/null
-    dd bs=256 count=8 <&3 >/dev/null 2>&1
-    stty min 1 time 0 <&3 2>/dev/null
+    drop_pending_keys
 }
 menu_exit() {
     if [ -n "$STTY_SAVED" ]; then stty "$STTY_SAVED" <&3 2>/dev/null; fi
