@@ -927,24 +927,29 @@ io_setup() {
 # answer it: what is waiting on the terminal is thrown away, a bounded amount
 # (a key held down keeps it coming), and its settings are left as they were.
 # Not when the answers come from a pipe or a file: those are the answers.
+# Outside a menu the settings are kept in STTY_SAVED while it lasts, so that
+# Ctrl+C in the middle (hikari_cleanup) puts them back too.
 drop_pending_keys() {
     [ -t 3 ] || return 0
-    local saved
+    local saved own=0
     saved=$(stty -g <&3 2>/dev/null) || return 0
     [ -n "$saved" ] || return 0
-    stty -icanon min 0 time 0 <&3 2>/dev/null
-    dd bs=256 count=8 <&3 >/dev/null 2>&1
+    if [ -z "${STTY_SAVED:-}" ]; then STTY_SAVED=$saved; own=1; fi
+    if stty -icanon min 0 time 0 <&3 2>/dev/null; then
+        dd bs=256 count=8 <&3 >/dev/null 2>&1
+    fi
     stty "$saved" <&3 2>/dev/null
+    [ "$own" = 0 ] || STTY_SAVED=''
 }
 
 # Reads a line into REPLY_LINE (fails at the end of the input).
 read_line() {
     REPLY_LINE=''
     UI_BLANK=0
+    if [ "$HAVE_INPUT" = 1 ]; then drop_pending_keys; fi
     # In the summary the question is indented as the rest of it.
     if [ "$FANCY" = 1 ]; then printf '  %s: ' "$1"; else printf '%s: ' "$1"; fi
     if [ "$HAVE_INPUT" != 1 ]; then printf '\n'; return 1; fi
-    drop_pending_keys
     if IFS= read -r REPLY_LINE <&3; then
         [ -t 3 ] || printf '%s\n' "$REPLY_LINE"
         return 0
@@ -990,9 +995,9 @@ confirm_ask() {
     local pre=''
     [ "$FANCY" != 1 ] || pre='  '
     while :; do
+        drop_pending_keys
         printf '%s%s' "$pre" "$question$suffix"
         REPLY_LINE=''
-        drop_pending_keys
         if ! IFS= read -r REPLY_LINE <&3 && [ -z "$REPLY_LINE" ]; then
             printf '\n'
             [ "$default" = yes ]

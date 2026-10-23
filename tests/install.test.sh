@@ -1570,8 +1570,10 @@ check 'summary, failed download: the row fails and the error says which URL' \
 # key is only sent once a menu is open: the installer has hidden the cursor
 # (menu_enter) and not shown it again, and has drawn something since then (the
 # menu, drawn after the keys are thrown away). On a slow machine (a CI runner)
-# a fixed pause is not enough. With --no-menu the questions read whole lines,
-# so the keys are sent after a pause instead.
+# a fixed pause is not enough. With --no-menu the questions read whole lines
+# and also throw away what was typed before them, so a key is only sent once a
+# question has been written and nothing after it: the output ends in ": " (a
+# number or a folder) or "] " (a yes/no).
 cat >"$tmp/pty.py" <<'PY'
 import os, pty, sys, time, select, signal, fcntl, termios, struct
 argv = [sys.argv[1], sys.argv[2]] + os.environ.get('PTY_OPTS', '').split()
@@ -1613,6 +1615,16 @@ def wait_menu(limit):
         if not drain(0.05):
             return False
     return True
+def prompt_ready():
+    return out.endswith(b': ') or out.endswith(b'] ')
+def wait_prompt(limit):
+    end = time.time() + limit
+    while time.time() < end:
+        if prompt_ready():
+            return True
+        if not drain(0.05):
+            return False
+    return True
 alive = drain(1.5)
 # PTY_INTR_AT: Ctrl+C once that text has been drawn.
 intr = os.environ.get('PTY_INTR_AT', '').encode()
@@ -1626,6 +1638,8 @@ if intr:
 for k in keys:
     if alive and menus:
         alive = wait_menu(30)
+    elif alive:
+        alive = wait_prompt(30)
     if not alive:
         break
     os.write(fd, k)
