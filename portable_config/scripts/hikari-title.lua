@@ -72,6 +72,29 @@
 --   user-data/hikari_title/release on start-file, with the path they are for
 --   (`{}` for anything else and after end-file). This does not depend on the
 --   options below: they are about the title on screen.
+-- - With suji 0.7.0 or newer turned on, a title with an episode marker also
+--   goes to suji in its parts: `script-message-to suji set-title <series>
+--   <episode> [<name>]`, the episode being the same label as on screen
+--   (`T1 E05`) and the name only when there is one. suji shows them on two
+--   lines; force-media-title stays as it is, for uosc, the window and the
+--   rest. A title without an episode (a film, a name with no marker, the
+--   fallback, pretty=no) is not sent: suji then shows media-title, which is
+--   that same title, on one line. Each part is sanitized with the rest of the
+--   name and cut to MAX_CHARS (suji cuts at 200), and goes as its own
+--   argument of mp.commandv. Whether suji counts is decided as hikari-skip
+--   does for show-action: user-data/suji/enabled is true and its version
+--   (user-data/suji/version, or else the last `suji-version` message) has
+--   major.minor 0.7 or more. It is read live each time, never while this
+--   script loads: on start-file suji may not have set it yet, so the
+--   observers of both properties (and the message) send it once it is there.
+--   suji clears the title on its end-file, which comes before our start-file,
+--   so it is sent again for each file. It is sent only while
+--   force-media-title is still our title: when the user, the playlist entry
+--   or a later hook set another one, or the fallback is withdrawn, nothing is
+--   sent, and a title already sent is taken back with `set-title "" ""`
+--   (suji goes back to media-title). The same happens when suji is turned
+--   off; turned on again, the title is sent again. A new language sends the
+--   new labels.
 --
 -- Options (script-opts/hikari-title.conf): enabled=yes|no, pretty=yes|no
 -- (pretty=no: only `filename=` and the fallback, shown as they come).
@@ -111,6 +134,9 @@ local release = (function()
 end)()
 
 local OPTIONS_ID = 'hikari-title'
+-- suji (0.7.0 or newer) shows a title in parts: whether it is on, and its version.
+local SUJI_ENABLED_PROP = 'user-data/suji/enabled'
+local SUJI_VERSION_PROP = 'user-data/suji/version'
 -- Series, season and episode of the file playing, for hikari-skip (AniSkip).
 local RELEASE_PROP = 'user-data/hikari_title/release'
 local MAX_CHARS, MAX_RAW = release.MAX_CHARS, release.MAX_RAW
@@ -121,43 +147,53 @@ local video_file_name, release_for = release.video_file_name, release.release_fo
 -- ----------------------------------------------------------------------------
 
 -- Sanitized and cut text; with `pretty`, tidied by pretty_title. Returns the
--- title (nil when nothing is left) and whether it looked like a release.
+-- title (nil when nothing is left), whether it looked like a release and, for
+-- a release with an episode marker, its parts for suji, each one cut too.
 local function clean(text, pretty)
 	local title = sanitize(text)
-	local is_release = false
-	if pretty and title ~= '' then title, is_release = pretty_title(title) end
+	local is_release, parts = false, nil
+	if pretty and title ~= '' then
+		local _
+		title, is_release, _, parts = pretty_title(title)
+	end
 	title = truncate(title)
 	if title == '' then return nil, false end
-	return title, is_release
+	if parts then
+		parts = {series = truncate(parts.series), episode = truncate(parts.episode),
+			name = parts.name and truncate(parts.name)}
+	end
+	return title, is_release, parts
 end
 
 local opts = {enabled = true, pretty = true}
 options.read_options(opts, OPTIONS_ID)
 
--- Title for a video file name, only when it looks like a release.
+-- Title for a video file name, only when it looks like a release, and its
+-- parts (see clean).
 local function release_title(name)
 	if not name or not opts.pretty then return nil end
-	local title, is_release = clean(name, true)
-	if title and is_release then return title end
+	local title, is_release, parts = clean(name, true)
+	if title and is_release then return title, parts end
 	return nil
 end
 
--- Title for `path` and where it came from ('filename', 'file' or 'fallback'),
--- or nil when the path should keep mpv's own title.
+-- Title for `path`, where it came from ('filename', 'file' or 'fallback') and
+-- its parts for suji (nil without an episode marker), or nil when the path
+-- should keep mpv's own title.
 local function title_for(path)
 	if type(path) ~= 'string' then return nil end
 	local scheme = path:match('^(%a[%w+.-]*)://')
 	if not scheme then
 		-- A local path (`/x/a.mkv`, `C:\x\a.mkv`, `a.mkv`).
-		local title = release_title(video_file_name(path:sub(-MAX_RAW * 4)))
-		if title then return title, 'file' end
+		local title, parts = release_title(video_file_name(path:sub(-MAX_RAW * 4)))
+		if title then return title, 'file', parts end
 		return nil
 	end
 	scheme = scheme:lower()
 	if scheme == 'file' then
 		local location = path:sub(#scheme + 4):sub(-MAX_RAW * 4)
-		local title = release_title(video_file_name(url_decode(location, false)))
-		if title then return title, 'file' end
+		local title, parts = release_title(video_file_name(url_decode(location, false)))
+		if title then return title, 'file', parts end
 		return nil
 	end
 	if scheme ~= 'http' and scheme ~= 'https' then return nil end
@@ -170,10 +206,13 @@ local function title_for(path)
 
 	-- Last path segment, if any. Anchored so the match stays linear on long routes.
 	local segment = route:match('^.*/([^/]+)/*$')
-	local segment_title = segment and release_title(video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false)))
+	local segment_title, segment_parts
+	if segment then
+		segment_title, segment_parts = release_title(video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false)))
+	end
 
 	if not query then
-		if segment_title then return segment_title, 'file' end
+		if segment_title then return segment_title, 'file', segment_parts end
 		-- Credentials in the URL and no path to show instead: the bare host.
 		if has_userinfo and route:match('^/*$') then
 			local title = clean(host:sub(1, MAX_RAW))
@@ -185,11 +224,11 @@ local function title_for(path)
 	for pair in query:gmatch('[^&;]+') do
 		local key, value = pair:match('^([^=]*)=(.*)$')
 		if key and url_decode(key:sub(1, MAX_RAW), true) == 'filename' then
-			local title = clean(strip_extension(url_decode(value:sub(1, MAX_RAW), true)), opts.pretty)
-			if title then return title, 'filename' end
+			local title, _, parts = clean(strip_extension(url_decode(value:sub(1, MAX_RAW), true)), opts.pretty)
+			if title then return title, 'filename', parts end
 		end
 	end
-	if segment_title then return segment_title, 'file' end
+	if segment_title then return segment_title, 'file', segment_parts end
 
 	-- No usable filename: last path segment, or the host if the path is empty.
 	if segment then
@@ -209,9 +248,48 @@ local function publish_release(path)
 	mp.set_property_native(RELEASE_PROP, info or {})
 end
 
--- What we set for the current file: the title, and whether it is the weak
--- fallback (file-loaded withdraws it when the file has a title tag).
+-- What we set for the current file: the title, whether it is the weak
+-- fallback (file-loaded withdraws it when the file has a title tag) and its
+-- parts for suji (nil without an episode).
 local current = nil
+
+-- suji's version from its last `suji-version` message (suji 0.3.0 does not
+-- publish the property), and the parts sent to suji for this file, as one
+-- text (nil: suji holds no title of ours).
+local suji_announced = nil
+local suji_sent = nil
+
+-- suji is on and understands set-title with parts (0.7.0 or newer). The
+-- property wins over the message when it is there, as in hikari-skip.
+local function suji_titles()
+	if mp.get_property_native(SUJI_ENABLED_PROP) ~= true then return false end
+	local version = mp.get_property_native(SUJI_VERSION_PROP)
+	if version == nil then version = suji_announced end
+	local major, minor
+	if type(version) == 'string' then major, minor = version:match('^(%d+)%.(%d+)') end
+	major, minor = tonumber(major), tonumber(minor)
+	return major ~= nil and (major > 0 or minor >= 7)
+end
+
+-- Brings suji's title in line: our parts while suji counts and our title is
+-- still the one on screen, otherwise none of ours (`set-title "" ""` takes
+-- back one sent before). Sends nothing when nothing changes.
+local function sync_suji()
+	local parts = current and current.parts
+	if parts and suji_titles() and mp.get_property('force-media-title', '') == current.title then
+		local key = parts.series .. '\0' .. parts.episode .. '\0' .. (parts.name or '')
+		if key == suji_sent then return end
+		if parts.name then
+			mp.commandv('script-message-to', 'suji', 'set-title', parts.series, parts.episode, parts.name)
+		else
+			mp.commandv('script-message-to', 'suji', 'set-title', parts.series, parts.episode)
+		end
+		suji_sent = key
+	elseif suji_sent then
+		mp.commandv('script-message-to', 'suji', 'set-title', '', '')
+		suji_sent = nil
+	end
+end
 
 local function playlist_entry_title()
 	local pos = mp.get_property_number('playlist-playing-pos', -1)
@@ -221,10 +299,12 @@ end
 
 local function on_start_file()
 	current = nil
+	-- suji cleared its title on end-file.
+	suji_sent = nil
 	local path = mp.get_property_native('path')
 	publish_release(type(path) == 'string' and path or nil)
 	if not opts.enabled then return end
-	local title, source = title_for(path)
+	local title, source, parts = title_for(path)
 	if not title then return end
 	local existing = mp.get_property('force-media-title', '')
 	if existing ~= nil and existing ~= '' then
@@ -236,39 +316,57 @@ local function on_start_file()
 		return
 	end
 	mp.set_property('file-local-options/force-media-title', title)
-	current = {title = title, fallback = source == 'fallback'}
+	current = {title = title, fallback = source == 'fallback', parts = parts}
+	sync_suji()
 end
 
 -- A container title beats our fallback. The file-local backup is already taken,
 -- so mpv still restores the original value when the file ends.
 local function on_file_loaded()
-	if not current or not current.fallback then return end
-	local tag = mp.get_property('metadata/by-key/title', '')
-	if tag ~= nil and tag ~= '' and mp.get_property('force-media-title', '') == current.title then
-		mp.set_property('file-local-options/force-media-title', '')
-		current = nil
+	if current and current.fallback then
+		local tag = mp.get_property('metadata/by-key/title', '')
+		if tag ~= nil and tag ~= '' and mp.get_property('force-media-title', '') == current.title then
+			mp.set_property('file-local-options/force-media-title', '')
+			current = nil
+		end
 	end
+	-- A hook may have replaced our title, or suji may be ready only now.
+	sync_suji()
 end
 
 -- Another language: the season and episode labels of the title on screen
 -- change with it, as long as nothing else has replaced our title meanwhile.
 local function on_language_change()
-	if not current or current.fallback then return end
-	if mp.get_property('force-media-title', '') ~= current.title then return end
-	local title = title_for(mp.get_property('path'))
-	if title and title ~= current.title then
-		mp.set_property('file-local-options/force-media-title', title)
-		current.title = title
+	if current and not current.fallback and mp.get_property('force-media-title', '') == current.title then
+		local title, _, parts = title_for(mp.get_property('path'))
+		if title and title ~= current.title then
+			mp.set_property('file-local-options/force-media-title', title)
+			current.title, current.parts = title, parts
+		end
 	end
+	sync_suji()
 end
 
 mp.register_event('start-file', on_start_file)
 mp.register_event('file-loaded', on_file_loaded)
 mp.register_event('end-file', function()
 	current = nil
+	-- suji clears its own title on end-file: nothing to take back.
+	suji_sent = nil
 	publish_release(nil)
 end)
 i18n.on_change(on_language_change)
+-- suji turned on, off or gone, or its version known only now; our title
+-- replaced by someone else. Observers run after loading, never while it.
+mp.observe_property(SUJI_ENABLED_PROP, 'native', sync_suji)
+mp.observe_property(SUJI_VERSION_PROP, 'native', sync_suji)
+mp.observe_property('force-media-title', 'string', sync_suji)
+-- suji started (or started again): it holds no title of ours.
+mp.register_script_message('suji-version', function(version)
+	suji_announced = tostring(version)
+	suji_sent = nil
+	sync_suji()
+end)
 
 if HIKARI_TITLE_TEST then
 	return {

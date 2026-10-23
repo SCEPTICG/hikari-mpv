@@ -4,7 +4,7 @@
 -- both read file names the same way.
 --
 -- Usage:
---   release.pretty_title('[SubsPlease] Frieren - 05 (1080p)')  -> 'Frieren · E05', true, info
+--   release.pretty_title('[SubsPlease] Frieren - 05 (1080p)')  -> 'Frieren · E05', true, info, parts
 --   release.release_for('/a/[SubsPlease] Frieren - 05 (1080p).mkv')
 --     -> {series = 'Frieren', episode = 5, anime = true}
 --   release.episode_of('Frieren S01E06.mkv')
@@ -617,7 +617,9 @@ end
 -- second result says whether the name looked like a release (a marker, a
 -- technical tail or brackets dropped); `lang` is the language of the labels
 -- (hikari's when nil). The third, for names with an episode marker, is what
--- release_info gives. Expects sanitized input already cut to MAX_RAW; every
+-- release_info gives; the fourth, for those too, is the title in its parts,
+-- {series, episode = the label, name = the episode title or nil}, for suji's
+-- set-title (see hikari-title.lua). Expects sanitized input already cut to MAX_RAW; every
 -- pattern is anchored to a token, so the work stays linear.
 local function pretty_title(name, lang)
 	local tokens = tokenize(name)
@@ -635,10 +637,12 @@ local function pretty_title(name, lang)
 			end
 			local series = join_words(tokens, stop, start)
 			if series ~= '' then
-				local title = capitalize(series) .. ' · ' .. marker_label(marker, lang)
+				local label = marker_label(marker, lang)
+				local title = capitalize(series) .. ' · ' .. label
 				local episode = episode_title(tokens, i + used, spaced)
 				if episode then title = title .. ' · ' .. episode end
-				return title, true, release_info(tokens, marker, capitalize(series), i + used, spaced)
+				return title, true, release_info(tokens, marker, capitalize(series), i + used, spaced),
+					{series = capitalize(series), episode = label, name = episode}
 			end
 			-- `S01E01.1080p`, `- 01`: a marker but no series in front. Look on:
 			-- in `Special 7 - 05` the series is `Special 7`.
