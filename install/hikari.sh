@@ -79,9 +79,9 @@ hikari_defaults() {
     # suji, hikari's own interface (experimental), installed instead of uosc
     # when chosen (--interface suji or the Interface question). Its zip holds
     # LICENSE and suji/, which goes to scripts/suji.
-    SUJI_VERSION='0.7.0'
-    SUJI_URL='https://github.com/SCEPTICG/suji/releases/download/v0.7.0/suji.zip'
-    SUJI_SHA256='9430cb8b05a42cc916f798d346aed0dc0109216b48aa6821c808273e9fc2f003'
+    SUJI_VERSION='0.7.1'
+    SUJI_URL='https://github.com/SCEPTICG/suji/releases/download/v0.7.1/suji.zip'
+    SUJI_SHA256='66b08548cbb93c6aac3a15b94017138e305cfba817422d4ca01e888428345910'
     # hikari's row of controls for suji: in portable_config, only installed with suji.
     SUJI_CONF='suji.conf'
     THUMBFAST_COMMIT='0f711de3138c9bd6718209d819ac54022c23ded2'
