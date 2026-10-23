@@ -1573,8 +1573,10 @@ check 'summary, failed download: the row fails and the error says which URL' \
 # key is only sent once a menu is open: the installer has hidden the cursor
 # (menu_enter) and not shown it again, and has drawn something since then (the
 # menu, drawn after the keys are thrown away). On a slow machine (a CI runner)
-# a fixed pause is not enough. With --no-menu the questions read whole lines,
-# so the keys are sent after a pause instead.
+# a fixed pause is not enough. With --no-menu the questions read whole lines
+# and also throw away what was typed before them, so a key is only sent once a
+# question has been written and nothing after it: the output ends in ": " (a
+# number or a folder) or "] " (a yes/no).
 cat >"$tmp/pty.py" <<'PY'
 import os, pty, sys, time, select, signal, fcntl, termios, struct
 argv = [sys.argv[1], sys.argv[2]] + os.environ.get('PTY_OPTS', '').split()
@@ -1616,6 +1618,16 @@ def wait_menu(limit):
         if not drain(0.05):
             return False
     return True
+def prompt_ready():
+    return out.endswith(b': ') or out.endswith(b'] ')
+def wait_prompt(limit):
+    end = time.time() + limit
+    while time.time() < end:
+        if prompt_ready():
+            return True
+        if not drain(0.05):
+            return False
+    return True
 alive = drain(1.5)
 # PTY_INTR_AT: Ctrl+C once that text has been drawn.
 intr = os.environ.get('PTY_INTR_AT', '').encode()
@@ -1629,6 +1641,8 @@ if intr:
 for k in keys:
     if alive and menus:
         alive = wait_menu(30)
+    elif alive:
+        alive = wait_prompt(30)
     if not alive:
         break
     os.write(fd, k)
@@ -1686,6 +1700,19 @@ check 'menus: digit hotkey 3 = versions, 0 = exit' test "$rc" = 0 -a -n "$(grep 
 h=$(newhome nomenu)
 PTY_OPTS='--no-menu' pty_run "$h" '0\r'
 check 'menus: --no-menu asks with numbers on a terminal' test "$rc" = 0 -a -n "$(grep 'Choose an option:' "$out")"
+# A line typed before a question asked in writing never answers it: 1 (install)
+# with a 0 (exit) typed right after it, before the folders are asked; then 1.
+PTY_OPTS='--no-menu --anime4k no' pty_run "$h" '1\r0\r' '1\r'
+check '--no-menu: a line typed before the folders were asked does not answer them' \
+    test "$rc" = 0 -a -f "$h/.config/mpv/hikari-installed.txt" -a -z "$(grep Cancelled "$out")"
+# The same for a yes/no: a y typed with the folder, before "Use it anyway?"; then n.
+h=$(newhome typeahead-notmpv)
+ta_dir="$h/notmpv"
+mkdir -p "$ta_dir"
+printf 'x' >"$ta_dir/letter.txt"
+PTY_OPTS='--no-menu --anime4k no' MPV_HOME="$ta_dir" pty_run "$h" '1\r' '1\ry\r' 'n\r'
+check '--no-menu: a y typed before a yes/no question does not answer it' \
+    test "$rc" = 0 -a "$(ls "$ta_dir")" = letter.txt -a -n "$(grep -F "Skipping $ta_dir." "$out")"
 
 # --- the summary on a terminal: progress bars and spinners ----------------------
 
@@ -1885,7 +1912,7 @@ check 'no tty, MPV_HOME not mpv'"'"'s with an escape sequence: refused, not writ
     test "$rc" = 2 -a "$(count_of "$out" "${esc}]")" = 0 -a -n "$(grep -F "$h/nm]0;PWNED\\x does not look" "$out")"
 # Typed answers in the summary are indented as it is: the folder of "Other
 # folder..." and a yes/no asked in writing.
-sed -n '/^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
+sed -n '/^drop_pending_keys() {/,/^}/p; /^read_line() {/,/^}/p; /^lower() /p; /^trim() {/,/^}/p; /^confirm_ask() {/,/^}/p' \
     "$repo/install/hikari.sh" >"$tmp/ask-funcs.sh"
 ask_out=$("$under" -c '. "$1"; T() { printf " [Y/n] "; }; warn() { :; }
     NONINTERACTIVE=0; MENU=0; HAVE_INPUT=1; FANCY=1; exec 3</dev/null
