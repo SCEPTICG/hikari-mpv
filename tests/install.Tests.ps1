@@ -4453,19 +4453,19 @@ Test-Case 'the Interface question: numbers, Enter takes the one installed, uosc 
     function Read-HikariLine { param([string]$Prompt) $script:Prompts.Add($Prompt); if ($script:Lines.Count -eq 0) { return $null } return $script:Lines.Dequeue() }
     try {
         foreach ($a in @('x', '2')) { $script:Lines.Enqueue($a) }
-        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no') 0 'install'
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'install'
         Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' '2 = suji'
         Assert-True ($script:Prompts -contains 'Choose an option (Enter: uosc)') 'Enter = uosc on a first install'
         Assert-True (@($script:HikariWarnings | Where-Object { $_ -eq 'Invalid option.' }).Count -eq 1) 'invalid answer asked again'
         $script:Prompts.Clear()
-        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no') 0 'update, end of input'
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'update, end of input'
         Assert-True ($script:Prompts -contains 'Choose an option (Enter: suji)') 'Enter = suji, the one installed'
         Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'suji' 'kept'
         $script:Lines.Enqueue('1')
-        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no') 0 'to uosc'
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -NoMenu $true) 0 'to uosc'
         Assert-Equal (Read-HikariRecord $cfg).Values['interface'] 'uosc' '1 = uosc'
         $script:Prompts.Clear()
-        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -Interface 'suji') 0 '-Interface'
+        Assert-Equal (Invoke-HikariMain -Action 'install' -Target @($cfg) -Yes $false -Anime4K 'no' -Interface 'suji' -NoMenu $true) 0 '-Interface'
         Assert-Equal @($script:Prompts | Where-Object { $_ -like 'Choose an option*' }).Count 0 'no question with -Interface'
         Set-HikariLanguage 'es'
         try { Assert-Equal (T 'interface_uosc') 'uosc (recomendada)' 'in Spanish' }
