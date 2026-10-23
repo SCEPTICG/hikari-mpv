@@ -80,6 +80,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 - **[uosc](https://github.com/tomasklaen/uosc)** is the on-screen controller hikari is built on. If you already use uosc, hikari is a configuration plus a few scripts on top of it, not a fork: your uosc stays the official one, and uosc's own updates keep working.
 - **[ModernX](https://github.com/cyl0/ModernX) and [ModernZ](https://github.com/Samillion/ModernZ)** are other replacements for mpv's built-in OSC. They clash with uosc, so the installer sets them aside (nothing is deleted) and puts them back on uninstall.
 - **mpv.net and AnimeJaNai** are supported on Windows: hikari installs into the config folder each of them reads.
+- **[suji](https://github.com/SCEPTICG/suji)** is hikari's own interface, experimental: the installer offers it instead of uosc (*Interface* question, or `--interface suji`), with hikari's buttons in its row but no timeline thumbnails yet. See [hikari with suji](https://scepticg.github.io/hikari-mpv/compatibility/#hikari-with-suji-experimental).
 
 ## Documentation
 

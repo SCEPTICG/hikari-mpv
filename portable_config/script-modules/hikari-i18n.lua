@@ -261,6 +261,16 @@ local STRINGS = {
 		uk = 'Палітри змінюють кольори uosc', ['zh-HK'] = '配色方案會改變 uosc 的顏色',
 		['zh-hans'] = '配色方案会改变 uosc 的颜色',
 	},
+	-- First line of the palette menu in suji: there a palette only sets the accent.
+	palettes_suji_accent = {
+		en = 'With suji, the palette changes the accent colour', es = 'Con suji, la paleta cambia el color de acento',
+		de = 'Mit suji ändert die Farbpalette die Akzentfarbe', fr = 'Avec suji, la palette change la couleur d’accent',
+		it = 'Con suji, la palette cambia il colore di accento', pl = 'W suji paleta zmienia kolor akcentu',
+		pt = 'Com o suji, a paleta muda a cor de destaque', ro = 'Cu suji, paleta schimbă culoarea de accent',
+		ru = 'В suji палитра меняет цвет акцента', tr = 'suji ile palet vurgu rengini değiştirir',
+		uk = 'У suji палітра змінює колір акценту', ['zh-HK'] = '在 suji 中，配色方案會改變強調色',
+		['zh-hans'] = '在 suji 中，配色方案会改变强调色',
+	},
 	palettes_save_failed = {
 		en = 'hikari: could not save the palette', es = 'hikari: no se pudo guardar la paleta',
 		de = 'hikari: Palette konnte nicht gespeichert werden', fr = 'hikari : impossible d’enregistrer la palette',
