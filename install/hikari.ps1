@@ -161,9 +161,9 @@ $script:UoscFonts = @('uosc_icons.otf', 'uosc_textures.ttf')
 # suji, hikari's own interface (experimental), installed instead of uosc when
 # chosen (-Interface suji or the Interface question). Its zip holds LICENSE and
 # suji\, which goes to scripts\suji. Fixed release, verified by SHA256.
-$script:SujiVersion = '0.6.1'
-$script:SujiUrl = 'https://github.com/SCEPTICG/suji/releases/download/v0.6.1/suji.zip'
-$script:SujiSha256 = 'b9338474302534618b0a256acb585dae9be7167050682b1725226b0cdc8c418d'
+$script:SujiVersion = '0.7.0'
+$script:SujiUrl = 'https://github.com/SCEPTICG/suji/releases/download/v0.7.0/suji.zip'
+$script:SujiSha256 = '9430cb8b05a42cc916f798d346aed0dc0109216b48aa6821c808273e9fc2f003'
 # hikari's row of controls for suji: in portable_config, only installed with suji.
 $script:SujiConf = 'suji.conf'
 # What hikari's uosc and suji are in the folder (one at a time: with both, two
