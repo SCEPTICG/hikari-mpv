@@ -25,7 +25,7 @@ Run the same line to update. To see which version you have, without changing any
 curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash -s -- --version
 ```
 
-It prints one line per config folder, such as `mpv (/Users/you/.config/mpv): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `preview-…` a test build. Paste that line when you report a problem.
+It prints one line per config folder, such as `mpv (/Users/you/.config/mpv): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `0.10.0+dev.…` a test build made on 0.10.0 (`preview-…` in older test builds). Paste that line when you report a problem.
 
 To uninstall:
 

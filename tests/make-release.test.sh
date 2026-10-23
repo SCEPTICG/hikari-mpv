@@ -291,7 +291,8 @@ head -c $((size - 1)) dist/hikari.sh | (cd "$tmp" && HOME="$home2" HIKARI_LANG=e
 check 'without only its final line break it still runs (the check above can see main)' grep -q 'Usage' "$tmp/cut.txt"
 
 # --- a preview build ---------------------------------------------------------
-# The moving tag preview: the same checks, the version preview-<short hash>.
+# The moving tag preview: the same checks, the version X.Y.Z+dev.<short hash>,
+# X.Y.Z the highest vX.Y.Z tag among the ancestors of the commit.
 git tag -d v1.2.3 >/dev/null
 rm -rf dist
 fails 'preview: refuses when the tag does not exist, says how to move it' 'git tag -f preview' tools/make-release.sh preview
@@ -310,15 +311,34 @@ echo '# local change' >>README.md
 git tag -f preview >/dev/null
 fails 'preview: refuses a modified work tree' 'not clean' tools/make-release.sh preview
 git checkout -q -- README.md
+# Without a release tag among its ancestors it has no version to be named after.
+fails 'preview: refuses without a vX.Y.Z tag among the ancestors' 'no vX.Y.Z tag among the ancestors of HEAD' tools/make-release.sh preview
+check 'preview: nothing built without a release tag' test ! -e dist/hikari.ps1 -a ! -e dist/hikari.sh -a ! -e dist/hikari.zip
+# Tags that are not exactly vX.Y.Z do not count, even on the commit itself.
+for t in v1.2 v1.2.3-rc1 v01.2.3 v1.2.3.4 1.2.3 V1.2.3; do git tag "$t" HEAD; done
+fails 'preview: tags not of the form vX.Y.Z do not count' 'no vX.Y.Z tag among the ancestors of HEAD' tools/make-release.sh preview
+for t in v1.2 v1.2.3-rc1 v01.2.3 v1.2.3.4 1.2.3 V1.2.3; do git tag -d "$t" >/dev/null; done
+# The highest one, compared as numbers, not the nearest: v1.9.0 is on HEAD,
+# v1.10.0 and v1.2.3 on its parent. v9.9.9 is newer but on another branch.
+git tag v1.2.3 "$base"
+git tag v1.10.0 "$base"
+git tag v1.9.0 HEAD
+git checkout -q -b other "$base"
+echo '# other' >>README.md
+commit_as 'other branch'
+git tag v9.9.9 HEAD
+git checkout -q -
+git branch -D other >/dev/null
 # An annotated tag works as well as a light one.
 git tag -f -a -m 'preview build' preview >/dev/null
 if tools/make-release.sh preview >"$tmp/pv-out.txt" 2>&1; then ok 'preview: builds (annotated tag)'; else fail 'preview: builds (annotated tag)'; cat "$tmp/pv-out.txt"; fi
 git tag -f preview >/dev/null
 if tools/make-release.sh preview >"$tmp/pv-out.txt" 2>&1; then ok 'preview: builds'; else fail 'preview: builds'; cat "$tmp/pv-out.txt"; fi
-pv_version="preview-$(git rev-parse --short=7 HEAD)"
+pv_version="1.10.0+dev.$(git rev-parse --short=7 HEAD)"
 pv_url='https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.zip'
 pv_zip_sha="$(sha256sum dist/hikari.zip | cut -d' ' -f1)"
-check 'preview: version is preview- and the 7-character commit hash' bash -c "[[ '$pv_version' =~ ^preview-[0-9a-f]{7}\$ ]]"
+check 'preview: version is the highest ancestor release, +dev. and the 7-character commit hash' bash -c "[[ '$pv_version' =~ ^1\.10\.0\+dev\.[0-9a-f]{7}\$ ]]"
+check 'preview: the output names that version' grep -qF "hikari $pv_version (preview) built from commit" "$tmp/pv-out.txt"
 check 'preview: dist has the four files' test -f dist/hikari.zip -a -f dist/hikari.ps1 -a -f dist/hikari.sh -a -f dist/SHA256SUMS
 check 'preview: SHA256SUMS matches the three files' bash -c 'cd dist && sha256sum --quiet -c SHA256SUMS'
 check 'preview: the work tree is still clean' test -z "$(git status --porcelain)"

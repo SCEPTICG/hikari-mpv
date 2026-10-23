@@ -200,6 +200,67 @@ test('preview build (preview-<commit>): nothing is checked, as with dev', functi
 	cleanup(env)
 end)
 
+test('test build (X.Y.Z+dev.<commit>): counts as X.Y.Z', function()
+	local t = load()
+	eq(t.dev_base('0.10.0+dev.abc1234'), '0.10.0')
+	eq(t.dev_base('0.10.0+dev.' .. string.rep('f', 40)), '0.10.0', '40 hex digits')
+	eq(t.dev_base('0.010.0+dev.abc1234'), '0.10.0', 'leading zeros normalised')
+	eq(t.compare_versions('0.10.0+dev.abc1234', '0.10.0'), nil, 'compare_versions itself only takes X.Y.Z')
+	for _, bad in ipairs({
+		'0.10.0+dev.', '0.10.0+dev.XYZ', '0.10.0+dev.ABC1234', '0.10+dev.abc1234', '0.10.0+foo.abc1234',
+		'0.10.0+dev.abc123', '0.10.0+dev.' .. string.rep('f', 41), '0.10.0-dev.abc1234', '0.10.0+devabc1234',
+		'0.10.0+dev.abc1234 ', ' 0.10.0+dev.abc1234', '0.10.0+dev.abc1234+dev.abc1234', 'v0.10.0+dev.abc1234',
+		'1234567890.0.0+dev.abc1234', '+dev.abc1234', 'dev', 'preview-abc1234',
+	}) do
+		eq(t.dev_base(bad), nil, bad)
+	end
+end)
+
+test('test build: a newer release is announced, its own base and older ones are not', function()
+	local t, env = load('0.10.0+dev.abc1234')
+	eq(t.installed_version(), '0.10.0', 'base release')
+	file_loaded()
+	mock.finish_async(true, {status = 0, stdout = answer('v0.10.1'), error_string = ''})
+	eq(button(), true, 'button on')
+	mock.advance(5)
+	eq(mock.osd[#mock.osd], 'hikari 0.10.1 disponible · Alt+u')
+	eq(t.read_state().latest, '0.10.1', 'the release is saved')
+	-- "No avisar de esta versión" saves the release, not the build.
+	mock.messages['dismiss']()
+	eq(t.read_state().dismissed, '0.10.1', 'dismissed release')
+	cleanup(env)
+	for _, tag in ipairs({'v0.10.0', 'v0.9.9'}) do
+		_, env = load('0.10.0+dev.abc1234')
+		file_loaded()
+		mock.finish_async(true, {status = 0, stdout = answer(tag), error_string = ''})
+		eq(button(), false, tag)
+		mock.advance(5)
+		eq(#mock.osd, 0, tag)
+		cleanup(env)
+	end
+end)
+
+test('test build, Alt+u with nothing new: names the build as recorded', function()
+	local _, env = load('0.10.0+dev.abc1234', 'last_check=' .. (T0 - 3600) .. '\nlatest=0.10.0\n')
+	file_loaded()
+	mock.bindings['open-menu']()
+	eq(#mock.commands, 0)
+	eq(mock.osd[1], 'hikari 0.10.0+dev.abc1234: no hay ninguna versión nueva')
+	cleanup(env)
+end)
+
+test('broken test build versions: nothing is checked', function()
+	for _, v in ipairs({'0.10.0+dev.', '0.10.0+dev.XYZ', '0.10+dev.abc1234', '0.10.0+foo.abc1234'}) do
+		local t, env = load(v)
+		eq(t.installed_version(), nil, v)
+		file_loaded()
+		eq(#mock.async, 0, v .. ': no curl')
+		eq(#mock.osd, 0, v .. ': no notice')
+		eq(read(env.state), nil, v .. ': no state written')
+		cleanup(env)
+	end
+end)
+
 test('record with spaces, CRLF and two versions: the last one counts', function()
 	local t, env = load(nil)
 	write(env.record, 'hikari_version=0.1.0\r\n  hikari_version = 0.2.1  \r\nhikari_commit=abc\r\n')

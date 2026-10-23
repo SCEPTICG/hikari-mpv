@@ -22,8 +22,14 @@
 -- - Installed version: the `hikari_version=X.Y.Z` line of ~~/hikari-installed.txt,
 --   the record both installers write (the last such line wins, as in the
 --   installers). No record, or a version that is not X.Y.Z (a copy of the
---   repository says `dev`, a preview build `preview-<commit>`): nothing is
---   checked and nothing is shown.
+--   repository says `dev`, an old preview build `preview-<commit>`): nothing
+--   is checked and nothing is shown.
+-- - A test build says `X.Y.Z+dev.<commit>` (7 to 40 lower-case hex digits),
+--   X.Y.Z being the release it is built on (tools/make-release.sh preview).
+--   As in semver build metadata, it counts as X.Y.Z: a newer release than
+--   X.Y.Z is announced, X.Y.Z itself is not. What is compared and what
+--   "Don't remind me" saves are still release versions; only "there is no new
+--   version" names the build as recorded.
 -- - Latest version: no GitHub API (60 requests an hour per address). curl asks
 --   for the headers of https://github.com/SCEPTICG/hikari-mpv/releases/latest
 --   without following redirects, and the version is the tag of the
@@ -166,6 +172,15 @@ end
 
 local function is_newer(candidate, than) return compare_versions(candidate, than) == 1 end
 
+-- The release a test build "X.Y.Z+dev.<commit>" is built on ("X.Y.Z" without
+-- leading zeros), nil for anything else.
+local function dev_base(text)
+	if type(text) ~= 'string' then return nil end
+	local base, commit = text:match('^([^+]*)%+dev%.([0-9a-f]+)$')
+	if not base or #commit < 7 or #commit > 40 then return nil end
+	return normalize(base)
+end
+
 -- The version in curl's header output: the first Location header (any case,
 -- LF or CRLF) must be exactly TAG_URL_PREFIX .. 'vX.Y.Z'. Anything else: nil.
 local function parse_location(headers)
@@ -218,10 +233,16 @@ local function parse_key_values(content)
 	return values
 end
 
--- The installed hikari version ("X.Y.Z"), nil without a record, for `dev` or a preview.
+-- The installed hikari version ("X.Y.Z", the base release for a test build)
+-- and how to name it (the record's text for a test build); nil without a
+-- record, for `dev` or an old preview-<commit>.
 local function installed_version()
 	local values = parse_key_values(read_small(expand(RECORD_PATH)))
-	return normalize(values.hikari_version)
+	local release = normalize(values.hikari_version)
+	if release then return release, release end
+	local base = dev_base(values.hikari_version)
+	if base then return base, values.hikari_version end
+	return nil
 end
 
 -- Saved state; every field is checked and dropped when invalid.
@@ -373,6 +394,7 @@ end
 -- ---------------------------------------------------------------------------
 
 local installed = nil   -- installed version, read on the first file
+local installed_name = nil -- the same, as the record says it (X.Y.Z+dev.<commit>)
 local state = {}        -- what read_state returned, kept up to date
 local checked = false   -- the first file-loaded has been handled
 local notified = nil    -- version the notice was shown for this session
@@ -514,7 +536,7 @@ local function on_file_loaded()
 	checked = true
 	loaded_at = mp.get_time()
 	if not opts.enabled then return end
-	installed = installed_version()
+	installed, installed_name = installed_version()
 	if not installed then
 		msg.verbose('No released hikari version in ' .. RECORD_PATH .. ': not checking for updates')
 		return
@@ -565,14 +587,14 @@ local function open_menu()
 		mp.osd_message(i18n.t('update_disabled'), 3)
 		return
 	end
-	if not installed then installed = installed_version() end
+	if not installed then installed, installed_name = installed_version() end
 	if not installed then
 		mp.osd_message(i18n.t('update_unknown'), 3)
 		return
 	end
 	if not checked then state = read_state() end
 	if not pending_version() then
-		mp.osd_message(i18n.t('update_none', {version = installed}), 3)
+		mp.osd_message(i18n.t('update_none', {version = installed_name or installed}), 3)
 		return
 	end
 	menu.open(menu_data())
@@ -663,7 +685,7 @@ end)
 if HIKARI_UPDATE_TEST then
 	return {
 		opts = opts, parse_version = parse_version, normalize = normalize, compare_versions = compare_versions,
-		is_newer = is_newer, parse_location = parse_location, parse_key_values = parse_key_values,
+		is_newer = is_newer, dev_base = dev_base, parse_location = parse_location, parse_key_values = parse_key_values,
 		installed_version = installed_version, read_state = read_state, state_content = state_content,
 		write_file_atomic = write_file_atomic, platform = platform, update_command = update_command,
 		release_url = release_url, open_url_args = open_url_args, clipboard_tools = clipboard_tools,

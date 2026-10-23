@@ -104,13 +104,13 @@ irm https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.ps1 
 curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/download/preview/hikari.sh | bash
 ```
 
-The version written in the installers is `preview-` and the short hash of the commit (e.g. `preview-ffebb37`), so `hikari-installed.txt` tells which build is installed. The installers say it when they start: `Preview build (preview-ffebb37). To go back to the stable version:` and the usual install line. That version is not `X.Y.Z`, so `hikari-update.lua` does not look for updates on a preview install (as with a copy of the repository, `dev`). To go back, run the normal install line: the stable version installs over a preview (there is no version check), removes the hikari files the preview had and it does not, and keeps the palette, subtitle, upscaling and language choices.
+The version written in the installers is the release the build is made on, `+dev.` and the short hash of the commit (e.g. `0.10.0+dev.d5af920`), so `hikari-installed.txt` tells which build is installed. That release is the highest `vX.Y.Z` tag among the ancestors of the commit; without one, `tools/make-release.sh preview` refuses. The installers say it when they start: `Preview build (0.10.0+dev.d5af920). To go back to the stable version:` and the usual install line, and `--version` / `-Version` shows it as `a test build of 0.10.0`, compared with the installer by that release. As in semver build metadata, `hikari-update.lua` takes the build as `0.10.0`: it tells about any newer release, not about 0.10.0 itself. Builds made before this said `preview-` and the hash (e.g. `preview-ffebb37`); the installers still show those, and `hikari-update.lua` does not look for updates on them (as with a copy of the repository, `dev`). To go back, run the normal install line: the stable version installs over a preview (there is no version check), removes the hikari files the preview had and it does not, and keeps the palette, subtitle, upscaling and language choices.
 
 To publish a new preview build:
 
 1. Merge the work into `dev` and check it out, with a clean work tree.
 
-2. Move the tag to that commit and build. The tag must point to the current commit, or the script refuses:
+2. Move the tag to that commit and build. The tag must point to the current commit, or the script refuses; the release tags must be there too (`git fetch --tags`), as the build is named after the newest one it is made on:
 
    ```
    git tag -f preview
