@@ -1260,6 +1260,7 @@ test('skip: automatic skip with AniSkip\'s times: the opening as playback enters
 	os.remove(CACHE)
 	local s = play({['hikari-skip-auto_skip'] = 'all'})
 	answer_all()
+	mock.advance(s.LOAD_GRACE)
 	local opening, ending = s.state.ranges[1], s.state.ranges[2]
 	eq(opening.kind.name, 'openings'); eq(ending.kind.name, 'endings')
 	local function jumps()
@@ -1290,6 +1291,7 @@ test('skip: automatic skip with AniSkip\'s times: the opening as playback enters
 	eq(mock.commands[#mock.commands][2], '1460.000', 'to its end: what follows it is not skipped')
 	-- A seek by hand into the opening, once playback has settled: not skipped.
 	s = play({['hikari-skip-auto_skip'] = 'all'}, nil, nil, nil, 10)
+	mock.advance(s.LOAD_GRACE)
 	t = 10
 	mock.set('time-pos', t)
 	while t < 20 do

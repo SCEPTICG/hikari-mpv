@@ -153,13 +153,18 @@
 --   it has played into from the start, still skip it, halfway through. Our own
 --   skip's seek (`auto_target`, only until the next jump) counts as playback
 --   too: a range that starts where it lands (an ending, then a preview) is
---   skipped as well, also halfway through a file. While continue watching's
---   question is open (PROMPT_TYPE in uosc or suji, or mpv's console for the
---   selector, which any use of the console holds up too), and for
---   PROMPT_GRACE seconds after (its seek), ranges are not looked at: they are
---   once it has gone, where it left playback, so the race with the time
---   hikari-resume reads and the 5 s of "‹ Watch opening" behind the menu are
---   both avoided. A range longer than AUTO_MAX_SHARE of the file (a chapter
+--   skipped as well, also halfway through a file. No range of a file is
+--   looked at for LOAD_GRACE seconds after it loads (file-loaded or its first
+--   time-pos, whichever comes first: the scripts run side by side, so no order
+--   between them is counted on). hikari-resume asks at file-loaded and its
+--   menu shows a little later (mpv 0.40's console about 0.15 s after it),
+--   so by then the question is open if there is one. While it is open
+--   (PROMPT_TYPE in uosc or suji, or mpv's console for the selector, which
+--   any use of the console holds up too), and for PROMPT_GRACE seconds after
+--   (its seek), ranges are not looked at either: they are once it has gone,
+--   where it left playback, so the race with the time hikari-resume reads and
+--   the 5 s of "‹ Watch opening" behind the menu are both avoided. The price:
+--   a range the file starts in is skipped LOAD_GRACE seconds late. A range longer than AUTO_MAX_SHARE of the file (a chapter
 --   list that marks nearly all of it as one) is never skipped on its own; its
 --   button stays. Each range is skipped on its own once per file at most
 --   (`auto_done`, by kind and start); turning the mode on inside a range
@@ -283,6 +288,10 @@ local AUTO_MAX_SHARE = 0.9
 -- own while it is open, nor for PROMPT_GRACE seconds after (its seek).
 local PROMPT_TYPE = 'hikari-resume-prompt'
 local PROMPT_GRACE = 0.5
+-- No range of a file is looked at until LOAD_GRACE seconds after it loads:
+-- time for the question to open (hikari-resume asks at file-loaded, and the
+-- menu shows a little later, in another script).
+local LOAD_GRACE = 1
 
 local opts = {
 	openings = true,
@@ -651,6 +660,9 @@ local state = {
 	-- suji (the selector's is mpv's console, console_open); prompt_open: any of
 	-- the three, as last seen; prompt_timer: the PROMPT_GRACE after it closed.
 	auto_target = nil, prompt_uosc = false, prompt_suji = false, prompt_open = false, prompt_timer = nil,
+	-- prompt_console: mpv's console is open; load_started: LOAD_GRACE has
+	-- started for this file (load_timer until it ends).
+	prompt_console = false, load_started = false, load_timer = nil,
 }
 state.auto_saved = read_saved_mode()
 
@@ -885,7 +897,20 @@ local function track_flow(time)
 	state.flow = {start = time, auto = own or state.played < SETTLE}
 end
 
+-- The file loaded (file-loaded, or its first time-pos, whichever comes
+-- first: scripts run side by side): LOAD_GRACE before any range is looked at.
+local function start_load_grace()
+	if state.load_started then return end
+	state.load_started = true
+	state.load_timer = mp.add_timeout(LOAD_GRACE, function()
+		state.load_timer = nil
+		auto_skip_check()
+		refresh()
+	end)
+end
+
 local function on_time(_, time)
+	if type(time) == 'number' then start_load_grace() end
 	track_flow(time)
 	state.time = time
 	update_current()
@@ -905,6 +930,8 @@ local function watch_time()
 		if state.time and state.last_time == nil then
 			state.last_time, state.played = state.time, SETTLE
 			state.flow = {start = state.time, auto = false}
+			-- Long loaded: no question to wait for.
+			state.load_started = true
 		end
 	elseif not want and time_watched then
 		mp.unobserve_property(on_time)
@@ -1023,9 +1050,10 @@ local function kind_key(kind, prefix)
 	return (kind.label:gsub('^skip_', prefix))
 end
 
--- Continue watching's question is open, or has just closed (see PROMPT_GRACE).
+-- The file has just loaded (LOAD_GRACE), or continue watching's question is
+-- open or has just closed (PROMPT_GRACE).
 local function prompt_waiting()
-	return state.prompt_open or state.prompt_timer ~= nil
+	return state.load_timer ~= nil or state.prompt_open or state.prompt_timer ~= nil
 end
 
 auto_skip_check = function()
@@ -1191,6 +1219,8 @@ local function reset()
 	state.next_queued = false
 	stop_undo()
 	state.auto_done, state.judged, state.auto_target = {}, nil, nil
+	if state.load_timer then state.load_timer:kill() end
+	state.load_started, state.load_timer = false, nil
 	state.last_time, state.played, state.flow, state.seeked = nil, 0, nil, false
 	rebuild()
 end
@@ -1311,7 +1341,7 @@ mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open',
 -- Continue watching's question opens and closes: in uosc, in suji, or in the
 -- selector (mpv's console, where nothing tells it from any other use).
 local function prompt_changed()
-	local open = state.prompt_uosc or state.prompt_suji or state.console_open
+	local open = state.prompt_uosc or state.prompt_suji or state.prompt_console
 	if open == state.prompt_open then return end
 	state.prompt_open = open
 	if state.prompt_timer then state.prompt_timer:kill() end
@@ -1331,13 +1361,17 @@ mp.observe_property('user-data/suji/menu/type', 'native', function(_, v)
 	state.prompt_suji = v == PROMPT_TYPE
 	prompt_changed()
 end)
-mp.observe_property('user-data/mpv/console/open', 'bool', function() prompt_changed() end)
+mp.observe_property('user-data/mpv/console/open', 'bool', function(_, v)
+	state.prompt_console = v == true
+	prompt_changed()
+end)
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
 -- Any seek, ours too: the next time-pos is a jump, not playback (track_flow).
 mp.register_event('seek', function() state.seeked = true end)
 mp.register_event('file-loaded', function()
 	state.loaded = true
+	start_load_grace()
 	maybe_aniskip()
 end)
 -- hikari-title may publish after file-loaded has been handled here.
@@ -1384,7 +1418,7 @@ if HIKARI_SKIP_TEST then
 		SUJI_MARGINS_PROP = SUJI_MARGINS_PROP, SUJI_GAP = SUJI_GAP,
 		SUJI_ENABLED_PROP = SUJI_ENABLED_PROP, SUJI_VERSION_PROP = SUJI_VERSION_PROP, ACTION_ID = ACTION_ID, ACTION_MESSAGE = ACTION_MESSAGE,
 		AUTO_MODES = AUTO_MODES, MENU_TYPE = MENU_TYPE, MODE_MESSAGE = MODE_MESSAGE, STATE_PATH = STATE_PATH,
-		UNDO_TIME = UNDO_TIME, SETTLE = SETTLE, FLOW_STEP = FLOW_STEP, auto_mode = auto_mode,
+		UNDO_TIME = UNDO_TIME, SETTLE = SETTLE, LOAD_GRACE = LOAD_GRACE, FLOW_STEP = FLOW_STEP, auto_mode = auto_mode,
 		menu_data = menu_data, open_menu = open_menu, set_auto_skip = set_auto_skip,
 	}
 end
