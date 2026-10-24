@@ -141,16 +141,33 @@
 --   or is resumed inside it. time-pos tells: a step forward of at most
 --   FLOW_STEP seconds with no `seek` event in between is playback, anything
 --   else a jump, and `flow` is where the last jump (or the file) started. A
---   range is entered by playing when that start is before the range's. A jump
---   before SETTLE seconds of the file have played counts as where the file
---   starts: continue watching's question pauses at 0 and seeks once answered,
---   and mpv's own resume starts there at once. So a seek (a click on the
---   timeline, a key, a chapter key) into a range later on does not skip it.
---   Each range is skipped on its own once per file at most (`auto_done`, by
---   kind and start); turning the mode on inside a range leaves that one alone.
+--   range is entered by playing when that start is more than SEEK_MARGIN
+--   seconds before the range's: a seek with the arrow keys lands on a keyframe,
+--   which may be a little short of a range it was aimed into. A jump before
+--   SETTLE seconds of the file have played counts as where the file starts:
+--   continue watching's question pauses at 0 and seeks once answered, and
+--   mpv's own resume starts there at once. So a seek (a click on the timeline,
+--   a key, a chapter key) into a range later on does not skip it. That mark
+--   (`flow.auto`) lasts for the whole stretch of playback that follows, so
+--   AniSkip times that arrive late, with playback already inside the opening
+--   it has played into from the start, still skip it, halfway through. Our own
+--   skip's seek (`auto_target`, only until the next jump) counts as playback
+--   too: a range that starts where it lands (an ending, then a preview) is
+--   skipped as well, also halfway through a file. While continue watching's
+--   question is open (PROMPT_TYPE in uosc or suji, or mpv's console for the
+--   selector, which any use of the console holds up too), and for
+--   PROMPT_GRACE seconds after (its seek), ranges are not looked at: they are
+--   once it has gone, where it left playback, so the race with the time
+--   hikari-resume reads and the 5 s of "‹ Watch opening" behind the menu are
+--   both avoided. A range longer than AUTO_MAX_SHARE of the file (a chapter
+--   list that marks nearly all of it as one) is never skipped on its own; its
+--   button stays. Each range is skipped on its own once per file at most
+--   (`auto_done`, by kind and start); turning the mode on inside a range
+--   leaves that one alone.
 --   time-pos is observed while the mode is not `no` even without ranges, so the
 --   first value of each file is its start; observing starts on a file already
---   playing (the mode turned on) count as settled.
+--   playing (the mode turned on) count as settled, and stopping forgets the
+--   last time, so an old one is never compared with a new one.
 -- - Undo: after a skip that stays in the file, the button reads "‹ Watch
 --   opening" (intro, ending, preview) for UNDO_TIME seconds, also with suji
 --   (show-action, hide-action when it ends) and in place of any skip button.
@@ -255,6 +272,17 @@ local UNDO_TIME = 5
 -- counts as playing from where it started until SETTLE seconds have played.
 local FLOW_STEP = 2
 local SETTLE = 3
+-- A seek that lands less than SEEK_MARGIN seconds before a range (a keyframe
+-- short of where it was aimed) is a seek into it; our own skip lands within
+-- OWN_MARGIN of where it went.
+local SEEK_MARGIN = 1.5
+local OWN_MARGIN = 1
+-- A range longer than this share of the file is never skipped on its own.
+local AUTO_MAX_SHARE = 0.9
+-- Continue watching's question (hikari-resume.lua): nothing is skipped on its
+-- own while it is open, nor for PROMPT_GRACE seconds after (its seek).
+local PROMPT_TYPE = 'hikari-resume-prompt'
+local PROMPT_GRACE = 0.5
 
 local opts = {
 	openings = true,
@@ -618,6 +646,11 @@ local state = {
 	-- label, timer} while "‹ Watch opening" is up.
 	auto_saved = nil, auto_done = {}, judged = nil,
 	last_time = nil, played = 0, flow = nil, seeked = false, undo = nil,
+	-- auto_target: where our last automatic skip seeked, until time-pos jumps.
+	-- prompt_uosc, prompt_suji: continue watching's question is open in uosc or
+	-- suji (the selector's is mpv's console, console_open); prompt_open: any of
+	-- the three, as last seen; prompt_timer: the PROMPT_GRACE after it closed.
+	auto_target = nil, prompt_uosc = false, prompt_suji = false, prompt_open = false, prompt_timer = nil,
 }
 state.auto_saved = read_saved_mode()
 
@@ -845,7 +878,11 @@ local function track_flow(time)
 		return
 	end
 	state.seeked = false
-	state.flow = {start = time, auto = state.played < SETTLE}
+	-- Our own skip landing: playback goes on from there as if it had played
+	-- through, so a range that starts where it lands is entered by playing.
+	local own = state.auto_target ~= nil and math.abs(time - state.auto_target) <= OWN_MARGIN
+	state.auto_target = nil
+	state.flow = {start = time, auto = own or state.played < SETTLE}
 end
 
 local function on_time(_, time)
@@ -872,6 +909,8 @@ local function watch_time()
 	elseif not want and time_watched then
 		mp.unobserve_property(on_time)
 		time_watched = false
+		-- Watched again later: start afresh, not from this old time.
+		state.last_time = nil
 	end
 end
 
@@ -984,23 +1023,36 @@ local function kind_key(kind, prefix)
 	return (kind.label:gsub('^skip_', prefix))
 end
 
+-- Continue watching's question is open, or has just closed (see PROMPT_GRACE).
+local function prompt_waiting()
+	return state.prompt_open or state.prompt_timer ~= nil
+end
+
 auto_skip_check = function()
 	local range = state.current and state.ranges[state.current]
 	local id = range and range_id(range)
 	if id == state.judged then return end
+	-- Not yet: looked at once the question is answered, where it left playback.
+	if range and prompt_waiting() then return end
 	state.judged = id
 	if not range or not is_active() or not AUTO_KINDS[auto_mode()][range.kind.name] or state.auto_done[id] then return end
-	-- Entered by playing, or the file started (or was resumed) in it.
+	-- Nearly the whole file (a chapter list that marks it all): never on its own.
+	local duration = state.duration
+	if type(duration) == 'number' and duration > 0 and range.finish - range.start > duration * AUTO_MAX_SHARE then return end
+	-- Entered by playing (from further back than a keyframe short of it), or
+	-- the file started (or was resumed) in it, or our own skip landed on it.
 	local flow = state.flow
-	if not flow or not (flow.auto or flow.start < range.start) then return end
+	if not flow or not (flow.auto or flow.start < range.start - SEEK_MARGIN) then return end
 	state.auto_done[id] = true
 	msg.verbose('Automatic skip: ' .. range.kind.name .. ' from ' .. format_time(range.start))
 	stop_undo()
 	local undo = {start = range.start, label = kind_key(range.kind, 'skip_undo_')}
 	if not skip_range(undo) then return end
 	mp.osd_message(i18n.t(kind_key(range.kind, 'skip_done_')), 2)
-	-- Still in this file (not playlist-next): a while to go back.
+	-- Still in this file (not playlist-next): a while to go back, and a range
+	-- that starts where it lands is entered by playing (see track_flow).
 	if state.undo == undo then
+		state.auto_target = state.dismissed and state.dismissed.target
 		undo.timer = mp.add_timeout(UNDO_TIME, function()
 			if state.undo ~= undo then return end
 			state.undo = nil
@@ -1138,7 +1190,7 @@ local function reset()
 	state.file, state.loaded, state.asked, state.results = state.file + 1, false, false, nil
 	state.next_queued = false
 	stop_undo()
-	state.auto_done, state.judged = {}, nil
+	state.auto_done, state.judged, state.auto_target = {}, nil, nil
 	state.last_time, state.played, state.flow, state.seeked = nil, 0, nil, false
 	rebuild()
 end
@@ -1256,6 +1308,30 @@ mp.register_script_message(ACTION_MESSAGE, function()
 	if state.action and suji_draws() and button_key() and not covered() then press() end
 end)
 mp.observe_property('user-data/mpv/console/open', 'bool', setter('console_open', truthy))
+-- Continue watching's question opens and closes: in uosc, in suji, or in the
+-- selector (mpv's console, where nothing tells it from any other use).
+local function prompt_changed()
+	local open = state.prompt_uosc or state.prompt_suji or state.console_open
+	if open == state.prompt_open then return end
+	state.prompt_open = open
+	if state.prompt_timer then state.prompt_timer:kill() end
+	state.prompt_timer = nil
+	if open then return end
+	state.prompt_timer = mp.add_timeout(PROMPT_GRACE, function()
+		state.prompt_timer = nil
+		auto_skip_check()
+		refresh()
+	end)
+end
+mp.observe_property('user-data/uosc/menu/type', 'native', function(_, v)
+	state.prompt_uosc = v == PROMPT_TYPE
+	prompt_changed()
+end)
+mp.observe_property('user-data/suji/menu/type', 'native', function(_, v)
+	state.prompt_suji = v == PROMPT_TYPE
+	prompt_changed()
+end)
+mp.observe_property('user-data/mpv/console/open', 'bool', function() prompt_changed() end)
 mp.observe_property('user-data/mpv/context-menu/open', 'bool', setter('context_menu_open', truthy))
 mp.register_event('end-file', reset)
 -- Any seek, ours too: the next time-pos is a jump, not playback (track_flow).
