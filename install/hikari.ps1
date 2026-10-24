@@ -252,6 +252,7 @@ $script:MpvConfLines = @(
 $script:InputBindings = @(
     @{ Key = 'Alt+p'; Command = 'script-binding hikari_palettes/open-menu' },
     @{ Key = 'Alt+s'; Command = 'script-binding hikari_skip/skip' },
+    @{ Key = 'Alt+S'; Command = 'script-binding hikari_skip/open-menu' },
     @{ Key = 'Alt+t'; Command = 'script-binding hikari_subs/open-menu' },
     @{ Key = 'Alt+r'; Command = 'script-binding hikari_resume/open-menu' },
     @{ Key = 'Alt+u'; Command = 'script-binding hikari_update/open-menu' },
@@ -278,6 +279,10 @@ $script:UpdateState = 'hikari-update.txt'
 # What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
 # uninstall like the update state.
 $script:AniSkipCache = 'hikari-aniskip.json'
+# The automatic skip picked in hikari-skip.lua's menu: read by that script
+# only (not included from mpv.conf), kept on update, removed on uninstall like
+# the update state.
+$script:SkipState = 'hikari-skip.txt'
 # The files left half-watched that hikari-resume.lua remembers (paths and
 # positions): never in a backup, removed on uninstall with the temporary files
 # of its writes (<list>.<pid>-<n>.tmp, ResumeTmpPattern).
@@ -4864,7 +4869,7 @@ function Uninstall-HikariTarget {
         }
         Remove-HikariItem -Path (Join-HikariPath $config $script:OriginalsDir) -Root $config
         Remove-HikariItem -Path (Join-HikariPath $config $script:RecordName) -Root $config
-        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'), $script:ResumeList)) {
+        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'), $script:SkipState, ($script:SkipState + '.tmp'), $script:ResumeList)) {
             $statePath = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $statePath -PathType Leaf) { Remove-HikariItem -Path $statePath -Root $config }
         }

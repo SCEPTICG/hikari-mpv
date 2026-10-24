@@ -275,6 +275,7 @@ cat >"$tmp/want-input.conf" <<'EOF'
 # >>> hikari (managed block, do not edit) >>>
 Alt+p  script-binding hikari_palettes/open-menu
 Alt+s  script-binding hikari_skip/skip
+Alt+S  script-binding hikari_skip/open-menu
 Alt+t  script-binding hikari_subs/open-menu
 Alt+r  script-binding hikari_resume/open-menu
 Alt+u  script-binding hikari_update/open-menu
@@ -324,6 +325,8 @@ printf 'last_check=1800000000\nlatest=9.9.9\ndismissed=9.9.9\n' >"$cfg/hikari-up
 cp "$cfg/hikari-update.txt" "$tmp/update-state-before"
 printf '{"version":1,"titles":{},"episodes":{}}\n' >"$cfg/hikari-aniskip.json"
 cp "$cfg/hikari-aniskip.json" "$tmp/aniskip-cache-before"
+printf 'auto_skip=openings\n' >"$cfg/hikari-skip.txt"
+cp "$cfg/hikari-skip.txt" "$tmp/skip-state-before"
 printf '{"version":1,"entries":[{"path":"/nas/anime/ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}\n' >"$cfg/hikari-resume.json"
 cp "$cfg/hikari-resume.json" "$tmp/resume-list-before"
 printf 'enabled=yes\nask=no\nhistory_size=5\n' >"$cfg/script-opts/hikari-resume.conf"
@@ -336,6 +339,7 @@ check 'update: upscale mode kept' test "$(head -n 1 "$cfg/hikari-upscale.conf")"
 check 'update: palette kept' test "$(cat "$cfg/hikari-palette.conf")" = mine
 check 'update: update check state kept as it was' same "$tmp/update-state-before" "$cfg/hikari-update.txt"
 check 'update: AniSkip cache kept as it was' same "$tmp/aniskip-cache-before" "$cfg/hikari-aniskip.json"
+check 'update: automatic skip pick kept as it was' same "$tmp/skip-state-before" "$cfg/hikari-skip.txt"
 check 'update: continue watching list kept as it was' same "$tmp/resume-list-before" "$cfg/hikari-resume.json"
 check 'update: your hikari-resume.conf kept' same "$tmp/resume-conf-before" "$cfg/script-opts/hikari-resume.conf"
 check 'update: said hikari-resume.conf was kept' has "$out" 'script-opts/hikari-resume.conf already exists: kept'
@@ -392,6 +396,8 @@ printf 'last_check=1800000000\n' >"$cfg/hikari-update.txt"
 printf 'x' >"$cfg/hikari-update.txt.tmp"
 printf '{"version":1}\n' >"$cfg/hikari-aniskip.json"
 printf 'x' >"$cfg/hikari-aniskip.json.tmp"
+printf 'auto_skip=all\n' >"$cfg/hikari-skip.txt"
+printf 'x' >"$cfg/hikari-skip.txt.tmp"
 printf '{"version":1,"entries":[]}\n' >"$cfg/hikari-resume.json"
 printf 'x' >"$cfg/hikari-resume.json.4242-1.tmp"
 printf 'mine' >"$cfg/hikari-resume.json.bak"
@@ -402,6 +408,7 @@ check 'created by hikari: a file of the user named like the list stays' test "$(
 rm -f "$cfg/hikari-resume.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
 check 'created by hikari: AniSkip cache removed (no question)' test ! -e "$cfg/hikari-aniskip.json" -a ! -e "$cfg/hikari-aniskip.json.tmp" -a ! -e "$cfg/script-modules/hikari-aniskip.lua"
+check 'created by hikari: automatic skip pick removed (no question)' test ! -e "$cfg/hikari-skip.txt" -a ! -e "$cfg/hikari-skip.txt.tmp"
 check 'uninstall: the menus module removed' test ! -e "$cfg/script-modules/hikari-menu.lua"
 check 'created by hikari: mpv.conf and input.conf removed' test ! -e "$cfg/mpv.conf" -a ! -e "$cfg/input.conf"
 

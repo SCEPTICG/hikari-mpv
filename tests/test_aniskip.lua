@@ -1256,6 +1256,54 @@ test('skip: the double-click guard works with AniSkip\'s button too', function()
 	assert(s.guard_active(), 'guard on after a mouse skip')
 end)
 
+test('skip: automatic skip with AniSkip\'s times: the opening as playback enters it, the ending only to its end', function()
+	os.remove(CACHE)
+	local s = play({['hikari-skip-auto_skip'] = 'all'})
+	answer_all()
+	mock.advance(s.LOAD_GRACE)
+	local opening, ending = s.state.ranges[1], s.state.ranges[2]
+	eq(opening.kind.name, 'openings'); eq(ending.kind.name, 'endings')
+	local function jumps()
+		local n = 0
+		for _, c in ipairs(mock.commands) do if c[1] == 'seek' or c[1] == 'playlist-next' then n = n + 1 end end
+		return n
+	end
+	local t = opening.start - 3
+	mock.set('time-pos', t)
+	while t < opening.start do
+		t = t + 0.5
+		mock.set('time-pos', t)
+	end
+	eq(jumps(), 1, 'the opening')
+	eq(mock.commands[#mock.commands][2], '243.346')
+	eq(label(s), '‹ Ver opening')
+	mock.events.seek()
+	mock.set('time-pos', 243.346)
+	mock.advance(5)
+	mock.events.seek()
+	t = ending.start - 2
+	mock.set('time-pos', t)
+	while t < ending.start do
+		t = t + 0.5
+		mock.set('time-pos', t)
+	end
+	eq(jumps(), 2, 'the ending')
+	eq(mock.commands[#mock.commands][2], '1460.000', 'to its end: what follows it is not skipped')
+	-- A seek by hand into the opening, once playback has settled: not skipped.
+	s = play({['hikari-skip-auto_skip'] = 'all'}, nil, nil, nil, 10)
+	mock.advance(s.LOAD_GRACE)
+	t = 10
+	mock.set('time-pos', t)
+	while t < 20 do
+		t = t + 0.5
+		mock.set('time-pos', t)
+	end
+	mock.events.seek()
+	mock.set('time-pos', 200)
+	eq(jumps(), 0)
+	eq(label(s), 'Saltar opening ›')
+end)
+
 os.remove(CACHE); remove_tmp_files()
 os.execute('rm -rf "' .. FAKE_BIN .. '"')
 print(string.format('\n%d passed, %d failed', passed, failed))

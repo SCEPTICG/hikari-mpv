@@ -916,6 +916,108 @@ local STRINGS = {
 		['zh-HK'] = '下一集 ›', ['zh-hans'] = '下一集 ›',
 	},
 
+	-- Automatic skip (hikari-skip.lua). The button for a few seconds after a
+	-- range was skipped on its own, to go back to it: skip_undo_<kind>, the
+	-- same words as skip_<kind>.
+	skip_undo_opening = {
+		en = '‹ Watch opening', es = '‹ Ver opening', de = '‹ Opening ansehen', fr = '‹ Voir l’opening',
+		it = '‹ Guarda opening', pl = '‹ Obejrzyj opening', pt = '‹ Ver abertura', ro = '‹ Vezi opening',
+		ru = '‹ Смотреть опенинг', tr = '‹ Opening’i izle', uk = '‹ Дивитися опенінг',
+		['zh-HK'] = '‹ 觀看片頭', ['zh-hans'] = '‹ 观看片头',
+	},
+	skip_undo_intro = {
+		en = '‹ Watch intro', es = '‹ Ver intro', de = '‹ Intro ansehen', fr = '‹ Voir l’intro',
+		it = '‹ Guarda intro', pl = '‹ Obejrzyj intro', pt = '‹ Ver introdução', ro = '‹ Vezi intro',
+		ru = '‹ Смотреть интро', tr = '‹ İntro’yu izle', uk = '‹ Дивитися інтро',
+		['zh-HK'] = '‹ 觀看序幕', ['zh-hans'] = '‹ 观看序幕',
+	},
+	skip_undo_ending = {
+		en = '‹ Watch ending', es = '‹ Ver ending', de = '‹ Ending ansehen', fr = '‹ Voir l’ending',
+		it = '‹ Guarda ending', pl = '‹ Obejrzyj ending', pt = '‹ Ver encerramento', ro = '‹ Vezi ending',
+		ru = '‹ Смотреть эндинг', tr = '‹ Ending’i izle', uk = '‹ Дивитися ендінг',
+		['zh-HK'] = '‹ 觀看片尾', ['zh-hans'] = '‹ 观看片尾',
+	},
+	skip_undo_outro = {
+		en = '‹ Watch preview', es = '‹ Ver avance', de = '‹ Vorschau ansehen', fr = '‹ Voir l’aperçu',
+		it = '‹ Guarda anteprima', pl = '‹ Obejrzyj zapowiedź', pt = '‹ Ver prévia', ro = '‹ Vezi previzualizarea',
+		ru = '‹ Смотреть превью', tr = '‹ Önizlemeyi izle', uk = '‹ Дивитися анонс',
+		['zh-HK'] = '‹ 觀看預告', ['zh-hans'] = '‹ 观看预告',
+	},
+	-- The short message on screen as it skips: skip_done_<kind>.
+	skip_done_opening = {
+		en = 'Opening skipped', es = 'Opening saltado', de = 'Opening übersprungen', fr = 'Opening passé',
+		it = 'Opening saltato', pl = 'Pominięto opening', pt = 'Abertura pulada', ro = 'Opening sărit',
+		ru = 'Опенинг пропущен', tr = 'Opening atlandı', uk = 'Опенінг пропущено',
+		['zh-HK'] = '已跳過片頭', ['zh-hans'] = '已跳过片头',
+	},
+	skip_done_intro = {
+		en = 'Intro skipped', es = 'Intro saltada', de = 'Intro übersprungen', fr = 'Intro passée',
+		it = 'Intro saltata', pl = 'Pominięto intro', pt = 'Introdução pulada', ro = 'Intro sărit',
+		ru = 'Интро пропущено', tr = 'İntro atlandı', uk = 'Інтро пропущено',
+		['zh-HK'] = '已跳過序幕', ['zh-hans'] = '已跳过序幕',
+	},
+	skip_done_ending = {
+		en = 'Ending skipped', es = 'Ending saltado', de = 'Ending übersprungen', fr = 'Ending passé',
+		it = 'Ending saltato', pl = 'Pominięto ending', pt = 'Encerramento pulado', ro = 'Ending sărit',
+		ru = 'Эндинг пропущен', tr = 'Ending atlandı', uk = 'Ендінг пропущено',
+		['zh-HK'] = '已跳過片尾', ['zh-hans'] = '已跳过片尾',
+	},
+	skip_done_outro = {
+		en = 'Preview skipped', es = 'Avance saltado', de = 'Vorschau übersprungen', fr = 'Aperçu passé',
+		it = 'Anteprima saltata', pl = 'Pominięto zapowiedź', pt = 'Prévia pulada', ro = 'Previzualizare sărită',
+		ru = 'Превью пропущено', tr = 'Önizleme atlandı', uk = 'Анонс пропущено',
+		['zh-HK'] = '已跳過預告', ['zh-hans'] = '已跳过预告',
+	},
+	-- The menu (Alt+S): its title, the four modes, the message once one is
+	-- picked ({mode}: one of the four) and the one when it cannot be saved.
+	auto_skip_title = {
+		en = 'Automatic skip', es = 'Salto automático', de = 'Automatisch überspringen', fr = 'Saut automatique',
+		it = 'Salto automatico', pl = 'Automatyczne pomijanie', pt = 'Pular automaticamente', ro = 'Sărire automată',
+		ru = 'Автопропуск', tr = 'Otomatik atlama', uk = 'Автопропуск',
+		['zh-HK'] = '自動跳過', ['zh-hans'] = '自动跳过',
+	},
+	auto_skip_off = {
+		en = 'Off', es = 'Desactivado', de = 'Aus', fr = 'Désactivé', it = 'Disattivato', pl = 'Wyłączone',
+		pt = 'Desativado', ro = 'Dezactivat', ru = 'Выключен', tr = 'Kapalı', uk = 'Вимкнено',
+		['zh-HK'] = '關閉', ['zh-hans'] = '关闭',
+	},
+	auto_skip_openings = {
+		en = 'Openings', es = 'Openings', de = 'Openings', fr = 'Openings', it = 'Opening', pl = 'Openingi',
+		pt = 'Aberturas', ro = 'Opening-uri', ru = 'Опенинги', tr = 'Opening’ler', uk = 'Опенінги',
+		['zh-HK'] = '片頭', ['zh-hans'] = '片头',
+	},
+	auto_skip_endings = {
+		en = 'Endings', es = 'Endings', de = 'Endings', fr = 'Endings', it = 'Ending', pl = 'Endingi',
+		pt = 'Encerramentos', ro = 'Ending-uri', ru = 'Эндинги', tr = 'Ending’ler', uk = 'Ендінги',
+		['zh-HK'] = '片尾', ['zh-hans'] = '片尾',
+	},
+	auto_skip_all = {
+		en = 'Openings and endings', es = 'Openings y endings', de = 'Openings und Endings',
+		fr = 'Openings et endings', it = 'Opening ed ending', pl = 'Openingi i endingi',
+		pt = 'Aberturas e encerramentos', ro = 'Opening-uri și ending-uri', ru = 'Опенинги и эндинги',
+		tr = 'Opening’ler ve ending’ler', uk = 'Опенінги та ендінги',
+		['zh-HK'] = '片頭和片尾', ['zh-hans'] = '片头和片尾',
+	},
+	auto_skip_now = {
+		en = 'Automatic skip: {mode}', es = 'Salto automático: {mode}', de = 'Automatisch überspringen: {mode}',
+		fr = 'Saut automatique : {mode}', it = 'Salto automatico: {mode}', pl = 'Automatyczne pomijanie: {mode}',
+		pt = 'Pular automaticamente: {mode}', ro = 'Sărire automată: {mode}', ru = 'Автопропуск: {mode}',
+		tr = 'Otomatik atlama: {mode}', uk = 'Автопропуск: {mode}',
+		['zh-HK'] = '自動跳過：{mode}', ['zh-hans'] = '自动跳过：{mode}',
+	},
+	auto_skip_save_failed = {
+		en = 'hikari: could not save the automatic skip', es = 'hikari: no se pudo guardar el salto automático',
+		de = 'hikari: automatisches Überspringen konnte nicht gespeichert werden',
+		fr = 'hikari : impossible d’enregistrer le saut automatique',
+		it = 'hikari: impossibile salvare il salto automatico',
+		pl = 'hikari: nie udało się zapisać automatycznego pomijania',
+		pt = 'hikari: não foi possível salvar o pulo automático',
+		ro = 'hikari: sărirea automată nu a putut fi salvată',
+		ru = 'hikari: не удалось сохранить автопропуск', tr = 'hikari: otomatik atlama kaydedilemedi',
+		uk = 'hikari: не вдалося зберегти автопропуск', ['zh-HK'] = 'hikari：無法儲存自動跳過',
+		['zh-hans'] = 'hikari：无法保存自动跳过',
+	},
+
 	-- Titles (hikari-title.lua). `Show · S1 E05`: season and episode labels.
 	-- Spanish and Portuguese say temporada, Turkish bölüm; Chinese wraps the number.
 	title_season = {
