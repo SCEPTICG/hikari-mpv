@@ -1,8 +1,8 @@
 -- hikari-menu: hikari's menus, in suji when it is loaded and turned on, in
 -- uosc when it is loaded, and in mpv's own selector (mp.input.select, mpv
--- 0.39+) when neither is. A module, not a script: the seven scripts with a
--- menu (hikari-palettes, -language, -subs, -resume, -speed, -update and
--- -upscale) load it and describe each menu once, as uosc takes it.
+-- 0.39+) when neither is. A module, not a script: the eight scripts with a
+-- menu (hikari-palettes, -language, -subs, -resume, -skip, -speed, -update
+-- and -upscale) load it and describe each menu once, as uosc takes it.
 --
 -- Usage:
 --   menu.open(data)                    -- uosc's (and suji's) open-menu

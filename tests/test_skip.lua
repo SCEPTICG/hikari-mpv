@@ -1057,5 +1057,362 @@ test('a language switch with no button on screen draws nothing', function()
 	eq(o.visible, false)
 end)
 
+-- Automatic skip ----------------------------------------------------------------
+
+local AUTO = 'hikari-skip-auto_skip'
+
+-- Plays on from where time-pos is to `to`, in steps of 0.5 s as mpv moves it.
+local function play_to(to)
+	local t = mock.props['time-pos']
+	while t < to do
+		t = math.min(to, t + 0.5)
+		mock.set('time-pos', t)
+	end
+end
+
+-- A seek: mpv's seek event, then time-pos where it lands.
+local function seek_to(t)
+	mock.events.seek()
+	mock.set('time-pos', t)
+end
+
+-- The seeks and playlist-next the script sent, in order.
+local function jumps()
+	local out = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'seek' or c[1] == 'playlist-next' then out[#out + 1] = c end
+	end
+	return out
+end
+
+local function read_file(path)
+	local f = io.open(path, 'rb')
+	if not f then return nil end
+	local content = f:read('*a')
+	f:close()
+	return content
+end
+
+local function write_file(path, content)
+	local f = assert(io.open(path, 'wb'))
+	f:write(content)
+	f:close()
+end
+
+test('automatic skip: off by default, everything as before', function()
+	local s = play(80)
+	eq(s.opts.auto_skip, 'no'); eq(s.auto_mode(), 'no')
+	play_to(95)
+	eq(#jumps(), 0, 'no skip')
+	eq(label(s), 'Saltar opening ›')
+	play_to(1310)
+	eq(#jumps(), 0, 'no skip of the ending either')
+	eq(label(s), 'Saltar ending ›')
+	eq(#mock.osd, 0, 'no message')
+	eq(s.state.undo, nil)
+	play(100)
+	eq(#jumps(), 0, 'nor when the file starts in a range')
+end)
+
+test('automatic skip: openings skips the opening as playback enters it, not the ending', function()
+	local s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(89.5)
+	eq(#jumps(), 0, 'not yet')
+	play_to(90)
+	local j = jumps()
+	eq(#j, 1, 'skipped')
+	eq(j[1][1], 'seek'); eq(j[1][2], '180.000'); eq(j[1][3], 'absolute+exact')
+	eq(mock.osd[#mock.osd], 'Opening saltado', 'the message')
+	eq(label(s), '‹ Ver opening', 'the button to go back')
+	seek_to(180)
+	mock.advance(s.UNDO_TIME)
+	play_to(1310)
+	eq(#jumps(), 1, 'the ending is not skipped')
+	eq(label(s), 'Saltar ending ›', 'its button, as always')
+end)
+
+test('automatic skip: endings skips the ending, not the opening; only the range when content follows', function()
+	local s = play(80, nil, {[AUTO] = 'endings'})
+	play_to(95)
+	eq(#jumps(), 0, 'the opening is not skipped')
+	eq(label(s), 'Saltar opening ›')
+	seek_to(1290)
+	play_to(1300)
+	local j = jumps()
+	eq(#j, 1, 'skipped')
+	eq(j[1][2], '1390.000', 'to the preview after it, not to the end')
+	eq(mock.osd[#mock.osd], 'Ending saltado')
+	eq(label(s), '‹ Ver ending')
+end)
+
+test('automatic skip: all skips both; intros count as openings, outros as endings', function()
+	local s = play(80, nil, {[AUTO] = 'all'})
+	play_to(90)
+	seek_to(180)
+	mock.advance(s.UNDO_TIME)
+	seek_to(1290)
+	play_to(1300)
+	local j = jumps()
+	eq(#j, 2, 'both')
+	eq(j[1][2], '180.000'); eq(j[2][2], '1390.000')
+	local list = chapters({{0, 'Part A'}, {60, 'Intro'}, {150, 'Part B'}, {1300, 'Ending'}, {1390, 'Preview'}})
+	s = play(50, list, {[AUTO] = 'openings'})
+	play_to(60)
+	eq(jumps()[1][2], '150.000', 'an intro is an opening')
+	eq(label(s), '‹ Ver intro')
+	play(1380, chapters({{0, 'Part A'}, {1300, 'Part B'}, {1390, 'Preview'}}), {[AUTO] = 'endings', ['hikari-skip-outros'] = 'yes'})
+	play_to(1390)
+	eq(jumps()[1][1], 'seek', 'an outro is an ending')
+	eq(jumps()[1][2], '1419.000', 'a last range: to the end, as the button')
+	eq(mock.osd[#mock.osd], 'Avance saltado')
+	-- A kind turned off has no button and no automatic skip.
+	play(80, nil, {[AUTO] = 'all', ['hikari-skip-openings'] = 'no'})
+	play_to(95)
+	eq(#jumps(), 0, 'openings=no')
+end)
+
+test('automatic skip: a seek by hand into a range does not skip it; a file that starts or resumes in one does', function()
+	local s = play(10, nil, {[AUTO] = 'all'})
+	play_to(10 + s.SETTLE + 1)
+	seek_to(100)
+	eq(#jumps(), 0, 'a seek into the opening')
+	eq(label(s), 'Saltar opening ›', 'its button, as always')
+	seek_to(30)
+	seek_to(90)
+	eq(#jumps(), 0, 'a seek to its very start (a chapter key) neither')
+	mock.set('time-pos', 1350)
+	eq(#jumps(), 0, 'a jump with no seek event counts as a seek')
+	-- Starts in a range: mpv's own resume, or a file opened there.
+	play(100, nil, {[AUTO] = 'all'})
+	eq(#jumps(), 1, 'starts in the opening')
+	eq(jumps()[1][2], '180.000')
+	-- Continue watching: its question pauses at 0, then it seeks.
+	play(0, nil, {[AUTO] = 'all'})
+	seek_to(1350)
+	eq(#jumps(), 1, 'resumed in the ending')
+	eq(jumps()[1][2], '1390.000')
+	-- After SETTLE seconds of playback a seek is a seek.
+	s = play(0, nil, {[AUTO] = 'all'})
+	play_to(s.SETTLE + 0.5)
+	seek_to(1350)
+	eq(#jumps(), 0, 'settled')
+end)
+
+test('automatic skip: once per range and file; a new file skips again', function()
+	local s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(90)
+	eq(#jumps(), 1)
+	seek_to(180)
+	mock.advance(s.UNDO_TIME)
+	seek_to(85)
+	play_to(95)
+	eq(#jumps(), 1, 'not twice')
+	eq(label(s), 'Saltar opening ›', 'the button instead')
+	mock.set('duration', 1421)
+	eq(#jumps(), 1, 'a rebuild (a stream growing) does not look again')
+	mock.events['end-file']()
+	mock.set('duration', 1420)
+	mock.set('chapter-list', EPISODE)
+	mock.set('time-pos', 80)
+	play_to(90)
+	eq(#jumps(), 2, 'the next file')
+end)
+
+test('automatic skip: Watch opening goes back, and that range is not skipped again in this file', function()
+	local s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(90)
+	seek_to(180)
+	eq(label(s), '‹ Ver opening')
+	eq(s.is_visible(), true)
+	assert(overlay(s).data:find('‹ Ver opening', 1, true), 'drawn')
+	mock.bindings.skip()
+	local j = jumps()
+	eq(#j, 2); eq(j[2][2], '90.000', 'back to its start'); eq(j[2][3], 'absolute+exact')
+	eq(s.state.undo, nil)
+	seek_to(90)
+	eq(label(s), 'Saltar opening ›', 'its own button there')
+	play_to(100)
+	eq(#jumps(), 2, 'not skipped again')
+	seek_to(85)
+	play_to(95)
+	eq(#jumps(), 2, 'nor when entered again by playing')
+	-- A click on the button works the same.
+	s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(90)
+	seek_to(180)
+	local rect = assert(s.layout())
+	mock.props['mouse-pos'] = center(rect)
+	s.on_down()
+	s.on_up()
+	eq(jumps()[2][2], '90.000', 'click')
+	assert(s.guard_active(), 'double-click guard as after a skip')
+end)
+
+test('automatic skip: Watch opening goes after 5 s', function()
+	local s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(90)
+	seek_to(180)
+	eq(s.UNDO_TIME, 5)
+	mock.advance(s.UNDO_TIME - 0.1)
+	eq(label(s), '‹ Ver opening', 'still there')
+	mock.advance(0.2)
+	eq(label(s), nil, 'gone')
+	eq(overlay(s).visible, false)
+	eq(mock.bindings.skip(), false, 'the key does nothing then')
+	-- A new file takes it away at once.
+	s = play(80, nil, {[AUTO] = 'openings'})
+	play_to(90)
+	assert(s.state.undo, 'up')
+	mock.events['end-file']()
+	eq(s.state.undo, nil, 'gone with the file')
+end)
+
+test('automatic skip: an ending that ends the file goes to the next episode, or to the end', function()
+	local list = chapters({{0, 'Part A'}, {1300, 'ED'}})
+	local s = play(1290, list, {[AUTO] = 'endings'})
+	queue()
+	play_to(1300)
+	local j = jumps()
+	eq(#j, 1); eq(j[1][1], 'playlist-next', 'next episode')
+	eq(s.state.undo, nil, 'nothing to go back to in this file')
+	eq(label(s), nil)
+	s = play(1290, list, {[AUTO] = 'endings'})
+	play_to(1300)
+	j = jumps()
+	eq(#j, 1); eq(j[1][2], '1419.000', 'nothing next: to the end, as the button')
+	eq(label(s), '‹ Ver ending', 'with keep-open, a while to go back')
+	-- The "Next episode ›" of a file without an ending is never skipped on its own.
+	s = play(1300, chapters({{0, 'Part A'}, {700, 'Part B'}}), {[AUTO] = 'all'})
+	queue()
+	play_to(1360)
+	eq(label(s), 'Siguiente episodio ›')
+	eq(#jumps(), 0)
+end)
+
+test('automatic skip with suji 0.3: show-action of Watch opening, hide-action after 5 s', function()
+	local s = play(80, nil, {[AUTO] = 'openings'})
+	suji('0.3.0')
+	play_to(90)
+	local list = actions()
+	eq(#list, 1, 'only the button to go back, never the skip one')
+	shown(list[1], '‹ Ver opening')
+	eq(overlay(s).visible, false, 'nothing drawn here')
+	mock.advance(s.UNDO_TIME)
+	list = actions()
+	eq(#list, 2)
+	eq(list[2][3], 'hide-action'); eq(list[2][4], 'hikari-skip')
+	-- Its command goes back, like our own button, and the opening's own button shows there.
+	play(80, nil, {[AUTO] = 'openings'})
+	suji('0.3.0')
+	play_to(90)
+	mock.messages['skip-action']()
+	eq(jumps()[2][2], '90.000', 'back')
+	shown(actions()[#actions()], 'Saltar opening ›')
+end)
+
+test('automatic skip: the menu, the pick applied and saved, and read back at start over the options', function()
+	local path = os.tmpname()
+	os.remove(path)
+	mock.expand['~~/hikari-skip.txt'] = path
+	local s = play(80)
+	mock.commands = {}
+	mock.bindings['open-menu']()
+	local c = mock.commands[1]
+	eq(c[1] .. ' ' .. c[2] .. ' ' .. c[3], 'script-message-to uosc open-menu')
+	local data = mock.parse_json(c[4])
+	eq(data.type, 'hikari-skip'); eq(data.title, 'Salto automático'); eq(#data.items, 4)
+	local titles = {}
+	for i, item in ipairs(data.items) do titles[i] = item.title end
+	eq(table.concat(titles, '|'), 'Desactivado|Openings|Endings|Openings y endings')
+	eq(data.items[1].active, true); eq(data.items[1].hint, 'actual'); eq(data.items[2].active, false)
+	eq(table.concat(data.items[2].value, ' '), 'script-message-to hikari_skip set-auto-skip openings')
+	mock.messages['set-auto-skip']('openings')
+	eq(s.auto_mode(), 'openings', 'applied at once')
+	eq(mock.osd[#mock.osd], 'Salto automático: Openings')
+	eq(read_file(path):match('\nauto_skip=(%w+)\n$'), 'openings', 'saved')
+	play_to(90)
+	eq(#jumps(), 1, 'and used')
+	-- Read at start, and it wins over the options while the file is there.
+	s = play(80, nil, {[AUTO] = 'endings'})
+	eq(s.auto_mode(), 'openings')
+	eq(s.menu_data().items[2].active, true, 'marked in the menu')
+	os.remove(path)
+	s = load({[AUTO] = 'endings'})
+	eq(s.auto_mode(), 'endings', 'without the file, the options again')
+	mock.expand['~~/hikari-skip.txt'] = nil
+end)
+
+test('automatic skip: a broken or hand-edited state file is ignored without an error', function()
+	local path = os.tmpname()
+	mock.expand['~~/hikari-skip.txt'] = path
+	for _, content in ipairs({'', 'garbage\0\255\n', 'auto_skip=sometimes\n', 'auto_skip=all; rm -rf /\n',
+		'# auto_skip=all\n', 'auto_skip=\n', string.rep('x', 5000) .. '\nauto_skip=all\n'}) do
+		write_file(path, content)
+		eq(load().auto_mode(), 'no', ('%q'):format(content:sub(1, 40)))
+		eq(#mock.logs.error, 0)
+	end
+	write_file(path, 'auto_skip=sometimes\n')
+	load()
+	assert(mock.logs.warn[1] and mock.logs.warn[1]:find('unknown automatic skip', 1, true), 'warned')
+	write_file(path, '# comment\r\n  auto_skip = endings  \r\n')
+	eq(load().auto_mode(), 'endings', 'spaces and CRLF')
+	os.remove(path)
+	-- A folder where the file should be.
+	assert(os.execute('mkdir -p "' .. path .. '"'))
+	eq(load().auto_mode(), 'no', 'a folder')
+	os.execute('rm -rf "' .. path .. '"')
+	-- Unknown values from the options or a message: ignored.
+	local s = load({[AUTO] = 'yes'})
+	eq(s.opts.auto_skip, 'no', 'invalid option')
+	assert(mock.logs.warn[1]:find('auto_skip', 1, true), 'warned')
+	mock.messages['set-auto-skip']('sometimes')
+	eq(s.auto_mode(), 'no', 'invalid message')
+	eq(read_file(path), nil, 'nothing saved')
+	mock.messages['set-auto-skip'](nil)
+	eq(s.auto_mode(), 'no')
+	mock.expand['~~/hikari-skip.txt'] = nil
+end)
+
+test('automatic skip: a pick that cannot be saved still applies, with a message', function()
+	mock.expand['~~/hikari-skip.txt'] = '/nonexistent/hikari/hikari-skip.txt'
+	local s = play(80)
+	mock.messages['set-auto-skip']('openings')
+	eq(s.auto_mode(), 'openings')
+	eq(mock.osd[#mock.osd], 'hikari: no se pudo guardar el salto automático')
+	mock.expand['~~/hikari-skip.txt'] = nil
+end)
+
+test('automatic skip: turned on inside a range, that one is left alone; on with no chapters, time-pos is watched', function()
+	local path = os.tmpname()
+	mock.expand['~~/hikari-skip.txt'] = path
+	play(80)
+	play_to(95)
+	mock.messages['set-auto-skip']('openings')
+	play_to(100)
+	mock.set('duration', 1421)
+	eq(#jumps(), 0, 'the range playing')
+	seek_to(85)
+	play_to(90)
+	eq(#jumps(), 1, 'entered again by playing: skipped')
+	os.remove(path)
+	-- Without chapters the mode keeps time-pos watched, so each file is seen from its start.
+	load({[AUTO] = 'openings'})
+	mock.set('osd-dimensions', {w = 1280, h = 720})
+	mock.set('chapter-list', {})
+	eq(#mock.observers['time-pos'], 1)
+	mock.expand['~~/hikari-skip.txt'] = nil
+end)
+
+test('automatic skip: the menu follows a language switch', function()
+	local s = load()
+	mock.props['user-data/uosc/menu/type'] = 'hikari-skip'
+	mock.commands = {}
+	mock.set_script_opt('hikari-language', 'en')
+	local c = mock.commands[#mock.commands]
+	eq(c[3], 'update-menu')
+	eq(mock.parse_json(c[4]).title, 'Automatic skip')
+	eq(s.menu_data().items[4].title, 'Openings and endings')
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

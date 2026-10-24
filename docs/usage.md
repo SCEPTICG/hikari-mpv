@@ -11,6 +11,7 @@ description: "Keyboard shortcuts and configuration files of hikari, a theme for 
 | --- | --- |
 | `Alt+p` | Palette menu |
 | `Alt+s` | Skip the current opening, intro or ending (while the button is on screen) |
+| `Alt+S` | Automatic skip: off, openings, endings, or both (see [Automatic skip](features/skip.md#automatic-skip)) |
 | `Alt+t` | Subtitle menu (style, size, height) |
 | `Alt+r` | Continue watching: the files you left half-watched, and your series with their next episode (see [Continue watching](features/resume.md)) |
 | `Alt+u` | New hikari version: release notes, update command (see [Update check](features/update-check.md)) |
@@ -29,11 +30,12 @@ Everything lives in the player's config folder (the one the installer showed you
 | --- | --- |
 | `script-opts/uosc.conf` | uosc: timeline style and the buttons of the controls bar. |
 | `script-opts/thumbfast.conf` | Thumbnails: on streams, GPU decoding, size. |
-| `script-opts/hikari-skip.conf` | Skip button: which chapters, extra title patterns, AniSkip, the *Next episode* button, position, size, opacity. |
+| `script-opts/hikari-skip.conf` | Skip button: which chapters, extra title patterns, AniSkip, the *Next episode* button, automatic skip, position, size, opacity. |
 | `script-opts/hikari-title.conf` | Titles: on/off and tidying of release names. |
 | `script-opts/hikari-update.conf` | Update check: on/off and hours between checks. |
 | `script-opts/hikari-resume.conf` | Continue watching: on/off, whether to ask, how many rows, playing the next episode on its own. Kept on update. |
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf`, `hikari-language.conf` | Your chosen palette, subtitle style, Anime4K mode and quality, and language, saved by the menus. Kept on update. |
+| `hikari-skip.txt` | The automatic skip picked with `Alt+S`. Wins over `hikari-skip.conf` while it exists; kept on update, deleted on uninstall. |
 | `hikari-resume.json` | The continue watching list: where you left each file and series. Not in the installer's backups; deleted on uninstall. |
 | `script-modules/hikari-i18n.lua`, `script-modules/hikari-chapters.lua`, `script-modules/hikari-release.lua` | hikari's texts in its 13 languages, how chapter titles are read (openings, endings) and how release names are read (series, season, episode), shared by its scripts (replaced on update). |
 

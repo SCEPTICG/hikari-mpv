@@ -34,7 +34,7 @@ uosc 5.13 itself needs mpv 0.33 or newer. hikari is only tested with the recent 
 
 The installer installs uosc unless you choose [suji](#hikari-with-suji-experimental), and hikari is made to sit on top of it. If uosc is not there anyway (you moved `scripts/uosc` away, or another OSC took its place), hikari keeps working:
 
-- Its menus open in mpv's own selector instead of uosc's menus: `Alt+p` (palettes), `Alt+t` (subtitles), `Alt+r` (continue watching), `Alt+u` (update) and `Alt+l` (language). Type to filter, use the arrow keys and `Enter` to pick, `Esc` to close. The speed and Anime4K menus only have a button in uosc's bar; to reach them without uosc, bind `script-binding hikari_speed/open-menu` and `script-binding hikari_upscale/open-menu` to keys of your own in `input.conf` (the `Ctrl+1`...`Ctrl+0` Anime4K keys work as always).
+- Its menus open in mpv's own selector instead of uosc's menus: `Alt+p` (palettes), `Alt+t` (subtitles), `Alt+r` (continue watching), `Alt+u` (update), `Alt+l` (language) and `Alt+S` (automatic skip). Type to filter, use the arrow keys and `Enter` to pick, `Esc` to close. The speed and Anime4K menus only have a button in uosc's bar; to reach them without uosc, bind `script-binding hikari_speed/open-menu` and `script-binding hikari_upscale/open-menu` to keys of your own in `input.conf` (the `Ctrl+1`...`Ctrl+0` Anime4K keys work as always).
 - The [continue watching](features/resume.md) question shows in that selector too; `Esc` starts from the beginning.
 - Tidy titles, the skip button, AniSkip, subtitle styles, track languages, Anime4K, speeds and the update notice work the same.
 

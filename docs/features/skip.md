@@ -1,6 +1,6 @@
 ---
 title: "Skip opening and ending button for mpv"
-description: "hikari shows a Skip opening button in mpv while a chapter looks like an anime opening, intro or ending, or, without such chapters, at the times AniSkip knows. One click or Alt+s skips it."
+description: "hikari shows a Skip opening button in mpv while a chapter looks like an anime opening, intro or ending, or, without such chapters, at the times AniSkip knows. One click or Alt+s skips it, or hikari can skip it on its own."
 ---
 
 # Skip openings and endings
@@ -10,6 +10,25 @@ description: "hikari shows a Skip opening button in mpv while a chapter looks li
 Chapters are recognised by title, with the same rules uosc uses to colour its chapter ranges: `OP`, `Opening`, `... OP`, `... Opening` and `オープニング` for openings (only when another chapter follows), `ED`, `Ending`, `ED ...`, `Ending ...`, `... ED`, `... Ending`, `Credits`, `Credits ...`, `... Credits` and `エンディング` for endings. Titles such as `Operation`, `OP1` or `Opening Night` do not count; add your own patterns with `extra_openings` / `extra_endings` (Lua patterns separated by `|`, matched against the lower-case title). Intros (`Intro`, `Avant`, `Prologue`, shown as **Skip intro ›**) are on by default, because many releases name the opening song `Intro`; turn them off with `intros=no`. Outros (`Outro`, `Closing`, `Preview`, `PV`, shown as **Skip preview ›**) are off by default; turn them on with `outros=yes`.
 
 When the ending is the last chapter, skipping it moves on to the next playlist entry if there is one; otherwise it seeks to one second before the end, so the file finishes as it normally would.
+
+## Automatic skip
+
+hikari can also skip openings and endings on its own, without the button. It is off by default. Press `Alt+S` (`Alt+Shift+s`) to open the *Automatic skip* menu, with four choices and the current one marked:
+
+- **Off**: only the button, as always;
+- **Openings**: openings and intros;
+- **Endings**: endings, and previews when `outros=yes`;
+- **Openings and endings**.
+
+The choice applies at once, a short message says which one is on, and it is remembered the next time mpv starts. You can also set it in `script-opts/hikari-skip.conf` with `auto_skip=no`, `openings`, `endings` or `all`. The menu saves its choice in `hikari-skip.txt` in your config folder, and that file wins over the `.conf` line while it exists: delete it to go back to the `.conf`. Updating hikari keeps it; uninstalling removes it.
+
+It skips exactly what the button would skip, and nothing else: the same chapters (with your `openings`, `endings`, `intros` and `outros` settings), the same [AniSkip](#aniskip) times, files and streams alike. A range is skipped when playback reaches it, or when the file starts or is resumed inside it (with [continue watching](resume.md) too). A range you seek into by hand, with the timeline, a key or a chapter key, is left alone, with its button as usual. Each range is skipped on its own once per file at most.
+
+After a skip, for 5 seconds the button reads **‹ Watch opening** (or *ending*, *intro*, *preview*) instead: click it or press `Alt+s` to go back to the start of that range. It is then not skipped again in that file. A short message at the top left, *Opening skipped*, says what happened.
+
+An ending that runs to the end of the file is skipped as the button does it: to the next episode when it is next in the playlist, otherwise to the end of the file, so [the next episode plays on its own](resume.md#playing-the-next-episode-on-its-own) if you set it up that way. When something comes after the ending (a scene after the credits, a preview), only the ending is skipped. The one exception is the button's own: an [AniSkip](#aniskip) ending that leaves less than 10 seconds of the file goes to the next episode when it is queued. The *Next episode ›* button of an episode with no known ending is never pressed on its own.
+
+To use another key for the menu, bind `script-binding hikari_skip/open-menu` in `input.conf`.
 
 ## Next episode
 

@@ -609,7 +609,7 @@ Test-Case 'mpv.conf: on update the block moves to the end, after the user lines'
 Test-Case 'input.conf: taken keys are reported and left alone' {
     $text = "Alt+p cycle pause`nALT+s script-binding hikari_skip/skip  # mine`n# Alt+t commented`n"
     $b = Get-HikariInputBlock $text
-    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+t  script-binding hikari_subs/open-menu|Alt+r  script-binding hikari_resume/open-menu|Alt+u  script-binding hikari_update/open-menu|Alt+l  script-binding hikari_language/open-menu' 'only Alt+t, Alt+r, Alt+u and Alt+l added'
+    Assert-Equal ([string]::Join('|', $b.Lines)) 'Alt+S  script-binding hikari_skip/open-menu|Alt+t  script-binding hikari_subs/open-menu|Alt+r  script-binding hikari_resume/open-menu|Alt+u  script-binding hikari_update/open-menu|Alt+l  script-binding hikari_language/open-menu' 'only Alt+S, Alt+t, Alt+r, Alt+u and Alt+l added'
     Assert-Equal @($b.Taken).Count 1 'taken'
     Assert-Equal $b.Taken[0].Key 'Alt+p' 'taken key'
     Assert-Equal @($b.Same).Count 1 'same'
@@ -1258,6 +1258,8 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Set-TestFile (P @($cfg, 'hikari-update.txt')) $updateState
     $aniskipCache = '{"version":1,"titles":{},"episodes":{}}' + "`n"
     Set-TestFile (P @($cfg, 'hikari-aniskip.json')) $aniskipCache
+    $skipState = "auto_skip=openings`n"
+    Set-TestFile (P @($cfg, 'hikari-skip.txt')) $skipState
     $resumeList = '{"version":1,"entries":[{"path":"C:\\x\\ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}' + "`n"
     Set-TestFile (P @($cfg, 'hikari-resume.json')) $resumeList
     $resumeConf = "enabled=yes`nask=no`nhistory_size=5`n"
@@ -1270,6 +1272,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (-not (Test-Path -LiteralPath (P @($backup2, 'hikari-resume.json')))) 'the continue watching list is not in the backup'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-update.txt'))) $updateState 'update check state kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-aniskip.json'))) $aniskipCache 'AniSkip cache kept on update'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-skip.txt'))) $skipState 'automatic skip pick kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvAfter 'mpv.conf idempotent'
     Assert-Equal (Get-TestText (P @($cfg, 'input.conf'))) $inputAfter 'input.conf idempotent'
     Assert-Equal @([regex]::Matches((Get-TestText (P @($cfg, 'script-opts', 'thumbfast.conf'))), 'mpv_path=')).Count 1 'one mpv_path'
@@ -1283,6 +1286,7 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     # Uninstall with default answers.
     Set-TestFile (P @($cfg, 'hikari-update.txt.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-aniskip.json.tmp')) 'x'
+    Set-TestFile (P @($cfg, 'hikari-skip.txt.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-resume.json.4242-1.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-resume.json.bak')) 'mine'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261005-120200')
@@ -1297,6 +1301,8 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-update.txt.tmp')))) 'update check temporary file gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json')))) 'AniSkip cache gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-aniskip.json.tmp')))) 'AniSkip cache temporary file gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-skip.txt')))) 'automatic skip pick gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-skip.txt.tmp')))) 'automatic skip temporary file gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-aniskip.lua')))) 'AniSkip module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-update.conf')))) 'update check options gone'
     Assert-Equal (Get-TestText (P @($cfg, 'mpv.conf'))) $mpvConf 'mpv.conf as before'

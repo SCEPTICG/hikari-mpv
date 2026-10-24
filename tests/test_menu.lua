@@ -687,11 +687,11 @@ test('every script starts without uosc (and without mp.input): no error, nothing
 	os.remove(resume_list)
 end)
 
-test('only suji, turned on: the seven menus go to suji with the JSON uosc gets (palettes: one line more)', function()
-	local seven = {
+test('only suji, turned on: the eight menus go to suji with the JSON uosc gets (palettes: one line more)', function()
+	local eight = {
 		{'hikari-language', 'hikari_language'}, {'hikari-palettes', 'hikari_palettes'},
-		{'hikari-resume', 'hikari_resume'}, {'hikari-speed', 'hikari_speed'}, {'hikari-subs', 'hikari_subs'},
-		{'hikari-update', 'hikari_update'}, {'hikari-upscale', 'hikari_upscale'},
+		{'hikari-resume', 'hikari_resume'}, {'hikari-skip', 'hikari_skip'}, {'hikari-speed', 'hikari_speed'},
+		{'hikari-subs', 'hikari_subs'}, {'hikari-update', 'hikari_update'}, {'hikari-upscale', 'hikari_upscale'},
 	}
 	-- Opens the script's menu with uosc only, or suji only, and gives back
 	-- where the open-menu went and its JSON.
@@ -724,7 +724,7 @@ test('only suji, turned on: the seven menus go to suji with the JSON uosc gets (
 		eq(c[1] .. ' ' .. c[3], 'script-message-to open-menu', s[1])
 		return c[2], c[4]
 	end
-	for _, s in ipairs(seven) do
+	for _, s in ipairs(eight) do
 		local to_uosc, json_uosc = opened(s, false)
 		local to_suji, json_suji = opened(s, true)
 		eq(to_uosc, 'uosc', s[1])
@@ -741,10 +741,10 @@ test('only suji, turned on: the seven menus go to suji with the JSON uosc gets (
 	end
 end)
 
-test('the seven menu scripts load the module; nobody else talks to uosc directly', function()
+test('the eight menu scripts load the module; nobody else talks to uosc directly', function()
 	local with_menu = {
-		['hikari-language'] = true, ['hikari-palettes'] = true, ['hikari-resume'] = true, ['hikari-speed'] = true,
-		['hikari-subs'] = true, ['hikari-update'] = true, ['hikari-upscale'] = true,
+		['hikari-language'] = true, ['hikari-palettes'] = true, ['hikari-resume'] = true, ['hikari-skip'] = true,
+		['hikari-speed'] = true, ['hikari-subs'] = true, ['hikari-update'] = true, ['hikari-upscale'] = true,
 	}
 	for _, s in ipairs(SCRIPTS) do
 		local src = read('portable_config/scripts/' .. s[1] .. '.lua')

@@ -114,6 +114,7 @@ hikari_defaults() {
     INPUT_BINDINGS=(
         'Alt+p|script-binding hikari_palettes/open-menu'
         'Alt+s|script-binding hikari_skip/skip'
+        'Alt+S|script-binding hikari_skip/open-menu'
         'Alt+t|script-binding hikari_subs/open-menu'
         'Alt+r|script-binding hikari_resume/open-menu'
         'Alt+u|script-binding hikari_update/open-menu'
@@ -159,6 +160,10 @@ hikari_defaults() {
     # What hikari-skip.lua keeps of its AniSkip lookups: a cache, removed on
     # uninstall like the update state.
     ANISKIP_CACHE='hikari-aniskip.json'
+    # The automatic skip picked in hikari-skip.lua's menu: read by that script
+    # only (not included from mpv.conf), kept on update, removed on uninstall
+    # like the update state.
+    SKIP_STATE='hikari-skip.txt'
     # The files left half-watched that hikari-resume.lua remembers (paths and
     # positions): never in a backup, removed on uninstall with the temporary
     # files of its writes (<list>.<pid>-<n>.tmp, RESUME_TMP_RE).
@@ -4122,7 +4127,7 @@ uninstall_steps() {
     done
     remove_item "$CFG/$ORIGINALS_DIR" "$CFG" || return 1
     remove_item "$CFG/$RECORD_NAME" "$CFG" || return 1
-    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp" "$RESUME_LIST"; do
+    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp" "$SKIP_STATE" "$SKIP_STATE.tmp" "$RESUME_LIST"; do
         if [ -f "$CFG/$f" ] || [ -L "$CFG/$f" ]; then remove_item "$CFG/$f" "$CFG" || return 1; fi
     done
     for f in "$CFG/$RESUME_LIST".*.tmp; do
