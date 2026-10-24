@@ -66,8 +66,9 @@ hikari_defaults() {
     HIKARI_VERSION='dev'
     HIKARI_RELEASE_URL=''
     HIKARI_RELEASE_SHA256=''
-    # A preview build (version preview-<commit>, see tools/make-release.sh) says
-    # so when it starts, with this line to go back to the stable version.
+    # A preview build (version X.Y.Z+dev.<commit>, see tools/make-release.sh;
+    # preview-<commit> before) says so when it starts, with this line to go
+    # back to the stable version.
     HIKARI_STABLE_INSTALL='curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash'
 
     # uosc, thumbfast and Anime4K: fixed versions, verified by SHA256 (the same
@@ -374,6 +375,9 @@ hikari_text_en() {
         version_older) s='hikari %s (older than this installer)' ;;
         version_same) s='hikari %s (the same as this installer)' ;;
         version_newer) s='hikari %s (newer than this installer)' ;;
+        version_dev_older) s='hikari %s (a test build of %s, older than this installer)' ;;
+        version_dev_same) s='hikari %s (a test build of %s, the same version as this installer)' ;;
+        version_dev_newer) s='hikari %s (a test build of %s, newer than this installer)' ;;
         version_unknown) s='hikari, unknown version' ;;
         version_manual) s='hikari files without an installer record' ;;
         version_sosc) s='sosc (the name of hikari until v0.3.0)' ;;
@@ -566,6 +570,9 @@ hikari_text_es() {
         version_older) s='hikari %s (más antigua que este instalador)' ;;
         version_same) s='hikari %s (la misma que este instalador)' ;;
         version_newer) s='hikari %s (más nueva que este instalador)' ;;
+        version_dev_older) s='hikari %s (versión de prueba de la %s, más antigua que este instalador)' ;;
+        version_dev_same) s='hikari %s (versión de prueba de la %s, la misma versión que este instalador)' ;;
+        version_dev_newer) s='hikari %s (versión de prueba de la %s, más nueva que este instalador)' ;;
         version_unknown) s='hikari, versión desconocida' ;;
         version_manual) s='ficheros de hikari sin registro del instalador' ;;
         version_sosc) s='sosc (el nombre de hikari hasta la v0.3.0)' ;;
@@ -4388,13 +4395,14 @@ ensure_mpv() {
 }
 
 # A hikari version as a record or this installer may say it: X.Y.Z, dev (a
-# copy of the repository) or preview-<commit>. Anything else is never shown:
-# the record can be edited by anyone.
+# copy of the repository), X.Y.Z+dev.<commit> (a preview build made on X.Y.Z)
+# or preview-<commit> (a preview build from before). Anything else is never
+# shown: the record can be edited by anyone.
 version_ok() {
     # Digits spelled out: [0-9] and [a-f] follow the locale, and in a UTF-8 one
     # may take in other digits (Arabic-Indic, fullwidth...).
-    [[ $1 =~ ^[0123456789]{1,9}\.[0123456789]{1,9}\.[0123456789]{1,9}$ ]] || [ "$1" = dev ] \
-        || [[ $1 =~ ^preview-[0123456789abcdef]{7,40}$ ]]
+    [[ $1 =~ ^[0123456789]{1,9}\.[0123456789]{1,9}\.[0123456789]{1,9}(\+dev\.[0123456789abcdef]{7,40})?$ ]] \
+        || [ "$1" = dev ] || [[ $1 =~ ^preview-[0123456789abcdef]{7,40}$ ]]
 }
 
 # version_cmp <a> <b>: -1, 0 or 1 for two X.Y.Z versions, compared as numbers.
@@ -4410,10 +4418,11 @@ version_cmp() {
 }
 
 # What folder $1 has: the hikari version of its record (compared with this
-# installer's when both are releases), sosc, hikari files without a record,
-# or nothing. Only reads.
+# installer's when this one is a release and the record a release or a
+# preview build made on one, by that release), sosc, hikari files without a
+# record, or nothing. Only reads.
 version_state() {
-    local dir=$1 f
+    local dir=$1 f base
     if read_record "$dir" 1; then
         rec_get hikari_version
         if ! version_ok "$REC_VALUE"; then T version_unknown; return; fi
@@ -4422,6 +4431,16 @@ version_state() {
                 -1) T version_older "$REC_VALUE" ;;
                 0) T version_same "$REC_VALUE" ;;
                 *) T version_newer "$REC_VALUE" ;;
+            esac
+            return
+        fi
+        # A preview build counts as the release it is made on.
+        base=${REC_VALUE%%+dev.*}
+        if [ "$base" != "$REC_VALUE" ] && [[ $HIKARI_VERSION =~ ^[0123456789]+\.[0123456789]+\.[0123456789]+$ ]]; then
+            case $(version_cmp "$base" "$HIKARI_VERSION") in
+                -1) T version_dev_older "$REC_VALUE" "$base" ;;
+                0) T version_dev_same "$REC_VALUE" "$base" ;;
+                *) T version_dev_newer "$REC_VALUE" "$base" ;;
             esac
             return
         fi
@@ -4566,7 +4585,7 @@ main() {
         ui_line "  $(paint '1;36' hikari) $HIKARI_VERSION"
         ui_line ''
     fi
-    case $HIKARI_VERSION in preview-*) warn "$(T preview_note "$HIKARI_VERSION" "$HIKARI_STABLE_INSTALL")" ;; esac
+    case $HIKARI_VERSION in preview-* | *+dev.*) warn "$(T preview_note "$HIKARI_VERSION" "$HIKARI_STABLE_INSTALL")" ;; esac
     [ "$HAVE_INPUT" = 1 ] || [ "$OPT_YES" = 1 ] || warn "$(T no_input)"
     local action=$OPT_ACTION
     if [ -z "$action" ]; then

@@ -1142,6 +1142,33 @@ Test-Case 'stable over a preview build: extra script removed, record updated, ch
     finally { Remove-Item Function:\Write-HikariInfo }
 }
 
+# Preview builds as tools/make-release.sh names them now (X.Y.Z+dev.<commit>):
+# the same notice, and the record says the build.
+Test-Case 'preview build X.Y.Z+dev.<commit>: the notice in both languages, the build recorded' {
+    Assert-Equal (T 'preview_note' @('0.5.0+dev.abc1234', $script:HikariStableInstall)) ('Preview build (0.5.0+dev.abc1234). To go back to the stable version: ' + $script:HikariStableInstall) 'en'
+    try {
+        Set-HikariLanguage 'es'
+        Assert-Equal (T 'preview_note' @('0.5.0+dev.abc1234', $script:HikariStableInstall)) ('Versi' + [char]0xF3 + 'n de prueba (0.5.0+dev.abc1234). Para volver a la estable: ' + $script:HikariStableInstall) 'es'
+    }
+    finally { Set-HikariLanguage 'en' }
+    $d = New-TestDir 'over-preview-dev'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $previewDir = P @($d, 'preview', 'portable_config')
+    Copy-Item -LiteralPath (P @($RepoRoot, 'portable_config')) -Destination $previewDir -Recurse
+    $preview = [pscustomobject]@{ ConfigDir = $previewDir; Version = '0.5.0+dev.abc1234'; Commit = '' }
+    $stable = [pscustomobject]@{ ConfigDir = $previewDir; Version = '0.5.0'; Commit = '' }
+    $cfg = P @($d, 'mpv')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    function Write-HikariInfo { param([string]$Text) }
+    try {
+        [void](Install-HikariTarget -Candidate $cand -Source $preview -Artifacts $art -Stamp '20261024-110000')
+        Assert-Equal (Read-HikariRecord $cfg).Values['hikari_version'] '0.5.0+dev.abc1234' 'preview recorded'
+        [void](Install-HikariTarget -Candidate $cand -Source $stable -Artifacts $art -Stamp '20261024-110100')
+        Assert-Equal (Read-HikariRecord $cfg).Values['hikari_version'] '0.5.0' 'stable recorded over it'
+    }
+    finally { Remove-Item Function:\Write-HikariInfo }
+}
+
 # ---------------------------------------------------------------------------
 # Install / update / uninstall end to end
 # ---------------------------------------------------------------------------
@@ -3118,6 +3145,45 @@ Test-Case 'version: each folder found and each -Target, compared with this insta
     Assert-Equal $lines[1] 'No mpv config folder found.' 'nothing found'
 }
 
+Test-Case 'version: X.Y.Z+dev.<commit> is shown, and compared by the release it is made on' {
+    foreach ($v in @('0.10.0+dev.abc1234', ('0.10.0+dev.' + ('f' * 40)), '10.20.300+dev.0123456')) {
+        Assert-True (Test-HikariVersionText $v) $v
+    }
+    foreach ($v in @('0.10.0+dev.', '0.10.0+dev.XYZ', '0.10.0+dev.ABC1234', '0.10+dev.abc1234', '0.10.0+foo.abc1234',
+            '0.10.0+dev.abc123', ('0.10.0+dev.' + ('f' * 41)), '0.10.0-dev.abc1234', '1234567890.0.0+dev.abc1234',
+            '0.10.0+dev.abc1234+dev.abc1234', '0.10.0+dev.abc1234 ', "0.10.0+dev.abc1234`n", ('0.10.0+dev.abc123' + [char]0x0663))) {
+        Assert-True (-not (Test-HikariVersionText $v)) ('refused: ' + $v)
+    }
+    Reset-Fake
+    $d = New-TestDir 'version-dev'
+    $base = P @($d, 'machine')
+    Set-TestFile (P @($base, 'Local', 'Programs', 'mpv.net', 'mpvnet.exe'))
+    $net = P @($base, 'Roaming', 'mpv.net')
+    $saved = $script:HikariVersion
+    try {
+        $script:HikariVersion = '0.7.0'
+        foreach ($pair in @(@('0.6.9+dev.abc1234', 'hikari 0.6.9+dev.abc1234 (a test build of 0.6.9, older than this installer)'),
+                @('0.7.0+dev.abc1234', 'hikari 0.7.0+dev.abc1234 (a test build of 0.7.0, the same version as this installer)'),
+                @('0.10.0+dev.abc1234', 'hikari 0.10.0+dev.abc1234 (a test build of 0.10.0, newer than this installer)'),
+                @('0.10.0+dev.ABC1234', 'hikari, unknown version'), @('0.10+dev.abc1234', 'hikari, unknown version'))) {
+            Set-TestFile (P @($net, 'hikari-installed.txt')) ("hikari_version=" + $pair[0] + "`n")
+            $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) }
+            Assert-Equal $lines[1] ('mpv.net (' + $net + '): ' + $pair[1]) $pair[0]
+        }
+        Set-TestFile (P @($net, 'hikari-installed.txt')) "hikari_version=0.7.0+dev.abc1234`n"
+        Set-HikariLanguage 'es'
+        try { $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) } }
+        finally { Set-HikariLanguage 'en' }
+        Assert-Equal $lines[1] ('mpv.net (' + $net + '): hikari 0.7.0+dev.abc1234 (versi' + [char]0xF3 + 'n de prueba de la 0.7.0, la misma versi' + [char]0xF3 + 'n que este instalador)') 'Spanish'
+        # This installer a preview build: nothing compared, as for preview-<commit> and dev.
+        $script:HikariVersion = '0.7.0+dev.def5678'
+        $lines = Get-InfoLines { Show-HikariVersions -Env (New-FakeEnv $base) }
+        Assert-Equal $lines[0] 'This installer: hikari 0.7.0+dev.def5678' 'preview installer'
+        Assert-Equal $lines[1] ('mpv.net (' + $net + '): hikari 0.7.0+dev.abc1234') 'no comparison with a preview installer'
+    }
+    finally { $script:HikariVersion = $saved }
+}
+
 Test-Case 'version: -Version wins over -Action, exit 0, nothing installed; menu option 3 comes back to the menu' {
     Reset-Fake
     $d = New-TestDir 'version-main'
@@ -3838,6 +3904,19 @@ Test-Case 'preview build through iex: says so right after the title, in both lan
     Assert-True (-not $run.Text.Contains('Preview build')) ('a release: no notice; output: ' + $run.Text)
     $run = Invoke-IexHarness -Script $InstallScript -Stdin @('0')
     Assert-True (-not $run.Text.Contains('Preview build')) ('the repository version (dev): no notice; output: ' + $run.Text)
+}
+
+Test-Case 'preview build X.Y.Z+dev.<commit> through iex: says so right after the title' {
+    $d = New-TestDir 'iex-preview-dev'
+    $zip = New-TestReleaseZip $d
+    $rel = New-TestRelease -Dir $d -Zip $zip -Version '0.5.0+dev.abc1234'
+    $note = 'Preview build (0.5.0+dev.abc1234). To go back to the stable version: irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex'
+    $run = Invoke-IexHarness -Script $rel.Script -Downloads $rel.Downloads -Stdin @('0')
+    Assert-SessionClean $run 0
+    $lines = @($run.Text -split "`n")
+    $at = [array]::IndexOf($lines, '  hikari 0.5.0+dev.abc1234')
+    Assert-True ($at -ge 0) ('title; output: ' + $run.Text)
+    Assert-Equal $lines[$at + 2] ('  ' + $note) 'notice right after the title'
 }
 
 Test-Case 'release with a wrong hash: zip refused, nothing installed, temp removed' {

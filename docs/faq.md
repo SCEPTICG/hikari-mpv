@@ -64,7 +64,7 @@ On Windows, in PowerShell:
 & ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version
 ```
 
-It prints one line per mpv config folder it finds, such as `mpv (/home/you/.config/mpv): hikari 0.6.0 (older than this installer)`, after the version of the installer itself (the latest release, with these lines). `dev` means a copy installed from the repository, `preview-…` a test build. The same version is the `hikari_version=` line of `hikari-installed.txt` in your config folder.
+It prints one line per mpv config folder it finds, such as `mpv (/home/you/.config/mpv): hikari 0.6.0 (older than this installer)`, after the version of the installer itself (the latest release, with these lines). `dev` means a copy installed from the repository, `0.10.0+dev.…` a test build made on 0.10.0 (`preview-…` in older test builds). The same version is the `hikari_version=` line of `hikari-installed.txt` in your config folder.
 
 ## On Windows, `irm` fails with an SSL/TLS error
 

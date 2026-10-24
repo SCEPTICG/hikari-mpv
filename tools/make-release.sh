@@ -23,12 +23,14 @@
 # preview builds a test version of the current commit (the dev branch) the same
 # way, for the moving tag preview: the tag preview must exist and point to the
 # current commit, the files point at .../releases/download/preview/hikari.zip
-# and the version written in them is preview-<short commit hash> (e.g.
-# preview-ffebb37), so the installers say it is a test version and record which
-# build is installed. hikari-update.lua only reads X.Y.Z versions, so a preview
-# install never looks for updates (as a copy of the repository, `dev`). It is
-# published as a GitHub pre-release, never as Latest (see docs/development.md,
-# "Preview builds").
+# and the version written in them is X.Y.Z+dev.<short commit hash> (e.g.
+# 0.10.0+dev.d5af920), so the installers say it is a test version and record
+# which build is installed. X.Y.Z is the release the build is made on: the
+# highest tag of exactly the form vX.Y.Z among the ancestors of the commit
+# (none is an error). As in semver build metadata, hikari-update.lua takes the
+# build as X.Y.Z and tells about any newer release. Builds made before this
+# said preview-<commit>; the installers still show those. It is published as a
+# GitHub pre-release, never as Latest (see docs/development.md, "Preview builds").
 #
 # Needs: git, a SHA256 tool (sha256sum or shasum), awk, bash, and PowerShell 7
 # (pwsh in PATH, $PWSH, or ~/.local/opt/powershell/pwsh) to check that the
@@ -69,12 +71,22 @@ tagged="$(git rev-parse "refs/tags/$tag^{commit}")"
 [[ "$tagged" == "$commit" ]] || die "tag $tag points to $tagged, not to HEAD ($commit): move it first ($tag_cmd)"
 
 if [[ $preview == 1 ]]; then
-    version="preview-$(git rev-parse --short=7 HEAD)"
+    # The highest vX.Y.Z tag the commit is built on, compared as numbers. Not
+    # git describe: that takes the nearest tag, not the highest, and its
+    # --match is a glob (v1.2.3-rc1 would pass).
+    base="$(git tag --merged HEAD --list 'v*' |
+        LC_ALL=C grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+        sed 's/^v//' | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)" || true
+    [[ -n "$base" ]] ||
+        die "no vX.Y.Z tag among the ancestors of HEAD: a preview is named after the release it is built on (X.Y.Z+dev.<commit>)"
+    version="$base+dev.$(git rev-parse --short=7 HEAD)"
+    # As the installers and hikari-update.lua read it.
+    [[ "$version" =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}\+dev\.[0-9a-f]{7,40}$ ]] || die "unexpected version '$version'"
 else
     version="${tag#v}"
 fi
 # Written between single quotes in both installers: only these characters.
-[[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+|preview-[0-9a-f]{7,40})$ ]] || die "unexpected version '$version'"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+dev\.[0-9a-f]{7,40})?$ ]] || die "unexpected version '$version'"
 
 if command -v sha256sum >/dev/null 2>&1; then
     sha256() { sha256sum "$1" | cut -d' ' -f1; }

@@ -70,7 +70,7 @@ To see which version you have:
 & ([scriptblock]::Create((irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1))) -Version
 ```
 
-It prints one line per config folder, such as `mpv.net (C:\Users\you\AppData\Roaming\mpv.net): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `preview-…` a test build. Paste that line when you report a problem.
+It prints one line per config folder, such as `mpv.net (C:\Users\you\AppData\Roaming\mpv.net): hikari 0.6.0 (older than this installer)`: `older`, `the same as` or `newer than` compares it with the installer you ran (the latest release, with the line above), `dev` is a copy installed from the repository and `0.10.0+dev.…` a test build made on 0.10.0 (`preview-…` in older test builds). Paste that line when you report a problem.
 
 ## Checking the installer first
 

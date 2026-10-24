@@ -772,6 +772,26 @@ check 'stable over preview: the hikari block in mpv.conf only once' test "$(coun
 copy=$dev_copy
 run "$h" --yes --anime4k no
 check 'the repository version (dev) does not say it is a test version' hasnt "$out" 'Preview build'
+# A preview build as tools/make-release.sh names it now (X.Y.Z+dev.<commit>):
+# the same notice, and the record says the build.
+build_copy "$tmp/build-preview-dev" 0.5.0+dev.abc1234
+check 'preview (X.Y.Z+dev): the test copy only differs from the repository one in the version' \
+    test "$(diff "$copy" "$tmp/build-preview-dev/install/hikari.sh" | grep -c '^>')" = 1
+h=$(newhome over-preview-dev)
+cfg="$h/.config/mpv"
+copy="$tmp/build-preview-dev/install/hikari.sh"
+run "$h" --yes --anime4k no --verbose
+check 'preview (X.Y.Z+dev): installs' test "$rc" = 0
+check 'preview (X.Y.Z+dev): says it is a test version and how to go back, right after the title' \
+    test "$(sed -n 2p "$out")" = 'Preview build (0.5.0+dev.abc1234). To go back to the stable version: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash'
+check 'preview (X.Y.Z+dev): the record says the build' test "$(rec "$cfg" hikari_version)" = 0.5.0+dev.abc1234
+HIKARI_LANG=es run "$(newhome over-preview-dev-es)" --uninstall --yes
+check 'preview (X.Y.Z+dev): the notice in Spanish' has "$out" 'Versión de prueba (0.5.0+dev.abc1234). Para volver a la estable: curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash'
+copy="$tmp/build-stable/install/hikari.sh"
+run "$h" --yes --anime4k no
+check 'stable over preview (X.Y.Z+dev): installs, no test version notice' test "$rc" = 0 -a -z "$(grep -F 'Preview build' "$out")"
+check 'stable over preview (X.Y.Z+dev): the record says 0.5.0' test "$(rec "$cfg" hikari_version)" = 0.5.0
+copy=$dev_copy
 
 # --- installed version (--version, menu option 3) ---------------------------------
 
@@ -799,6 +819,9 @@ check '--version: no title, no questions, no backup' test "$(wc -l <"$out" | tr 
 dev_copy=$copy
 copy="$tmp/build-070/install/hikari.sh"
 for pair in '0.6.0|older than this installer' '0.7.0|the same as this installer' '0.10.0|newer than this installer' \
+    '0.6.9+dev.abc1234|a test build of 0.6.9, older than this installer' \
+    '0.7.0+dev.abc1234|a test build of 0.7.0, the same version as this installer' \
+    "0.10.0+dev.$(repeat_text 40 f)|a test build of 0.10.0, newer than this installer" \
     'preview-abc1234|' 'dev|'; do
     v=${pair%%|*}
     note=${pair#*|}
@@ -808,6 +831,26 @@ for pair in '0.6.0|older than this installer' '0.7.0|the same as this installer'
     check "--version: record $v -> $want" test "$rc" = 0 -a "$(sed -n 2p "$out")" = "mpv ($cfg): $want"
 done
 check '--version: a release says its own version' has "$out" 'This installer: hikari 0.7.0'
+# A preview build only in exactly the form X.Y.Z+dev.<7 to 40 lower-case hex digits>.
+for v in '0.10.0+dev.' '0.10.0+dev.XYZ' '0.10.0+dev.ABC1234' '0.10+dev.abc1234' '0.10.0+foo.abc1234' \
+    '0.10.0+dev.abc123' "0.10.0+dev.$(repeat_text 41 f)" '0.10.0-dev.abc1234' '1234567890.0.0+dev.abc1234' \
+    '0.10.0+dev.abc1234+dev.abc1234'; do
+    sed "s/^hikari_version=.*/hikari_version=$v/" "$cfg/hikari-installed.txt" >"$tmp/rec" && cat "$tmp/rec" >"$cfg/hikari-installed.txt"
+    run "$h" --version
+    check "--version: record $v -> unknown version" test "$rc" = 0 -a "$(sed -n 2p "$out")" = "mpv ($cfg): hikari, unknown version"
+done
+sed "s/^hikari_version=.*/hikari_version=0.7.0+dev.abc1234/" "$cfg/hikari-installed.txt" >"$tmp/rec" && cat "$tmp/rec" >"$cfg/hikari-installed.txt"
+HIKARI_LANG=es run "$h" --version
+check '--version: a preview build of the same release, in Spanish' \
+    test "$(sed -n 2p "$out")" = "mpv ($cfg): hikari 0.7.0+dev.abc1234 (versión de prueba de la 0.7.0, la misma versión que este instalador)"
+# This installer a preview build: nothing compared, as for preview-<commit> and dev.
+copy=$dev_copy
+build_copy "$tmp/build-070-dev" 0.7.0+dev.def5678
+copy="$tmp/build-070-dev/install/hikari.sh"
+run "$h" --version
+check '--version: a preview installer compares nothing' \
+    test "$(sed -n 1p "$out")|$(sed -n 2p "$out")" = "This installer: hikari 0.7.0+dev.def5678|mpv ($cfg): hikari 0.7.0+dev.abc1234"
+copy="$tmp/build-070/install/hikari.sh"
 # A record anyone can edit: odd versions are not printed.
 printf 'hikari_version=0.6.0\033[2J$(id)\n' >>"$cfg/hikari-installed.txt"
 run "$h" --version

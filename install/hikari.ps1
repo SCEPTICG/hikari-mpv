@@ -146,8 +146,9 @@ $VerbosePreference = 'SilentlyContinue'
 $script:HikariVersion = 'dev'
 $script:HikariReleaseUrl = ''
 $script:HikariReleaseSha256 = ''
-# A preview build (version preview-<commit>, see tools/make-release.sh) says so
-# when it starts, with this line to go back to the stable version.
+# A preview build (version X.Y.Z+dev.<commit>, see tools/make-release.sh;
+# preview-<commit> before) says so when it starts, with this line to go back to
+# the stable version.
 $script:HikariStableInstall = 'irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 | iex'
 
 # uosc: fixed release, verified by SHA256 before it is extracted.
@@ -377,6 +378,9 @@ $script:HikariStringsEn = @{
     version_older         = 'hikari {0} (older than this installer)'
     version_same          = 'hikari {0} (the same as this installer)'
     version_newer         = 'hikari {0} (newer than this installer)'
+    version_dev_older     = 'hikari {0} (a test build of {1}, older than this installer)'
+    version_dev_same      = 'hikari {0} (a test build of {1}, the same version as this installer)'
+    version_dev_newer     = 'hikari {0} (a test build of {1}, newer than this installer)'
     version_unknown       = 'hikari, unknown version'
     version_manual        = 'hikari files without an installer record'
     version_sosc          = 'sosc (the name of hikari until v0.3.0)'
@@ -568,6 +572,9 @@ $script:HikariStringsEs = @{
     version_older         = 'hikari {0} (m\u00e1s antigua que este instalador)'
     version_same          = 'hikari {0} (la misma que este instalador)'
     version_newer         = 'hikari {0} (m\u00e1s nueva que este instalador)'
+    version_dev_older     = 'hikari {0} (versi\u00f3n de prueba de la {1}, m\u00e1s antigua que este instalador)'
+    version_dev_same      = 'hikari {0} (versi\u00f3n de prueba de la {1}, la misma versi\u00f3n que este instalador)'
+    version_dev_newer     = 'hikari {0} (versi\u00f3n de prueba de la {1}, m\u00e1s nueva que este instalador)'
     version_unknown       = 'hikari, versi\u00f3n desconocida'
     version_manual        = 'ficheros de hikari sin registro del instalador'
     version_sosc          = 'sosc (el nombre de hikari hasta la v0.3.0)'
@@ -5258,11 +5265,13 @@ function Confirm-HikariElevation {
 }
 
 # A hikari version as a record or this installer may say it: X.Y.Z, dev (a
-# copy of the repository) or preview-<commit>. Anything else is never shown:
-# the record can be edited by anyone. ASCII digits only, nothing after the end.
+# copy of the repository), X.Y.Z+dev.<commit> (a preview build made on X.Y.Z)
+# or preview-<commit> (a preview build from before). Anything else is never
+# shown: the record can be edited by anyone. ASCII digits only, nothing after
+# the end.
 function Test-HikariVersionText {
     param([string]$Text)
-    return ($Text -cmatch '\A[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}\z' -or $Text -ceq 'dev' -or
+    return ($Text -cmatch '\A[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}(\+dev\.[0-9a-f]{7,40})?\z' -or $Text -ceq 'dev' -or
         $Text -cmatch '\Apreview-[0-9a-f]{7,40}\z')
 }
 
@@ -5279,7 +5288,8 @@ function Compare-HikariVersion {
 }
 
 # What a candidate's folder has: the hikari version of its record (compared
-# with this installer's when both are releases), sosc, hikari files without a
+# with this installer's when this one is a release and the record a release or
+# a preview build made on one, by that release), sosc, hikari files without a
 # record, or nothing.
 function Get-HikariVersionState {
     param($Candidate)
@@ -5295,6 +5305,15 @@ function Get-HikariVersionState {
         if ($cmp -lt 0) { return (T 'version_older' @($v)) }
         if ($cmp -eq 0) { return (T 'version_same' @($v)) }
         return (T 'version_newer' @($v))
+    }
+    # A preview build counts as the release it is made on.
+    $at = $v.IndexOf('+dev.', [System.StringComparison]::Ordinal)
+    if ($at -gt 0 -and $script:HikariVersion -cmatch $release) {
+        $base = $v.Substring(0, $at)
+        $cmp = Compare-HikariVersion $base $script:HikariVersion
+        if ($cmp -lt 0) { return (T 'version_dev_older' @($v, $base)) }
+        if ($cmp -eq 0) { return (T 'version_dev_same' @($v, $base)) }
+        return (T 'version_dev_newer' @($v, $base))
     }
     return (T 'version_installed' @($v))
 }
@@ -5382,7 +5401,8 @@ function Invoke-HikariMain {
         Write-HikariUi @('  ', '', 'hikari', 'Cyan', (' ' + $script:HikariVersion), '')
         Write-HikariUi
     }
-    if ($script:HikariVersion.StartsWith('preview-', [System.StringComparison]::Ordinal)) {
+    if ($script:HikariVersion.StartsWith('preview-', [System.StringComparison]::Ordinal) -or
+        $script:HikariVersion.Contains('+dev.')) {
         Write-HikariWarn (T 'preview_note' @($script:HikariVersion, $script:HikariStableInstall))
     }
     if (-not $Action) {
