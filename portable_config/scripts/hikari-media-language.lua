@@ -57,12 +57,24 @@
 --   comes with `alang = 'jpn'` and `slang = 'eng'`. Those are AnimeJaNai's
 --   defaults, not a choice of yours, so they do not count as yours by 2.
 --   when all of this holds: the option holds exactly that value, and
---   ~~/mpv-animejanai.conf sets that option in one line only, outside any
---   [profile] section, and that line is AnimeJaNai's (`alang` with the value
---   `jpn`, quoted or not; `slang` with `eng`). The file is read as ~~/mpv.conf
---   is (same size limit, comments, profiles) and never written. Change the
---   line to anything else (`alang = 'jpn,eng'`), or set the option in
---   ~~/mpv.conf or on the command line, and it is yours again.
+--   ~~/mpv-animejanai.conf sets that option in one line only, and that line
+--   is AnimeJaNai's (`alang` with the value `jpn`, quoted or not; `slang`
+--   with `eng`). Older versions write those lines at the top level of the
+--   file; newer ones inside its [animejanai] profile, which ~~/mpv.conf
+--   applies with `profile = animejanai`. So the lines counted are those of
+--   the top level and, when ~~/mpv.conf or ~~/mpv-animejanai.conf applies
+--   that profile at the top level (a `profile=` line whose list names
+--   `animejanai`), those of [animejanai]; a line in any other section
+--   ([upscale-on], [subs-gpu], [extension.gif]...) never counts, and two
+--   lines (one at the top, one in [animejanai]) are yours. The profiles that
+--   [animejanai] applies in turn (`profile=high-quality`, mpv's own, and
+--   `profile=upscale-on`) are not followed: in the known versions they set
+--   neither option, and if one did, the value would no longer be
+--   AnimeJaNai's (yours) or would still be `jpn`/`eng` (nothing of yours to
+--   keep). The files are read as ~~/mpv.conf is (same size limit, comments,
+--   profiles) and never written. Change the line to anything else
+--   (`alang = 'jpn,eng'`), or set the option in ~~/mpv.conf or on the
+--   command line, and it is yours again.
 -- - When: once when the script starts, which mpv waits for before it opens
 --   the first file (it waits until every script has finished loading), so the
 --   first file already gets the recipe. Nothing is written to any file: the
@@ -174,6 +186,10 @@ local MAX_CONF_BYTES = 1024 * 1024
 -- AnimeJaNai's own options file and the values it comes with (see the header).
 local ANIMEJANAI_CONF = '~~/mpv-animejanai.conf'
 local ANIMEJANAI_DEFAULTS = {alang = 'jpn', slang = 'eng'}
+-- The profile of that file that holds them in newer versions, and how a
+-- line that applies a profile is named (see applies_profile).
+local ANIMEJANAI_PROFILE = 'animejanai'
+local PROFILE_NAMES = {profile = 'profile'}
 -- The track properties hikari may switch, in order (audio first: mpv picks
 -- the subtitles by the audio), and the type of their tracks in track-list.
 local TRACKS = {'aid', 'sid'}
@@ -237,11 +253,15 @@ end
 -- the name made of letters, digits, `_` and `-`, then `=`, a blank or the
 -- end; `#` starts a comment; `[name]` starts a profile, and `[default]` goes
 -- back to the top level.
-local function conf_lines(text)
+-- `section`, when given, names one profile whose lines are read too, marked
+-- with `section = <its name>`; `names`, when given, replaces CONF_NAMES (the
+-- names looked for, each with its option).
+local function conf_lines(text, section, names)
 	local found = {}
 	if type(text) ~= 'string' then return found end
+	names = names or CONF_NAMES
 	text = text:gsub('^\239\187\191', '')
-	local top, in_block = true, false
+	local current, in_block = nil, false
 	for line in (text .. '\n'):gmatch('([^\n]*)\n') do
 		line = line:gsub('\r$', ''):gsub('^%s+', '')
 		if line:sub(1, #BLOCK_BEGIN) == BLOCK_BEGIN then
@@ -249,13 +269,15 @@ local function conf_lines(text)
 		elseif line:sub(1, #BLOCK_END) == BLOCK_END then
 			in_block = false
 		elseif line ~= '' and line:sub(1, 1) ~= '#' then
-			local section = line:match('^%[([^%]]*)%]')
-			if section then
-				top = section == 'default'
-			elseif top and not in_block then
+			local header = line:match('^%[([^%]]*)%]')
+			if header then
+				if header == 'default' then current = nil else current = header end
+			elseif not in_block and (current == nil or current == section) then
 				local name, rest = line:gsub('^%-%-', ''):match('^([%w_%-]+)(.*)$')
-				local option = name and CONF_NAMES[name]
-				if option then found[#found + 1] = {option = option, name = name, value = conf_value(rest)} end
+				local option = name and names[name]
+				if option then
+					found[#found + 1] = {option = option, name = name, value = conf_value(rest), section = current}
+				end
 			end
 		end
 	end
@@ -290,11 +312,29 @@ local function user_conf_options()
 	return conf_options(read_config('~~/mpv.conf'))
 end
 
+-- Whether `text` (an mpv.conf) applies the profile `profile` at the top
+-- level: a `profile=` line outside the hikari block and outside any
+-- [profile] section whose list names it as is (`profile = animejanai`,
+-- `profile="a,animejanai"`). mpv does not trim the items of a list, so
+-- `a, animejanai` does not name it.
+local function applies_profile(text, profile)
+	for _, line in ipairs(conf_lines(text, nil, PROFILE_NAMES)) do
+		if type(line.value) == 'string' then
+			for item in (line.value .. ','):gmatch('([^,]*),') do
+				if item == profile then return true end
+			end
+		end
+	end
+	return false
+end
+
 -- The options of ANIMEJANAI_DEFAULTS that `text` (an mpv-animejanai.conf)
 -- sets with AnimeJaNai's line and nothing else (see the header), as a set.
-local function animejanai_defaults(text)
+-- `applied`: whether the [animejanai] profile is applied at the top level;
+-- only then do its lines count, together with those of the top level.
+local function animejanai_defaults(text, applied)
 	local lines = {}
-	for _, line in ipairs(conf_lines(text)) do
+	for _, line in ipairs(conf_lines(text, applied and ANIMEJANAI_PROFILE or nil)) do
 		lines[line.option] = lines[line.option] or {}
 		table.insert(lines[line.option], line)
 	end
@@ -306,9 +346,14 @@ local function animejanai_defaults(text)
 	return found
 end
 
--- The same for ~~/mpv-animejanai.conf; an empty set without that file.
+-- The same for ~~/mpv-animejanai.conf, with its [animejanai] profile when
+-- ~~/mpv.conf or that file applies it; an empty set without that file.
 local function animejanai_conf_defaults()
-	return animejanai_defaults(read_config(ANIMEJANAI_CONF))
+	local text = read_config(ANIMEJANAI_CONF)
+	if text == nil then return {} end
+	local applied = applies_profile(read_config('~~/mpv.conf'), ANIMEJANAI_PROFILE)
+		or applies_profile(text, ANIMEJANAI_PROFILE)
+	return animejanai_defaults(text, applied)
 end
 
 -- Whether the user set `name` (see the header), and why, for the log.
@@ -714,6 +759,7 @@ if HIKARI_MEDIA_LANGUAGE_TEST then
 		conf_value = conf_value, conf_lines = conf_lines, conf_options = conf_options,
 		user_conf_options = user_conf_options, set_by_user = set_by_user,
 		animejanai_defaults = animejanai_defaults, animejanai_conf_defaults = animejanai_conf_defaults,
+		applies_profile = applies_profile,
 		apply = apply, reselect = reselect, reselect_tracks = reselect_tracks,
 		fold = fold, in_language = in_language, track_variant = track_variant,
 		preferred_track = preferred_track, prefer_variant = prefer_variant, original_audio = original_audio,
