@@ -200,8 +200,8 @@
 -- - The menu also has a button in the row of controls. In uosc it is a
 --   `command:` in uosc.conf, like hikari's other buttons (uosc has no marked
 --   state for those). In suji it is `button:hikari-skip` in suji.conf, which
---   this script sets with `set-button` (ROW_BUTTON): icon ROW_ICON (suji has
---   no fast-forward icon), the open-menu binding as its command, `active`
+--   this script sets with `set-button` (ROW_BUTTON): icon ROW_ICON (suji's
+--   fast-forward, since 0.7.2), the open-menu binding as its command, `active`
 --   while the mode is not `no`, so suji marks it with its accent, and the
 --   tooltip in hikari's language (suji keeps it, it shows none). Each
 --   set-button replaces every field, so all of them go every time: when
@@ -276,10 +276,10 @@ local SUJI_VERSION_PROP = 'user-data/suji/version'
 local ACTION_ID = 'hikari-skip'
 local ACTION_MESSAGE = 'skip-action'
 -- Our button in suji's row (`button:hikari-skip` in suji.conf), which opens
--- the automatic skip menu. suji has no fast-forward icon yet: change ROW_ICON
--- when it gets one.
+-- the automatic skip menu, with suji's fast-forward icon (suji 0.7.2 or newer;
+-- an older suji draws no icon for a name it does not know).
 local ROW_BUTTON = 'hikari-skip'
-local ROW_ICON = 'next'
+local ROW_ICON = 'fast_forward'
 -- Automatic skip: the modes, in the menu's order, with the key of their text
 -- and the kinds they skip (intros go with openings, outros with endings).
 local AUTO_MODES = {'no', 'openings', 'endings', 'all'}
