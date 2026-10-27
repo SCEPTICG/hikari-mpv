@@ -113,6 +113,8 @@ local BUTTONS = {
 	['script-binding hikari_resume/open-menu'] = 'tooltip_resume',
 	['script-binding hikari_palettes/open-menu'] = 'tooltip_palettes',
 	['script-binding hikari_update/open-menu'] = 'tooltip_update',
+	['script-binding hikari_skip/open-menu'] = 'tooltip_skip',
+	['script-binding hikari_language/open-menu'] = 'tooltip_language',
 }
 
 -- The value of uosc's `languages` option for an entry of the menu.

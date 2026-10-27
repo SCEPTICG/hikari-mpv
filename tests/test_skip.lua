@@ -1533,5 +1533,146 @@ test('automatic skip: a range that covers nearly the whole file is never skipped
 	eq(s.skip(), true, 'and works')
 end)
 
+test('Crunchyroll chapters (Intro, Episode, Credits): Credits is the ending, with or without a Preview after it', function()
+	local list = chapters({{0, 'Episode'}, {46, 'Intro'}, {136, 'Episode'}, {1337, 'Credits'}})
+	local s = play(50, list)
+	eq(label(s), 'Saltar intro ›', 'the intro, as before')
+	s = play(1340, list)
+	eq(label(s), 'Saltar ending ›', 'the last chapter')
+	mock.props['playlist-pos'] = 0
+	mock.props['playlist-count'] = 1
+	eq(s.skip(), true)
+	eq(jumps()[1][2], '1419.000', 'nothing next: near the end')
+	s = aplay(1330, list, {[AUTO] = 'endings'})
+	play_to(1337)
+	local j = jumps()
+	eq(#j, 1, 'skipped on its own')
+	eq(j[1][2], '1419.000')
+	eq(mock.osd[#mock.osd], 'Ending saltado')
+	local preview = chapters({{0, 'Episode'}, {46, 'Intro'}, {136, 'Episode'}, {1337, 'Credits'}, {1400, 'Preview'}})
+	s = play(1340, preview)
+	eq(label(s), 'Saltar ending ›', 'with a Preview after it')
+	s = aplay(1330, preview, {[AUTO] = 'endings'})
+	play_to(1337)
+	j = jumps()
+	eq(#j, 1, 'skipped on its own')
+	eq(j[1][2], '1400.000', 'to the preview, not to the end')
+end)
+
+-- suji's row button (set-button) ---------------------------------------------------
+
+local ENABLED = 'user-data/suji/enabled'
+
+-- The set-button messages sent to suji, decoded, in order.
+local function row_buttons()
+	local out = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'script-message-to' and c[2] == 'suji' and c[3] == 'set-button' then
+			eq(c[4], 'hikari-skip', 'name')
+			out[#out + 1] = mock.parse_json(c[5])
+		end
+	end
+	return out
+end
+
+test('suji row button: set as suji turns on, with every field; marked while the automatic skip is on', function()
+	local s = load()
+	eq(#row_buttons(), 0, 'nothing before suji')
+	mock.suji = true
+	mock.set(ENABLED, true)
+	local list = row_buttons()
+	eq(#list, 1, 'set once')
+	local b = list[1]
+	eq(b.icon, s.ROW_ICON); eq(b.icon, 'next')
+	eq(b.active, false, 'off: there, not marked')
+	eq(b.tooltip, 'Salto automático')
+	eq(b.hide, nil); eq(b.badge, nil)
+	eq(#b.command, 2); eq(b.command[1], 'script-binding'); eq(b.command[2], 'hikari_skip/open-menu')
+	for _, mode in ipairs({'openings', 'endings', 'all'}) do
+		load({[AUTO] = mode})
+		mock.suji = true
+		mock.set(ENABLED, true)
+		eq(row_buttons()[1].active, true, mode .. ': marked')
+	end
+end)
+
+test('suji row button: a new mode sets it again, marked or not', function()
+	local path = os.tmpname()
+	os.remove(path)
+	mock.expand['~~/hikari-skip.txt'] = path
+	load()
+	mock.suji = true
+	mock.set(ENABLED, true)
+	mock.commands = {}
+	mock.messages['set-auto-skip']('all')
+	local list = row_buttons()
+	eq(#list, 1); eq(list[1].active, true, 'all')
+	mock.messages['set-auto-skip']('no')
+	list = row_buttons()
+	eq(#list, 2); eq(list[2].active, false, 'no')
+	eq(list[2].icon, 'next', 'every field again'); eq(list[2].command[2], 'hikari_skip/open-menu')
+	mock.messages['set-auto-skip']('sometimes')
+	eq(#row_buttons(), 2, 'an unknown mode changes nothing')
+	os.remove(path)
+	mock.expand['~~/hikari-skip.txt'] = nil
+end)
+
+test('suji row button: nothing while suji is off or gone; set again when it comes back or starts again', function()
+	local path = os.tmpname()
+	os.remove(path)
+	mock.expand['~~/hikari-skip.txt'] = path
+	load()
+	mock.suji = true
+	mock.set(ENABLED, false)
+	eq(#row_buttons(), 0, 'suji off')
+	mock.messages['set-auto-skip']('endings')
+	mock.set_script_opt('hikari-language', 'en')
+	eq(#row_buttons(), 0, 'nor on a new mode or language while off')
+	mock.set(ENABLED, true)
+	local list = row_buttons()
+	eq(#list, 1, 'on again'); eq(list[1].active, true, 'with the mode picked meanwhile')
+	eq(list[1].tooltip, 'Automatic skip', 'and the language')
+	mock.set(ENABLED, nil)
+	mock.messages['suji-version']('0.7.1')
+	eq(#row_buttons(), 1, 'gone: nothing, not even on a stray suji-version')
+	mock.set(ENABLED, true)
+	eq(#row_buttons(), 2, 'back')
+	mock.messages['suji-version']('0.7.1')
+	eq(#row_buttons(), 3, 'suji loaded again while playing')
+	os.remove(path)
+	mock.expand['~~/hikari-skip.txt'] = nil
+	-- Without suji at all, nothing is ever sent.
+	load()
+	mock.messages['set-auto-skip']('all')
+	eq(#row_buttons(), 0, 'no suji')
+end)
+
+test('suji row button: the tooltip follows a language switch', function()
+	load()
+	mock.suji = true
+	mock.set(ENABLED, true)
+	mock.set_script_opt('hikari-language', 'fr')
+	local list = row_buttons()
+	eq(#list, 2)
+	eq(list[2].tooltip, 'Saut automatique')
+	eq(list[2].active, false)
+end)
+
+test('the rows: uosc.conf and suji.conf have the automatic skip button after speed', function()
+	local function controls(path)
+		local value
+		for line in read_file(path):gmatch('[^\n]+') do
+			if line:match('^controls=') then value = line:sub(10) end
+		end
+		return value
+	end
+	local speed = '<video,audio>command:speed:script-binding hikari_speed/open-menu?Speed,'
+	local uosc = controls('portable_config/script-opts/uosc.conf')
+	assert(uosc:find(speed .. '<video,audio>command:fast_forward:script-binding hikari_skip/open-menu?Automatic skip,', 1, true),
+		'uosc: a command: after speed')
+	local suji = controls('portable_config/script-opts/suji.conf')
+	assert(suji:find(speed .. '<video,audio>button:hikari-skip,', 1, true), 'suji: button:hikari-skip after speed')
+end)
+
 print(string.format('\n%d passed, %d failed', passed, failed))
 os.exit(failed == 0 and 0 or 1)

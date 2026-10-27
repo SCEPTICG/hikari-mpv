@@ -13,6 +13,11 @@
 --   serialize_chapter_ranges), plus the Japanese words. An opening or intro
 --   only counts when another chapter follows it (`requires_next`); that is up
 --   to the caller, which knows the chapter list.
+-- - Endings also take `Credits`, `Credits ...` and `... Credits`, which uosc
+--   does not: Crunchyroll's releases name their chapters Intro, Episode,
+--   Credits (and Preview). Like ED and Ending, with or without a chapter
+--   after it. `End Credits` is one of them; `Credit` alone is not (no release
+--   we know of uses it), nor are `Discredits` or `Creditscene`.
 -- - kinds() hands out a new table each time: hikari-skip adds the user's
 --   extra patterns and its on/off options to its copy, and nobody else sees
 --   them.

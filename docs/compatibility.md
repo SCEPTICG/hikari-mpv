@@ -50,7 +50,7 @@ The installer asks which one you want (*Interface*: *uosc (recommended)* or *suj
 
 With suji, hikari finds it and uses it:
 
-- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update and language) open in suji, and its buttons sit in suji's row.
+- Its menus (palettes, subtitles, continue watching, speed, Anime4K, update, language and automatic skip) open in suji, and its buttons sit in suji's row. The automatic skip button is one that `hikari-skip.lua` sets in suji (`button:hikari-skip` in `suji.conf`), with suji's *next* icon and a line in the accent colour under it while the automatic skip is on.
 - The skip button sits just above suji's row of controls, wherever suji says that row ends, instead of at `margin_bottom` in `hikari-skip.conf`. With suji 0.3.0 or newer, suji draws the skip button itself, with its own look.
 - With suji 0.7.0 or newer, the tidy title of an episode goes to suji in its parts: suji shows the series above the episode (`T1 E05`) and its name, when the file has one. Films and other titles stay on one line.
 - A palette only changes suji's accent colour (the colour of its progress bar) to the palette's main colour, and saves it with the rest. The palette menu says so in its first line.
