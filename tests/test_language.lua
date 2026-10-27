@@ -152,6 +152,41 @@ test('tooltips: the shipped controls get hikari tooltips in the language, the re
 	eq(l.localize_controls(zh, 'en'), controls, 'back from Chinese')
 end)
 
+test('tooltips: the language and automatic skip buttons of the shipped rows, translated and back', function()
+	local l = load({['hikari-language'] = 'en'})
+	local controls = shipped_controls()
+	local language = 'command:language:script-binding hikari_language/open-menu?Language,'
+	assert(controls:find('hikari_palettes/open-menu?Palettes,' .. language, 1, true), 'uosc: language after the palettes')
+	local es = l.localize_controls(controls, 'es')
+	assert(es:find('command:language:script-binding hikari_language/open-menu?Idioma,', 1, true), 'language in Spanish')
+	assert(es:find('command:fast_forward:script-binding hikari_skip/open-menu?Salto automático,', 1, true),
+		'automatic skip in Spanish')
+	local zh = l.localize_controls(controls, 'zh-HK')
+	assert(zh:find('hikari_language/open-menu?語言,', 1, true), 'language in Chinese')
+	assert(zh:find('hikari_skip/open-menu?自動跳過,', 1, true), 'automatic skip in Chinese')
+	eq(l.localize_controls(es, 'en'), controls, 'and back')
+	-- suji shows no tooltips: its row keeps them in English, with the same language button.
+	local suji
+	for line in read('portable_config/script-opts/suji.conf'):gmatch('[^\n]+') do
+		if line:match('^controls=') then suji = line end
+	end
+	assert(suji:find('hikari_palettes/open-menu?Palettes,' .. language, 1, true), 'suji: language after the palettes')
+end)
+
+test('picking a language: the language and automatic skip buttons follow in uosc', function()
+	local path = os.tmpname()
+	local l = load({['hikari-language'] = 'es', ['uosc-languages'] = 'es,en'})
+	mock.expand['~~/hikari-language.conf'] = path
+	l.select_language('fr')
+	mock.set_script_opt('hikari-language', 'fr')
+	local list = appended('uosc-controls')
+	local last = list[#list]
+	assert(last:find('hikari_language/open-menu?Langue,', 1, true), 'language in French')
+	assert(last:find('hikari_skip/open-menu?Saut automatique,', 1, true), 'automatic skip in French')
+	os.remove(path)
+	mock.expand['~~/hikari-language.conf'] = nil
+end)
+
 test('tooltips: conditions, badges, spaces, other buttons and a trailing comma', function()
 	local l = load()
 	local cases = {

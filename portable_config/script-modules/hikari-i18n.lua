@@ -188,6 +188,19 @@ local STRINGS = {
 		ru = 'Обновить hikari', tr = 'hikari’yi güncelle', uk = 'Оновити hikari',
 		['zh-HK'] = '更新 hikari', ['zh-hans'] = '更新 hikari',
 	},
+	-- The automatic skip menu (hikari-skip.lua; also suji's set-button) and the
+	-- language menu: the same words as their titles.
+	tooltip_skip = {
+		en = 'Automatic skip', es = 'Salto automático', de = 'Automatisch überspringen', fr = 'Saut automatique',
+		it = 'Salto automatico', pl = 'Automatyczne pomijanie', pt = 'Pular automaticamente', ro = 'Sărire automată',
+		ru = 'Автопропуск', tr = 'Otomatik atlama', uk = 'Автопропуск',
+		['zh-HK'] = '自動跳過', ['zh-hans'] = '自动跳过',
+	},
+	tooltip_language = {
+		en = 'Language', es = 'Idioma', de = 'Sprache', fr = 'Langue', it = 'Lingua', pl = 'Język',
+		pt = 'Idioma', ro = 'Limbă', ru = 'Язык', tr = 'Dil', uk = 'Мова',
+		['zh-HK'] = '語言', ['zh-hans'] = '语言',
+	},
 
 	-- Language menu (hikari-language.lua) ------------------------------------
 	language_title = {

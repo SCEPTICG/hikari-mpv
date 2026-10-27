@@ -24,7 +24,7 @@ Without that file (a copy made by hand), hikari follows `LC_ALL`, `LC_MESSAGES` 
 
 ## Changing it
 
-`Alt+l` opens the language menu, with each language written in itself and the current one marked. Pick one and hikari switches at once: open menus are redrawn, the skip button and the title of the file playing change, and the choice is saved for the next start.
+`Alt+l`, or the language button (globe icon) in the controls bar, opens the language menu, with each language written in itself and the current one marked. Pick one and hikari switches at once: open menus are redrawn, the skip button and the title of the file playing change, and the choice is saved for the next start.
 
 uosc's own menus and buttons (*Subtitles*, *Playlist*, *Chapters*...) are translated by uosc, which only reads its translations when mpv starts. hikari tells uosc the same language (the `uosc-languages` script option), so after a switch a short message reminds you to restart mpv to translate uosc's menus too. Until then, uosc follows the language it started with.
 
@@ -179,7 +179,7 @@ It has to be an `include`: mpv reads the included files after the rest of `mpv.c
 
 ## How the button tooltips are translated
 
-uosc translates the tooltips of its own buttons, but the tooltip of a custom button is the text after `?` in the `controls` line of `script-opts/uosc.conf`, shown as it is. hikari's `uosc.conf` writes them in English; `hikari-language.lua` gives hikari's buttons (subtitle style, upscaling, speed, palettes, update) the tooltip in your language when mpv starts and after every switch. Your own buttons and the rest of the `controls` line are left exactly as you wrote them.
+uosc translates the tooltips of its own buttons, but the tooltip of a custom button is the text after `?` in the `controls` line of `script-opts/uosc.conf`, shown as it is. hikari's `uosc.conf` writes them in English; `hikari-language.lua` gives hikari's buttons (subtitle style, upscaling, speed, automatic skip, continue watching, palettes, language, update) the tooltip in your language when mpv starts and after every switch. Your own buttons and the rest of the `controls` line are left exactly as you wrote them.
 
 ## Better translations
 

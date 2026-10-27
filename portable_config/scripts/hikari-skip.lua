@@ -18,7 +18,8 @@
 -- Decisions:
 -- - Chapters are classified with the same title patterns uosc uses for its
 --   chapter ranges (lib/utils.lua, serialize_chapter_ranges), plus the Japanese
---   words: script-modules/hikari-chapters.lua, shared with hikari-resume.lua.
+--   words and Credits as an ending (Crunchyroll's chapters):
+--   script-modules/hikari-chapters.lua, shared with hikari-resume.lua.
 --   An opening or intro only counts when another chapter follows it.
 -- - Layout is in real OSD pixels times a scale factor, like uosc does
 --   (hidpi * scale, or scale_fullscreen when fullscreen or maximized), so the
@@ -196,6 +197,22 @@
 --   back to them. A broken, unknown or hand-edited file is ignored (a warning
 --   for an unknown mode); only MAX_STATE bytes are read. Updating hikari keeps
 --   it; uninstalling removes it, like hikari-update.txt.
+-- - The menu also has a button in the row of controls. In uosc it is a
+--   `command:` in uosc.conf, like hikari's other buttons (uosc has no marked
+--   state for those). In suji it is `button:hikari-skip` in suji.conf, which
+--   this script sets with `set-button` (ROW_BUTTON): icon ROW_ICON (suji has
+--   no fast-forward icon), the open-menu binding as its command, `active`
+--   while the mode is not `no`, so suji marks it with its accent, and the
+--   tooltip in hikari's language (suji keeps it, it shows none). Each
+--   set-button replaces every field, so all of them go every time: when
+--   user-data/suji/enabled turns true (also its first value, mpv's, after this
+--   script has loaded), on a suji-version message (suji loaded again), when the
+--   mode changes and when the language does. Nothing is sent while suji is off
+--   or gone. There is no version check: set-button is in suji since 0.2.0, an
+--   older suji ignores messages it does not know, and a `button:` that no
+--   script set takes no room, so without it the button simply is not there.
+--   The button is there with the mode at `no` too, only unmarked: it is how
+--   the automatic skip is turned on.
 --
 -- Options (script-opts/hikari-skip.conf): see that file.
 
@@ -258,6 +275,11 @@ local SUJI_ENABLED_PROP = 'user-data/suji/enabled'
 local SUJI_VERSION_PROP = 'user-data/suji/version'
 local ACTION_ID = 'hikari-skip'
 local ACTION_MESSAGE = 'skip-action'
+-- Our button in suji's row (`button:hikari-skip` in suji.conf), which opens
+-- the automatic skip menu. suji has no fast-forward icon yet: change ROW_ICON
+-- when it gets one.
+local ROW_BUTTON = 'hikari-skip'
+local ROW_ICON = 'next'
 -- Automatic skip: the modes, in the menu's order, with the key of their text
 -- and the kinds they skip (intros go with openings, outros with endings).
 local AUTO_MODES = {'no', 'openings', 'endings', 'all'}
@@ -1089,6 +1111,18 @@ auto_skip_check = function()
 	end
 end
 
+-- Sets our button in suji's row, with every field (each set-button replaces
+-- them all): marked while the automatic skip is on. Only while suji is on.
+local function sync_row_button()
+	if not state.suji_on then return end
+	mp.commandv('script-message-to', 'suji', 'set-button', ROW_BUTTON, utils.format_json({
+		icon = ROW_ICON,
+		command = {'script-binding', mp.get_script_name() .. '/open-menu'},
+		active = auto_mode() ~= 'no',
+		tooltip = i18n.t('tooltip_skip'),
+	}))
+end
+
 -- The automatic skip picked in the menu (or by a message): applied at once and
 -- saved. The mode comes from outside, so it must be one of AUTO_MODES.
 local function set_auto_skip(mode)
@@ -1098,6 +1132,7 @@ local function set_auto_skip(mode)
 	end
 	state.auto_saved = mode
 	watch_time()
+	sync_row_button()
 	if save_mode(mode) then
 		mp.osd_message(i18n.t('auto_skip_now', {mode = i18n.t(AUTO_LABELS[mode])}), 2)
 	end
@@ -1299,10 +1334,12 @@ mp.observe_property(SUJI_MARGINS_PROP, 'native', setter('suji_bottom', function(
 	return math.min(bottom, 10000)
 end))
 -- suji turned on, off or gone. Either way suji holds no action button of
--- ours now (turning it off removed them): one is sent again if wanted.
+-- ours now (turning it off removed them): one is sent again if wanted. The
+-- row button is set again too when suji is on.
 mp.observe_property(SUJI_ENABLED_PROP, 'native', function(_, v)
 	state.suji_on = v == true
 	state.action = nil
+	sync_row_button()
 	refresh()
 end)
 -- Whether suji understands show-action: the version it publishes, or else the
@@ -1327,8 +1364,10 @@ mp.observe_property(SUJI_VERSION_PROP, 'native', function(_, v)
 	update_suji_actions()
 end)
 -- suji's version, sent when suji starts (only to the scripts already running).
+-- A suji that starts now does not know our row button either.
 mp.register_script_message('suji-version', function(version)
 	state.suji_announced = tostring(version)
+	sync_row_button()
 	update_suji_actions()
 end)
 -- A click on suji's action button. suji ignores the second click of a double
@@ -1400,8 +1439,9 @@ mp.add_key_binding(nil, 'skip', skip)
 mp.add_key_binding(nil, 'open-menu', open_menu)
 mp.register_script_message(MODE_MESSAGE, set_auto_skip)
 -- Another language: the button, if it is on screen, is drawn again with it,
--- and so is the menu, if it is open.
+-- and so is the menu, if it is open, and the tooltip of suji's row button.
 i18n.on_change(function()
+	sync_row_button()
 	refresh()
 	if menu and menu.is_open(MENU_TYPE) then menu.update(menu_data()) end
 end)
@@ -1420,5 +1460,6 @@ if HIKARI_SKIP_TEST then
 		AUTO_MODES = AUTO_MODES, MENU_TYPE = MENU_TYPE, MODE_MESSAGE = MODE_MESSAGE, STATE_PATH = STATE_PATH,
 		UNDO_TIME = UNDO_TIME, SETTLE = SETTLE, LOAD_GRACE = LOAD_GRACE, FLOW_STEP = FLOW_STEP, auto_mode = auto_mode,
 		menu_data = menu_data, open_menu = open_menu, set_auto_skip = set_auto_skip,
+		ROW_BUTTON = ROW_BUTTON, ROW_ICON = ROW_ICON,
 	}
 end

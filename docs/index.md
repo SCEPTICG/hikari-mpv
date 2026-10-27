@@ -71,7 +71,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
     ![Skip opening button](images/skip-opening.jpg)
 
-    A *Skip opening ›* button while a chapter looks like an opening, intro or ending, or at the times AniSkip knows for anime episodes without them. One click or `Alt+s`, or [on its own](features/skip.md#automatic-skip) if you turn it on with `Alt+S`.
+    A *Skip opening ›* button while a chapter looks like an opening, intro or ending, or at the times AniSkip knows for anime episodes without them. One click or `Alt+s`, or [on its own](features/skip.md#automatic-skip) if you turn it on with `Alt+S` or its button.
 
     [:octicons-arrow-right-24: Skip openings and endings](features/skip.md)
 
@@ -119,7 +119,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
 ## Speaks your language
 
-hikari's menus, buttons and messages come in the 13 languages of uosc. It follows your system, and `Alt+l` changes it. It also picks the audio and subtitle tracks for you: a dub in your language when the file has one, otherwise Japanese with subtitles in your language, telling Spain from Latin America and Brazil from Portugal. The installer speaks English or Spanish. [More about languages](features/language.md).
+hikari's menus, buttons and messages come in the 13 languages of uosc. It follows your system, and `Alt+l` or its button changes it. It also picks the audio and subtitle tracks for you: a dub in your language when the file has one, otherwise Japanese with subtitles in your language, telling Spain from Latin America and Brazil from Portugal. The installer speaks English or Spanish. [More about languages](features/language.md).
 
 <p class="hk-chips"><span>English</span><span>Español</span><span>Deutsch</span><span>Français</span><span>Italiano</span><span>Polski</span><span>Português</span><span>Română</span><span>Русский</span><span>Türkçe</span><span>Українська</span><span>简体中文</span><span>繁體中文 (香港)</span></p>
 
