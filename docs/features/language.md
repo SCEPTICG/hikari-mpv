@@ -140,10 +140,12 @@ alang = 'jpn'
 slang = 'eng'
 ```
 
-They are AnimeJaNai's defaults rather than a choice of yours, so hikari does not count them as yours and applies its recipe over them. It checks it by reading that file the same way as `mpv.conf` (comments and `[profile]` sections do not count) and only when all of this holds:
+Older versions write them at the top of the file. Newer ones put them inside an `[animejanai]` profile, which their `mpv.conf` applies with `profile = animejanai`.
+
+They are AnimeJaNai's defaults rather than a choice of yours, so hikari does not count them as yours and applies its recipe over them. It checks it by reading that file the same way as `mpv.conf` (comments do not count) and only when all of this holds:
 
 - `alang` still holds `jpn` (or `slang` holds `eng`) when mpv starts, and
-- `mpv-animejanai.conf` sets it in that one line, as it comes, and nowhere else in the file (no `alang-append` and the like), and
+- `mpv-animejanai.conf` sets it in that one line, as it comes, and nowhere else in the file (no `alang-append` and the like). The lines that count are those at the top of the file and, when your `mpv.conf` or `mpv-animejanai.conf` applies the `[animejanai]` profile (a `profile=` line outside any `[profile]`, alone or in a list such as `profile=animejanai,upscale-on`), those of `[animejanai]`. Other profiles (`[upscale-on]`, `[subs-gpu]`...) never count, and
 - neither your `mpv.conf` nor the command line sets it.
 
 Change the line to anything else (say `alang = 'jpn,eng'`) and it is yours again: hikari leaves it alone. hikari never writes to `mpv-animejanai.conf`.

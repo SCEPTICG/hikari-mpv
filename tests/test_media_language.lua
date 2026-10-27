@@ -560,6 +560,98 @@ test('AnimeJaNai: the file is only read, never written', function()
 	assert(not src:find("io.open%([^)]*'w"), 'no file opened for writing')
 end)
 
+-- Newer AnimeJaNai: its lines live in an [animejanai] profile that mpv.conf
+-- applies (the lines that matter).
+local ANIMEJANAI_PROFILE = table.concat({
+	'# AnimeJaNai managed settings - DO NOT EDIT.',
+	'profile-restore=copy-equal',
+	'[animejanai]',
+	'vo=gpu-next',
+	'profile=high-quality',
+	"alang = 'jpn'",
+	"slang = 'eng'",
+	'profile=upscale-on',
+	'[extension.gif]',
+	'loop-file=inf',
+	'[upscale-off]',
+	'vf=""',
+	'[upscale-on]',
+	'vf=@aji:animejanai',
+	'',
+}, '\r\n')
+local ANIMEJANAI_MPV_CONF = 'include="~~/mpv-animejanai.conf"\r\nprofile = animejanai\r\n'
+
+test('AnimeJaNai profile: applied by mpv.conf, its alang and slang are not yours', function()
+	local m = load({lang = 'es-ES', values = ANIMEJANAI_VALUES, animejanai = ANIMEJANAI_PROFILE,
+		conf = ANIMEJANAI_MPV_CONF})
+	eq(m.managed.alang, true, 'alang'); eq(m.managed.slang, true, 'slang'); eq(m.managed[SWMA], true, 'swma')
+	eq(join(mock.props.alang), 'es-ES,es,spa,es-419,es-MX,ja,jpn', 'alang')
+	eq(join(mock.props.slang), 'es-ES,es,spa,es-419,es-MX', 'slang')
+end)
+
+test('AnimeJaNai profile: applied by mpv-animejanai.conf itself', function()
+	local m = load({lang = 'es-ES', values = ANIMEJANAI_VALUES,
+		animejanai = 'profile=animejanai\n' .. ANIMEJANAI_PROFILE})
+	eq(m.managed.alang, true, 'alang'); eq(m.managed.slang, true, 'slang')
+	eq(join(mock.props.slang), 'es-ES,es,spa,es-419,es-MX', 'slang')
+end)
+
+test('AnimeJaNai profile: the ways a profile line may name it', function()
+	local m = load()
+	local yes = {
+		'profile=animejanai', 'profile = animejanai', "--profile = 'animejanai' # x", 'profile="gpu-hq,animejanai"',
+		'profile=animejanai,upscale-on', '[x]\nfoo=1\n[default]\nprofile=animejanai',
+	}
+	for _, text in ipairs(yes) do eq(m.applies_profile(text, 'animejanai'), true, text) end
+	local no = {
+		'# profile = animejanai', 'profile=animejanai2', 'profile=gpu-hq, animejanai', 'profile-append=animejanai',
+		'[animejanai]\nprofile=animejanai', '[x]\nprofile=animejanai', 'profile=%10%animejanai', 'profile',
+		'# >>> hikari\nprofile=animejanai\n# <<< hikari',
+	}
+	for _, text in ipairs(no) do eq(m.applies_profile(text, 'animejanai'), false, text) end
+	eq(m.applies_profile(nil, 'animejanai'), false, 'no file')
+end)
+
+test('AnimeJaNai profile: nobody applies it, so its lines are yours', function()
+	local m = load({values = ANIMEJANAI_VALUES, animejanai = ANIMEJANAI_PROFILE, conf = 'include="~~/mpv-animejanai.conf"\n'})
+	eq(m.managed.alang, false, 'alang'); eq(m.managed.slang, false, 'slang')
+	eq(join(mock.props.slang), 'eng', 'kept')
+	eq(next(m.animejanai_defaults(ANIMEJANAI_PROFILE)), nil, 'not applied: nothing')
+end)
+
+test('AnimeJaNai profile: a line in another section does not count', function()
+	local m = load()
+	eq(m.animejanai_defaults("[upscale-on]\nslang = 'eng'\n", true).slang, nil, 'in [upscale-on]')
+	eq(m.animejanai_defaults("[subs-gpu]\nslang = 'eng'\n[extension.gif]\nalang = 'jpn'\n", true).alang, nil,
+		'in [extension.gif]')
+	eq(m.animejanai_defaults("[animejanai]\nslang = 'eng'\n[upscale-on]\nslang = 'eng'\n", true).slang, true,
+		'only the one in [animejanai] counts')
+	m = load({values = ANIMEJANAI_VALUES, conf = ANIMEJANAI_MPV_CONF,
+		animejanai = "profile=animejanai\n[upscale-on]\nalang = 'jpn'\nslang = 'eng'\n"})
+	eq(m.managed.alang, false, 'alang'); eq(m.managed.slang, false, 'slang')
+end)
+
+test('AnimeJaNai profile: one line at the top and one in [animejanai] are yours', function()
+	local m = load({values = ANIMEJANAI_VALUES, conf = ANIMEJANAI_MPV_CONF,
+		animejanai = "slang = 'eng'\n" .. ANIMEJANAI_PROFILE})
+	eq(m.managed.slang, false, 'slang twice')
+	eq(m.managed.alang, true, 'alang once')
+	eq(join(mock.props.slang), 'eng', 'kept')
+end)
+
+test('AnimeJaNai profile: your own line in mpv.conf still wins', function()
+	local m = load({values = ANIMEJANAI_VALUES, animejanai = ANIMEJANAI_PROFILE,
+		conf = ANIMEJANAI_MPV_CONF .. 'slang = eng\n'})
+	eq(m.managed.slang, false, 'slang in mpv.conf')
+	eq(m.managed.alang, true, 'alang still AnimeJaNai\'s')
+	eq(join(mock.props.slang), 'eng', 'kept')
+end)
+
+test('AnimeJaNai profile: the older form still works with mpv.conf applying the profile', function()
+	local m = load({lang = 'es-ES', values = ANIMEJANAI_VALUES, animejanai = ANIMEJANAI, conf = ANIMEJANAI_MPV_CONF})
+	eq(m.managed.alang, true, 'alang'); eq(m.managed.slang, true, 'slang')
+end)
+
 -- Regional variants ----------------------------------------------------------
 
 test('variants: the variant of a track, by tag, then title, then bare Spanish as Spain\'s', function()
