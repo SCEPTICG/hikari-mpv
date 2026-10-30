@@ -54,7 +54,7 @@ irm https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.ps1 |
 curl -fsSL https://github.com/SCEPTICG/hikari-mpv/releases/latest/download/hikari.sh | bash
 ```
 
-A menu opens: choose *Install or update* and the player. Run the same line again to update or to uninstall. Requirements, options and how to check the installer before running it: [Install on Windows](https://scepticg.github.io/hikari-mpv/install/windows/) and [Install on macOS and Linux](https://scepticg.github.io/hikari-mpv/install/macos-linux/).
+A menu opens: choose *Install or update* and the player. There is no need to uninstall anything first: hikari installs over your current mpv setup or an earlier hikari, backs up what it changes and keeps your choices. Run the same line again to update or to uninstall. Requirements, options and how to check the installer before running it: [Install on Windows](https://scepticg.github.io/hikari-mpv/install/windows/) and [Install on macOS and Linux](https://scepticg.github.io/hikari-mpv/install/macos-linux/).
 
 ## Screenshots
 
@@ -77,7 +77,7 @@ A menu opens: choose *Install or update* and the player. Run the same line again
 
 ## hikari and other mpv themes
 
-- **[uosc](https://github.com/tomasklaen/uosc)** is the on-screen controller hikari is built on. If you already use uosc, hikari is a configuration plus a few scripts on top of it, not a fork: your uosc stays the official one, and uosc's own updates keep working.
+- **[uosc](https://github.com/tomasklaen/uosc)** is the on-screen controller hikari is built on. If you already use uosc, hikari is a configuration plus a few scripts on top of it, not a fork: your uosc stays the official one, and uosc's own updates keep working. What hikari adds on top is its own work: the skip button with AniSkip times and automatic skip, readable titles, continue watching, Anime4K picked by resolution, the palettes and the 13 languages (see [What you get](#what-you-get)).
 - **[ModernX](https://github.com/cyl0/ModernX) and [ModernZ](https://github.com/Samillion/ModernZ)** are other replacements for mpv's built-in OSC. They clash with uosc, so the installer sets them aside (nothing is deleted) and puts them back on uninstall.
 - **mpv.net and AnimeJaNai** are supported on Windows: hikari installs into the config folder each of them reads.
 - **[suji](https://github.com/SCEPTICG/suji)** is hikari's own interface, experimental: the installer offers it instead of uosc (*Interface* question, or `--interface suji`), with hikari's buttons in its row but no timeline thumbnails yet. See [hikari with suji](https://scepticg.github.io/hikari-mpv/compatibility/#hikari-with-suji-experimental).

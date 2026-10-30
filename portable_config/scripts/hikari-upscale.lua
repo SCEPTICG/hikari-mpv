@@ -302,6 +302,8 @@ options.read_options(opts, script_name)
 -- fixed mode), nil when none are.
 local active = {mode = pick(mode_by_id, opts.mode, 'mode'), quality = pick(quality_by_id, opts.quality, 'quality')}
 local installed = false
+-- "Automático" already said it leaves a tall video without shaders.
+local told_tall = false
 
 -- What "Apagado" (and "Automático" without a mode) puts back: the list mpv
 -- had at start-up when the saved mode was "Apagado" or "Automático" (so the
@@ -440,6 +442,7 @@ local function set_mode(id)
 	if apply(mode, active.quality) then
 		save()
 		mp.osd_message(osd_text(mode, active.quality), 2)
+		if mode.id == 'auto' and not active.target and video_height() then told_tall = true end
 		-- uosc only updates a menu of this type if it is still open.
 		menu.update(menu_data())
 	end
@@ -467,10 +470,15 @@ local function set_quality(id)
 end
 
 -- "Automático": a new file, or a new height, may need another mode. Nothing
--- is saved: the .conf keeps `mode=auto`.
+-- is saved: the .conf keeps `mode=auto`. The first video it leaves without
+-- shaders (1440p, 4K) says so once per session, so Anime4K staying off on a
+-- tall video does not look broken.
 local function on_video_change()
 	if active.mode.id ~= 'auto' or not installed then return end
-	apply(active.mode, active.quality)
+	if apply(active.mode, active.quality) and not active.target and not told_tall and video_height() then
+		told_tall = true
+		mp.osd_message(osd_text(active.mode, active.quality), 3)
+	end
 end
 
 mp.register_script_message('set-mode', set_mode)

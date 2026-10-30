@@ -49,7 +49,7 @@ hikari is a *skin* for mpv in the sense people usually mean: a ready-made, good-
 
     Details: [Install on macOS and Linux](install/macos-linux.md).
 
-A menu opens: choose *Install or update* and the player. Run the same line again to update or to uninstall.
+A menu opens: choose *Install or update* and the player. There is no need to uninstall anything first: hikari installs over your current mpv setup or an earlier hikari, backs up what it changes and keeps your choices. Run the same line again to update or to uninstall.
 
 ## What you get
 
