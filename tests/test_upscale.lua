@@ -491,6 +491,40 @@ test('auto: OSD for a tall video and the menu hint say what it does', function()
 	os.remove(path)
 end)
 
+test('auto: the first tall video of a session says it gets no shaders, once', function()
+	load(opt('auto', 'fast'), SHADERS, {})
+	local count = #mock.osd
+	mock.set('height', 720)
+	eq(#mock.osd, count, 'a mode picked: no OSD')
+	mock.props['current-tracks/video/image'] = true
+	mock.set('height', 2160)
+	eq(#mock.osd, count, 'a tall image: no OSD')
+	mock.props['current-tracks/video/image'] = nil
+	mock.events['file-loaded']()
+	eq(#mock.osd, count + 1, 'a tall video: one OSD')
+	eq(mock.osd[#mock.osd], 'Anime4K: Automático (sin shaders, 2160p)', 'what it says')
+	mock.set('height', 720)
+	mock.set('height', 1440)
+	mock.events['file-loaded']()
+	eq(#mock.osd, count + 1, 'later tall videos: no more OSD')
+	-- Picking auto on a tall video already said it.
+	local path = tmp_path()
+	load(nil, SHADERS, {})
+	mock.expand[CONF] = path
+	mock.props['height'] = 2160
+	mock.messages['set-mode']('auto')
+	count = #mock.osd
+	mock.set('height', 720)
+	mock.set('height', 2160)
+	eq(#mock.osd, count, 'no second OSD after set-mode')
+	-- A fixed mode never shows it.
+	load(opt('a', 'fast'), SHADERS, {})
+	count = #mock.osd
+	mock.set('height', 2160)
+	eq(#mock.osd, count, 'fixed mode: no OSD')
+	os.remove(path)
+end)
+
 test('input.conf binds Ctrl+7 to auto', function()
 	assert(read('portable_config/input.conf'):find('\nCtrl+7  script-message-to hikari_upscale set-mode auto\n', 1, true), 'Ctrl+7')
 	local ps1 = read('install/hikari.ps1')

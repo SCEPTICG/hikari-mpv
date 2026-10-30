@@ -9,7 +9,7 @@ description: "hikari installs Anime4K for mpv with an upscaling menu and an auto
 
 The **Upscaling** button in the controls bar (sparkles icon, `auto_awesome`) opens a menu with two groups (in hikari's [language](language.md); *Escalado* in Spanish, as in the screenshots); picking an option applies it straight away and the menu stays open:
 
-- **Mode**: *Off*, *Automatic* and Anime4K's six official modes. *Automatic* picks the mode from the height of each video, with the chosen quality: C up to 576 lines (480p, 576p), B up to 810 (720p), A+A up to 1100 (1080p), and no shaders for taller videos (1440p, 4K), which do not need upscaling. It works it out again for every file (and whenever the height changes), so a playlist that mixes resolutions gets the right mode for each one. The guide of Anime4K says the right mode is the one that looks best; roughly:
+- **Mode**: *Off*, *Automatic* and Anime4K's six official modes. *Automatic* picks the mode from the height of each video, with the chosen quality: C up to 576 lines (480p, 576p), B up to 810 (720p), A+A up to 1100 (1080p), and no shaders for taller videos (1440p, 4K), which do not need upscaling. It works it out again for every file (and whenever the height changes), so a playlist that mixes resolutions gets the right mode for each one. The first time in a session that it leaves a tall video without shaders, it says so in a short message (*Anime4K: Automatic (no shaders, 2160p)*), so Anime4K staying off there does not look broken; for upscaling on every video, pick a fixed mode. The guide of Anime4K says the right mode is the one that looks best; roughly:
 
   | Mode | For |
   | --- | --- |
