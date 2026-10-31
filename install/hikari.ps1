@@ -1678,7 +1678,8 @@ function Get-HikariBackupBase {
     if ($null -eq $item -or -not (Test-HikariLink $item)) { return $full }
     $target = [string]@($item.Target)[0]
     if (-not $target) { return $full }
-    if ($target.StartsWith('\\?\')) { $target = $target.Substring(4) }
+    if ($target.StartsWith('\\?\UNC\')) { $target = '\\' + $target.Substring(8) }
+    elseif ($target.StartsWith('\\?\')) { $target = $target.Substring(4) }
     if (-not [System.IO.Path]::IsPathRooted($target)) { $target = Join-Path (Split-Path -Path $full -Parent) $target }
     return (Get-HikariFullPath $target)
 }
@@ -3918,7 +3919,10 @@ function Invoke-HikariSoscMigration {
 # ---------------------------------------------------------------------------
 
 # Copies what the installer may change ($script:BackupItems) to
-# <config>-respaldo-hikari-<stamp>, next to it. Links are skipped, not followed.
+# <config>-respaldo-hikari-<stamp>, next to it (next to where it points when the
+# config folder is a link, see Get-HikariBackupBase). A linked item is copied
+# with what it holds; links further in, broken links and, as administrator, all
+# links are skipped.
 # Returns '' when there is nothing to copy. A copy that fails half-way is deleted.
 function New-HikariBackup {
     param([string]$ConfigDir, [string]$Stamp = '')
@@ -3949,7 +3953,6 @@ function New-HikariBackup {
         if ((Test-HikariLink $item) -and $item.PSIsContainer) {
             foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue)) { $bytes += (Get-HikariTreeSize $child) }
         }
-        elseif (Test-HikariLink $item) { $bytes += [long](Get-Item -LiteralPath $item.FullName).Length }
         else { $bytes += (Get-HikariTreeSize $item) }
     }
     Write-HikariDetail (T 'backup_size' @([math]::Round($bytes / 1MB, 1)))
@@ -4316,6 +4319,8 @@ function Install-HikariTarget {
                 ('mpv_conf_final_eol=' + $finalEol['mpv_conf']),
                 ('input_conf_final_eol=' + $finalEol['input_conf']),
                 ('shaders_preexisting=' + (ConvertTo-HikariYesNo $shadersBefore)))
+            # The backup of this first run is the one from before hikari, also for a retry.
+            if ($backup) { Add-HikariRecordEntries -ConfigDir $config -Entries @('first_backup=' + $backup) }
         }
 
         # a2. uosc or suji: hikari's copy of the one not chosen is set aside

@@ -147,9 +147,6 @@ local msg = require('mp.msg')
 local options = require('mp.options')
 local utils = require('mp.utils')
 
--- Its modules: the texts (hikari-i18n.lua), the chapter kinds
--- (hikari-chapters.lua), the release names (hikari-release.lua) and the menus
--- (hikari-menu.lua), these two needing the texts first.
 -- hikari's modules in ~~/script-modules. Single-file scripts get no mpv folder
 -- in package.path, so the folder is added for each require and taken out again
 -- (see the header of hikari-i18n.lua). An optional one that cannot be loaded
@@ -174,6 +171,8 @@ local function load_module(name, optional)
 	end
 	return module
 end
+-- The texts, the chapter kinds, the release names and the menus, these two
+-- needing the texts first.
 local i18n = load_module('hikari-i18n')
 local chapter_kinds = load_module('hikari-chapters')
 local release = load_module('hikari-release')

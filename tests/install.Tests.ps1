@@ -751,6 +751,9 @@ Test-Case 'a config folder that is a link (scoop persist): backups go next to wh
         Assert-Equal $b ((Get-HikariFullPath $real) + '-respaldo-hikari-20261031-120000') 'next to the persisted folder'
         Assert-True (Test-Path -LiteralPath (P @($b, 'mpv.conf'))) 'with what the folder holds'
         Assert-Equal @(Find-HikariOriginalBackups -ConfigDir $cfg).Count 0 'found from the link too (none marked)'
+        $script:HikariElevated = $true
+        try { Assert-Equal (Get-HikariBackupBase $cfg) (Get-HikariFullPath $cfg) 'as administrator the link is not followed' }
+        finally { $script:HikariElevated = $false }
     }
 }
 
@@ -774,6 +777,10 @@ Test-Case 'backup follows a linked top-level folder, skips links further in, and
         Assert-True (Test-Path -LiteralPath (P @($b, 'fonts', 'huge.bin'))) 'linked fonts folder copied with what it holds'
         Assert-True (-not (Test-HikariLink (Get-Item -LiteralPath (P @($b, 'fonts')) -Force))) 'the copy of fonts is a real folder'
         Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*link*' }).Count -eq 1) 'one warning, for the link inside scripts'
+        $script:HikariElevated = $true
+        try { $b3 = New-HikariBackup -ConfigDir $cfg -Stamp '20260101-000300' }
+        finally { $script:HikariElevated = $false }
+        Assert-True (-not (Test-Path -LiteralPath (P @($b3, 'fonts')))) 'as administrator the linked fonts folder is skipped'
     }
     function Copy-HikariTree { param([string]$From, [string]$To) New-Item -ItemType Directory -Path $To -Force | Out-Null; throw 'disk full' }
     try { Assert-Throws { New-HikariBackup -ConfigDir $cfg -Stamp '20260202-000000' } '*disk full*' 'failing copy' }

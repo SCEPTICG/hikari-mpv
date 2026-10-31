@@ -221,6 +221,11 @@ local function title_for(path)
 
 	if not query then
 		if segment_title then return segment_title, 'file', segment_parts end
+		-- mpv's own title would be the whole segment, parameters included.
+		if had_params and segment then
+			local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
+			if title then return title, 'fallback' end
+		end
 		-- Credentials or only path parameters in the URL, and no path to show
 		-- instead: the bare host.
 		if (has_userinfo and route:match('^/*$')) or (had_params and not segment) then

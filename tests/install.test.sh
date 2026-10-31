@@ -1524,8 +1524,10 @@ printf 'timeline_style=bar\n' >"$cfg/script-opts/uosc.conf"
 HIKARI_TEST_FAIL_FN=update_input_conf HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
 check 'failed first install: exit 1, what was there before already recorded' \
     test "$rc" = 1 -a "$(rec "$cfg" uosc_preexisting)|$(rec "$cfg" uosc_conf_preexisting)" = 'no|yes'
+first_b=$(rec "$cfg" first_backup)
 HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
-check 'failed first install, retry: exit 0' test "$rc" = 0
+check 'failed first install, retry: exit 0, first_backup still the backup from before hikari' \
+    test "$rc" = 0 -a -n "$first_b" -a "$(rec "$cfg" first_backup)" = "$first_b"
 HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
 check 'failed first install, retry, uninstall: no uosc or thumbfast left, the user uosc.conf back' \
     test "$rc" = 0 -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/scripts/thumbfast.lua" -a "$(cat "$cfg/script-opts/uosc.conf")" = 'timeline_style=bar'

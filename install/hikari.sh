@@ -3181,9 +3181,10 @@ migrate_sosc() {
 # ---------------------------------------------------------------------------
 
 # Copies what the installer may change to <config>-respaldo-hikari-<stamp>, next
-# to it (BACKUP; '' when there is nothing to copy). Symbolic links to folders
-# are skipped, never followed; a linked file is copied as the file. A copy
-# that fails half-way is deleted.
+# to it (BACKUP; '' when there is nothing to copy). A linked item (dotfiles) is
+# copied with what it holds, since the installer writes inside it; links further
+# in stay links, and a broken link is skipped. A copy that fails half-way is
+# deleted.
 make_backup() {
     local cfg=$1 parent name p items kb=0 k base n
     BACKUP=''
@@ -3202,7 +3203,7 @@ make_backup() {
     n=2
     while [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; do BACKUP="$base-$n"; n=$((n + 1)); done
     for name in "${items[@]}"; do
-        k=$(du -skL "$cfg/$name" 2>/dev/null | cut -f1)
+        k=$(du -skH "$cfg/$name" 2>/dev/null | cut -f1)
         kb=$((kb + ${k:-0}))
     done
     detail "$(T backup_size "$((kb / 1024)).$(((kb % 1024) * 10 / 1024))")"
@@ -3476,6 +3477,16 @@ restore_note() {
 }
 
 # Installs into the candidate $1 (index).
+# mpv.conf and input.conf are written last: one that cannot be written (a link
+# into a read-only store, say) is found before anything in the folder changes,
+# a sosc migration included.
+confs_writable() {
+    local f
+    for f in "$CFG/mpv.conf" "$CFG/input.conf"; do
+        if [ -e "$f" ] && [ ! -w "$f" ]; then HIKARI_ERR=$(T read_only "$(clean_text "$f")"); return 1; fi
+    done
+}
+
 install_target() {
     CFG=${C_DIR[$1]}
     local kind=${C_KIND[$1]} exe=${C_EXE[$1]} had_record=0
@@ -3493,7 +3504,7 @@ install_target() {
         mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
     fi
     step_begin "$(T ui_installing)"
-    if ! migrate_sosc || ! install_steps "$kind" "$exe"; then
+    if ! confs_writable || ! migrate_sosc || ! install_steps "$kind" "$exe"; then
         step_end fail
         restore_note
         return 1
@@ -3588,20 +3599,17 @@ install_steps() {
     if [ "$FIRST" = 0 ] && rec_get mpv_conf_final_eol; then mpv_eol=$REC_VALUE; else mpv_eol=$(final_eol_state "$CFG/mpv.conf"); fi
     if [ "$FIRST" = 0 ] && rec_get input_conf_final_eol; then input_eol=$REC_VALUE; else input_eol=$(final_eol_state "$CFG/input.conf"); fi
 
-    # mpv.conf and input.conf are written last: one that cannot be written
-    # (a link into a read-only store, say) is found before anything changes.
-    for f in "$CFG/mpv.conf" "$CFG/input.conf"; do
-        if [ -e "$f" ] && [ ! -w "$f" ]; then HIKARI_ERR=$(T read_only "$(clean_text "$f")"); return 1; fi
-    done
-
     # What was here before hikari, recorded before the first change: a first
     # run that fails later must not leave the retry to take hikari's own uosc,
     # thumbfast and their .conf files for the user's.
     if [ "$FIRST" = 1 ]; then
-        add_record_entries "$CFG" "uosc_preexisting=$(yesno "$uosc_before")" "thumbfast_preexisting=$(yesno "$thumb_before")" \
-            "uosc_conf_preexisting=$(yesno "$uconf_before")" "thumbfast_conf_preexisting=$(yesno "$tconf_before")" \
-            "mpv_conf_preexisting=$(yesno "$mpv_before")" "input_conf_preexisting=$(yesno "$input_before")" \
-            "mpv_conf_final_eol=$mpv_eol" "input_conf_final_eol=$input_eol" "shaders_preexisting=$(yesno "$shaders_before")" || return 1
+        local early=("uosc_preexisting=$(yesno "$uosc_before")" "thumbfast_preexisting=$(yesno "$thumb_before")"
+            "uosc_conf_preexisting=$(yesno "$uconf_before")" "thumbfast_conf_preexisting=$(yesno "$tconf_before")"
+            "mpv_conf_preexisting=$(yesno "$mpv_before")" "input_conf_preexisting=$(yesno "$input_before")"
+            "mpv_conf_final_eol=$mpv_eol" "input_conf_final_eol=$input_eol" "shaders_preexisting=$(yesno "$shaders_before")")
+        # The backup of this first run is the one from before hikari, also for a retry.
+        [ -z "$BACKUP" ] || early[${#early[@]}]="first_backup=$BACKUP"
+        add_record_entries "$CFG" "${early[@]}" || return 1
     fi
 
     # a2. uosc or suji: hikari's copy of the one not chosen is set aside
