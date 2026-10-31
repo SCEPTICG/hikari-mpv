@@ -125,6 +125,20 @@ function New-TestDir {
     return $d
 }
 
+# A link to the folder $Target at $Path: a junction, or a symbolic link where
+# there are no junctions (on Linux, New-Item -ItemType Junction makes nothing
+# and says nothing). False when neither can be made (Windows without the right
+# to make symbolic links falls back on the junction).
+function New-TestFolderLink {
+    param([string]$Path, [string]$Target)
+    foreach ($type in @('Junction', 'SymbolicLink')) {
+        try { New-Item -ItemType $type -Path $Path -Target $Target -ErrorAction Stop | Out-Null } catch { }
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and (Test-HikariLink $item)) { return $true }
+    }
+    return $false
+}
+
 function Set-TestFile {
     param([string]$Path, [string]$Content = 'x')
     $dir = Split-Path -Path $Path -Parent
@@ -740,12 +754,8 @@ Test-Case 'a config folder that is a link (scoop persist): backups go next to wh
     Set-TestFile (P @($real, 'mpv.conf')) 'x=1'
     New-Item -ItemType Directory -Path (P @($d, 'apps', 'mpv', 'current')) -Force | Out-Null
     $cfg = P @($d, 'apps', 'mpv', 'current', 'portable_config')
-    $linked = $true
-    try { New-Item -ItemType Junction -Path $cfg -Target $real | Out-Null }
-    catch {
-        try { New-Item -ItemType SymbolicLink -Path $cfg -Target $real | Out-Null }
-        catch { $linked = $false; Write-Host '     (links not available, skipped)' }
-    }
+    $linked = New-TestFolderLink -Path $cfg -Target $real
+    if (-not $linked) { Write-Host '     (links not available, skipped)' }
     if ($linked) {
         $b = New-HikariBackup -ConfigDir $cfg -Stamp '20261031-120000'
         Assert-Equal $b ((Get-HikariFullPath $real) + '-respaldo-hikari-20261031-120000') 'next to the persisted folder'
@@ -2894,8 +2904,7 @@ Test-Case 'uninstall keeps scripts-desactivados when it holds only a link' {
     $aside = P @($cfg, 'scripts-desactivados')
     Set-TestFile (P @($d, 'mine', 'a.lua')) '--'
     New-Item -ItemType Directory -Path $aside -Force | Out-Null
-    try { New-Item -ItemType Junction -Path (P @($aside, 'mine')) -Target (P @($d, 'mine')) | Out-Null }
-    catch { Write-Host '     (junctions not available, skipped)'; return }
+    if (-not (New-TestFolderLink -Path (P @($aside, 'mine')) -Target (P @($d, 'mine')))) { Write-Host '     (links not available, skipped)'; return }
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-110100')
     Assert-True (Test-Path -LiteralPath (P @($aside, 'mine', 'a.lua'))) 'the folder and its link are kept'
 }
