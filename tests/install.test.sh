@@ -1022,6 +1022,11 @@ mkdir -p "$h/elsewhere/mpvcfg"
 answers '1\no\n'"$h/elsewhere/mpvcfg"'\n\n\n\n\n\n\n' 
 run "$h"
 check 'typed folder ("O"): installed there' test "$rc" = 0 -a -f "$h/elsewhere/mpvcfg/hikari-installed.txt"
+h=$(newhome dragged)
+mkdir -p "$h/My Folder (mpv)"
+answers '1\no\n'"$h"'/My\\ Folder\\ \\(mpv\\)\n\n\n\n\n\n\n'
+run "$h"
+check 'typed folder dragged from the macOS Terminal (My\ Folder): installed there' test "$rc" = 0 -a -f "$h/My Folder (mpv)/hikari-installed.txt"
 answers '1\n0\n'
 run "$h"
 check '"0" at the folder list: cancelled, exit 0, nothing done' test "$rc" = 0 -a ! -e "$h/.config/mpv" -a -n "$(grep Cancelled "$out")"

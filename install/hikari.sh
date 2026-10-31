@@ -4189,6 +4189,9 @@ read_folder() {
         trim "$REPLY_LINE"
         p=$TRIMMED
         p=${p#\"}; p=${p%\"}; p=${p#\'}; p=${p%\'}
+        # A folder dragged into the macOS Terminal comes with its spaces and
+        # brackets escaped (My\ Folder): unescaped when the path as typed is not there.
+        if [ ! -e "$p" ] && [[ $p == *\\* ]]; then p=$(printf '%s' "$p" | sed 's/\\\(.\)/\1/g'); fi
         case $p in '' | 0) return 1 ;; esac
         if ! p=$(abs_path "$p"); then warn "$(T path_bad "$(clean_text "$REPLY_LINE")")"; continue; fi
         parent=${p%/*}
