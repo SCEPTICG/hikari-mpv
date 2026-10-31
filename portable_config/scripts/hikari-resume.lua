@@ -394,28 +394,31 @@ end
 -- Warned once until the list can be read again, not on every save.
 local warned_broken = false
 
-local function warn_broken(why)
+local function warn_broken(why, kept)
 	if warned_broken then return end
 	warned_broken = true
 	msg.warn('Ignoring ' .. LIST_PATH .. ' (' .. why .. '): continue watching starts empty, '
-		.. 'and the file is only written again when there is something to save')
+		.. (kept and 'and nothing is saved until it can be read'
+			or 'and the file is only written again when there is something to save'))
 end
 
 -- The entries of the list, checked, newest first, one per file. Missing file:
--- empty. Broken or unreadable: empty, and a warning.
+-- empty. Broken: empty, and a warning. Unreadable (held by a sync tool or an
+-- antivirus for a moment): empty, a warning, and true, so it is not written over.
 local function read_list()
 	local path = list_path()
 	if not path then return {} end
 	local file = io.open(path, 'rb')
 	if not file then
-		if utils.file_info(path) then warn_broken('cannot be read') end
-		return {}
+		if not utils.file_info(path) then return {} end
+		warn_broken('cannot be read', true)
+		return {}, true
 	end
 	local content = file:read(MAX_LIST_BYTES + 1)
 	file:close()
 	if type(content) ~= 'string' then
-		warn_broken('cannot be read')
-		return {}
+		warn_broken('cannot be read', true)
+		return {}, true
 	end
 	if #content > MAX_LIST_BYTES then
 		warn_broken('too big')
@@ -791,8 +794,8 @@ end
 -- Reads the list again, lets `change` modify it (it returns true when it did)
 -- and writes it back, newest first and within history_size.
 local function update_list(change)
-	local entries = read_list()
-	if not change(entries) then return end
+	local entries, unreadable = read_list()
+	if unreadable or not change(entries) then return end
 	sort_entries(entries)
 	for i = #entries, opts.history_size + 1, -1 do entries[i] = nil end
 	write_list(entries)

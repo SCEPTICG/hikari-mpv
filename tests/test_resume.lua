@@ -595,6 +595,30 @@ test('a damaged list: empty, one warning, left alone until there is something to
 	eq(saved()[1].position, 100, 'written once there is something to save')
 end)
 
+test('a list that cannot be read for a moment: empty, one warning, never written over', function()
+	local list = '{"version":2,"entries":[{"path":"/a/old.mkv","position":100,"duration":1420,"updated":1}]}'
+	write(LIST, list)
+	local real_open = io.open
+	io.open = function(path, mode)
+		if path == LIST and mode == 'rb' then return nil, 'Permission denied' end
+		return real_open(path, mode)
+	end
+	local ok, err = pcall(function()
+		local s = load(nil, true)
+		mock.files[LIST] = {is_file = true}
+		eq(#s.read_list(), 0)
+		assert(mock.logs.warn[1]:find('nothing is saved until it can be read', 1, true), 'warned: ' .. tostring(mock.logs.warn[1]))
+		open(EP)
+		play_to(100)
+		play_to(1400)
+		ends()
+	end)
+	io.open = real_open
+	mock.files[LIST] = nil
+	assert(ok, err)
+	eq(read(LIST), list, 'not written over')
+end)
+
 test('broken entries are dropped, good ones kept', function()
 	write(LIST, '{"version":1,"entries":[' .. table.concat({
 		'{"path":"https://x/ep.mkv?token=1","title":"x","position":100,"duration":1420,"updated":1}',
