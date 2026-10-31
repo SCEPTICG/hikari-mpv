@@ -734,6 +734,26 @@ Test-Case 'backup copies only what the installer can change' {
     Assert-True (-not (Test-Path -LiteralPath ($empty + '-respaldo-hikari-20260101-000000'))) 'no empty backup folder'
 }
 
+Test-Case 'a config folder that is a link (scoop persist): backups go next to where it points' {
+    $d = New-TestDir 'backup-base'
+    $real = P @($d, 'persist', 'mpv', 'portable_config')
+    Set-TestFile (P @($real, 'mpv.conf')) 'x=1'
+    New-Item -ItemType Directory -Path (P @($d, 'apps', 'mpv', 'current')) -Force | Out-Null
+    $cfg = P @($d, 'apps', 'mpv', 'current', 'portable_config')
+    $linked = $true
+    try { New-Item -ItemType Junction -Path $cfg -Target $real | Out-Null }
+    catch {
+        try { New-Item -ItemType SymbolicLink -Path $cfg -Target $real | Out-Null }
+        catch { $linked = $false; Write-Host '     (links not available, skipped)' }
+    }
+    if ($linked) {
+        $b = New-HikariBackup -ConfigDir $cfg -Stamp '20261031-120000'
+        Assert-Equal $b ((Get-HikariFullPath $real) + '-respaldo-hikari-20261031-120000') 'next to the persisted folder'
+        Assert-True (Test-Path -LiteralPath (P @($b, 'mpv.conf'))) 'with what the folder holds'
+        Assert-Equal @(Find-HikariOriginalBackups -ConfigDir $cfg).Count 0 'found from the link too (none marked)'
+    }
+}
+
 Test-Case 'backup follows a linked top-level folder, skips links further in, and deletes a copy that fails half-way' {
     $d = New-TestDir 'backup-links'
     $cfg = P @($d, 'cfg')

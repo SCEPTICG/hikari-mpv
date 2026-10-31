@@ -1663,6 +1663,24 @@ function Get-HikariFullPath {
     return $trim
 }
 
+# The folder whose siblings hold the backups: the config folder, or where it
+# points when it is a link. Scoop's portable_config is a junction from
+# apps\<app>\current (itself a junction to the version folder, which
+# `scoop cleanup` deletes) to persist\<app>\portable_config. As administrator
+# the link is not followed.
+function Get-HikariBackupBase {
+    param([string]$ConfigDir)
+    $full = Get-HikariFullPath $ConfigDir
+    if ($script:HikariElevated) { return $full }
+    $item = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item -or -not (Test-HikariLink $item)) { return $full }
+    $target = [string]@($item.Target)[0]
+    if (-not $target) { return $full }
+    if ($target.StartsWith('\\?\')) { $target = $target.Substring(4) }
+    if (-not [System.IO.Path]::IsPathRooted($target)) { $target = Join-Path (Split-Path -Path $full -Parent) $target }
+    return (Get-HikariFullPath $target)
+}
+
 function Test-HikariSamePath {
     param([string]$A, [string]$B)
     return [string]::Equals((Get-HikariFullPath $A), (Get-HikariFullPath $B), [System.StringComparison]::OrdinalIgnoreCase)
@@ -3917,7 +3935,7 @@ function Invoke-HikariSoscMigration {
 function New-HikariBackup {
     param([string]$ConfigDir, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent) { throw (T 'target_root' @($full)) }
     $items = @()
@@ -3970,7 +3988,7 @@ function New-HikariBackup {
 # holds $script:BackupOriginalMark, and $Protect (the record's first_backup).
 function Remove-HikariOldBackups {
     param([string]$ConfigDir, [int]$Keep = $script:BackupKeep, [string[]]$Protect = @())
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
     $re = '^' + [regex]::Escape((Split-Path -Path $full -Leaf)) + '-respaldo-hikari-(\d{8}-\d{6})(?:-(\d+))?\z'
@@ -4016,7 +4034,7 @@ function Test-HikariOriginalBackup {
 # hold the mark of the backup from before hikari's first install.
 function Find-HikariOriginalBackups {
     param([string]$ConfigDir)
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return @() }
     $prefix = (Split-Path -Path $full -Leaf) + '-respaldo-hikari-'
