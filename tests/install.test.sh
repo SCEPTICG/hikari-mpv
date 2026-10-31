@@ -1476,6 +1476,18 @@ b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
 check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
     test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
 
+# Only the old ~/.mpv: mpv reads it, so hikari installs there and does not
+# create ~/.config/mpv (which would hide it from mpv).
+h=$(newhome dot-mpv)
+mkdir -p "$h/.mpv"
+printf 'volume=50\n' >"$h/.mpv/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'only ~/.mpv (Linux): installed there, no ~/.config/mpv' test "$rc" = 0 -a -f "$h/.mpv/hikari-installed.txt" -a ! -e "$h/.config/mpv"
+h=$(newhome dot-mpv-mac)
+mkdir -p "$h/.mpv"
+run "$h" --yes
+check 'only ~/.mpv (macOS): installed there, no ~/.config/mpv' test "$rc" = 0 -a -f "$h/.mpv/hikari-installed.txt" -a ! -e "$h/.config/mpv"
+
 # Only a link left in scripts-desactivados (one the user put there, or a linked
 # script set aside): the folder is not empty, so uninstall keeps it.
 h=$(newhome aside-link)

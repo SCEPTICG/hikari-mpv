@@ -2458,18 +2458,23 @@ add_candidate() {
     C_EXE[i]=$3
 }
 
-# macOS: $MPV_HOME, or ~/.config/mpv (Homebrew's mpv and mpv.app). Linux: the
+# macOS: $MPV_HOME, or ~/.config/mpv (Homebrew's mpv and mpv.app), or ~/.mpv
+# when only that one exists, as mpv does. Linux: the
 # same for a native mpv (with $XDG_CONFIG_HOME), plus the Flatpak and Snap
 # folders when those are installed.
 find_candidates() {
     C_KIND=(); C_DIR=(); C_EXE=()
     local xdg=${XDG_CONFIG_HOME:-$HOME/.config}
+    [ "$OS" = Darwin ] && xdg=$HOME/.config
+    # mpv still reads the old ~/.mpv while the new folder does not exist.
+    local home_dir="$xdg/mpv"
+    if [ ! -d "$home_dir" ] && [ -d "$HOME/.mpv" ]; then home_dir=$HOME/.mpv; fi
     if [ "$OS" = Darwin ]; then
-        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$HOME/.config/mpv" "$MPV_EXE"; fi
+        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$home_dir" "$MPV_EXE"; fi
         return 0
     fi
-    if [ -n "$MPV_EXE" ] || [ -d "$xdg/mpv" ] || [ -n "${MPV_HOME:-}" ]; then
-        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$xdg/mpv" "$MPV_EXE"; fi
+    if [ -n "$MPV_EXE" ] || [ -d "$home_dir" ] || [ -n "${MPV_HOME:-}" ]; then
+        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$home_dir" "$MPV_EXE"; fi
     fi
     if hikari_flatpak_mpv; then add_candidate flatpak "$HOME/.var/app/io.mpv.Mpv/config/mpv" ''; fi
     if hikari_snap_mpv; then add_candidate snap "$HOME/snap/mpv/current/.config/mpv" ''; fi
