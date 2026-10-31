@@ -2213,30 +2213,13 @@ uosc_manifest() {
 # else in scripts/uosc; no uosc 4 leftovers. Any doubt: no (it is installed
 # again).
 uosc_uptodate() {
-    local cfg=$1 e rel p n=0 legacy font own
+    local cfg=$1 legacy
     rec_get uosc_version && [ "$REC_VALUE" = "$UOSC_VERSION" ] || return 1
     rec_get uosc_sha256 && [ "$REC_VALUE" = "$(lower "$UOSC_SHA256")" ] || return 1
     for legacy in "${UOSC_LEGACY[@]}"; do
         if [ -e "$cfg/scripts/$legacy" ] || [ -L "$cfg/scripts/$legacy" ]; then return 1; fi
     done
-    [ -d "$cfg/scripts/uosc" ] && [ ! -L "$cfg/scripts/uosc" ] || return 1
-    SUM_PATHS=()
-    SUM_WANT=()
-    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
-        rel=${e%%|*}
-        own=0
-        case $rel in scripts/uosc/*) own=1; n=$((n + 1)) ;; esac
-        for font in "${UOSC_FONTS[@]}"; do [ "$rel" = "fonts/$font" ] && own=1; done
-        [ "$own" = 1 ] || continue
-        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
-        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
-        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
-        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
-    done
-    [ "$n" -gt 0 ] || return 1
-    [ -z "$(find "$cfg/scripts/uosc" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
-    [ "$(find "$cfg/scripts/uosc" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
-    sums_match "$cfg"
+    copy_intact "$cfg" scripts/uosc "${UOSC_FONTS[@]/#/fonts/}"
 }
 
 # SUJI_SUMS: "path|sha256" of each file of the verified suji zip that
@@ -2265,24 +2248,10 @@ suji_manifest() {
 # and this zip and lists the hash of every file it copied, all of them there,
 # unchanged, not links, and nothing else in scripts/suji.
 suji_uptodate() {
-    local cfg=$1 e rel p n=0
+    local cfg=$1
     rec_get suji_version && [ "$REC_VALUE" = "$SUJI_VERSION" ] || return 1
     rec_get suji_sha256 && [ "$REC_VALUE" = "$(lower "$SUJI_SHA256")" ] || return 1
-    [ -d "$cfg/scripts/suji" ] && [ ! -L "$cfg/scripts/suji" ] || return 1
-    SUM_PATHS=()
-    SUM_WANT=()
-    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
-        rel=${e%%|*}
-        case $rel in scripts/suji/*) n=$((n + 1)) ;; *) continue ;; esac
-        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
-        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
-        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
-        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
-    done
-    [ "$n" -gt 0 ] || return 1
-    [ -z "$(find "$cfg/scripts/suji" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
-    [ "$(find "$cfg/scripts/suji" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
-    sums_match "$cfg"
+    copy_intact "$cfg" scripts/suji
 }
 
 # copy_intact <folder> <dir> [prefix...]: is <dir> (scripts/uosc or

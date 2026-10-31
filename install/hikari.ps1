@@ -2925,14 +2925,7 @@ function Test-HikariSujiUpToDate {
     if ($null -eq $Record) { return $false }
     if ([string]$Record.Values['suji_version'] -ne $script:SujiVersion) { return $false }
     if ([string]$Record.Values['suji_sha256'] -cne $script:SujiSha256.ToLowerInvariant()) { return $false }
-    $dir = Join-HikariPath $ConfigDir @('scripts', 'suji')
-    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
-    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
-    $entries = @(Select-HikariSumsByPrefix -Sums @($Record.Sums) -Prefixes @('scripts/suji/'))
-    if ($entries.Count -eq 0) { return $false }
-    $files = Get-HikariTreeFiles $dir
-    if ($null -eq $files -or @($files).Count -ne $entries.Count) { return $false }
-    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+    return ((Test-HikariCopyIntact -ConfigDir $ConfigDir -Dir 'scripts/suji' -Sums @($Record.Sums)) -eq 0)
 }
 
 # Is $Dir (scripts/uosc or scripts/suji) exactly what hikari copied there, by
@@ -3053,15 +3046,8 @@ function Test-HikariUoscUpToDate {
     foreach ($legacy in $script:UoscLegacy) {
         if (Test-Path -LiteralPath (Join-HikariPath $ConfigDir @('scripts', $legacy))) { return $false }
     }
-    $dir = Join-HikariPath $ConfigDir @('scripts', 'uosc')
-    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
-    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
-    $entries = @(Select-HikariUoscSums @($Record.Sums))
-    $inside = @($entries | Where-Object { $_.StartsWith('scripts/uosc/') })
-    if ($inside.Count -eq 0) { return $false }
-    $files = Get-HikariTreeFiles $dir
-    if ($null -eq $files -or @($files).Count -ne $inside.Count) { return $false }
-    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+    $fonts = @($script:UoscFonts | ForEach-Object { 'fonts/' + $_ })
+    return ((Test-HikariCopyIntact -ConfigDir $ConfigDir -Dir 'scripts/uosc' -Prefixes $fonts -Sums @($Record.Sums)) -eq 0)
 }
 
 # Is the thumbfast of the folder the pinned file, byte for byte?
