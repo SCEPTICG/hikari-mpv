@@ -4296,6 +4296,22 @@ function Install-HikariTarget {
             $uoscSums = @(Select-HikariUoscSums $oldSums)
         }
 
+        # What was here before hikari, recorded before the first change: a first
+        # run that fails later must not leave the retry to take hikari's own uosc,
+        # thumbfast and their .conf files for the user's.
+        if ($first) {
+            Add-HikariRecordEntries -ConfigDir $config -Entries @(
+                ('uosc_preexisting=' + (ConvertTo-HikariYesNo $uoscBefore)),
+                ('thumbfast_preexisting=' + (ConvertTo-HikariYesNo $thumbBefore)),
+                ('uosc_conf_preexisting=' + (ConvertTo-HikariYesNo $confBefore['uosc.conf'])),
+                ('thumbfast_conf_preexisting=' + (ConvertTo-HikariYesNo $confBefore['thumbfast.conf'])),
+                ('mpv_conf_preexisting=' + (ConvertTo-HikariYesNo $mpvConfBefore)),
+                ('input_conf_preexisting=' + (ConvertTo-HikariYesNo $inputConfBefore)),
+                ('mpv_conf_final_eol=' + $finalEol['mpv_conf']),
+                ('input_conf_final_eol=' + $finalEol['input_conf']),
+                ('shaders_preexisting=' + (ConvertTo-HikariYesNo $shadersBefore)))
+        }
+
         # a2. uosc or suji: hikari's copy of the one not chosen is set aside
         # (never deleted), and the chosen one comes back if hikari set it aside
         # before. With both, two rows of controls would be drawn.
@@ -4465,7 +4481,10 @@ function Install-HikariTarget {
             }
             # suji.conf only goes with suji, and is kept aside like uosc.conf the
             # first time hikari installs it here (also on an update).
-            $keepOriginal = ($first -and $script:SharedConfs -contains $f.Name)
+            # Kept aside only once: on the first run, or on the retry of one that
+            # failed before it got here.
+            $keepOriginal = ($script:SharedConfs -contains $f.Name) -and ($first -or
+                (-not $oldValues.ContainsKey('hikari_version') -and -not (Test-Path -LiteralPath (Join-HikariPath $origDir $f.Name))))
             if ($f.Name -eq $script:SujiConf) {
                 if ($iface -ne 'suji') { continue }
                 $keepOriginal = -not $sujiConfKnown

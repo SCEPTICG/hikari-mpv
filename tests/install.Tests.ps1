@@ -2839,6 +2839,24 @@ Test-Case 'Anime4K by hand: what was moved or turned off is in the record even i
     Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) ([string]::Join(',', @($script:Anime4KRequired | Sort-Object))) 'hikari shaders gone'
 }
 
+Test-Case 'a first install that fails late: the retry still knows uosc, thumbfast and the user uosc.conf from before' {
+    $d = New-TestDir 'first-latefail'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'script-opts', 'uosc.conf')) 'timeline_style=bar'
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    function Update-HikariManagedFile { throw 'disk full' }
+    try { Assert-Throws { Invoke-TestInstall $cand $art '20261031-100000' 'yes' } '*disk full*' 'later failure' }
+    finally { Remove-Item Function:\Update-HikariManagedFile }
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal ($rec.Values['uosc_preexisting'] + '|' + $rec.Values['uosc_conf_preexisting']) 'no|yes' 'what was there before, recorded before the failure'
+    [void](Invoke-TestInstall $cand $art '20261031-100100' 'yes')
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-100200')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'no uosc left'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'thumbfast.lua')))) 'no thumbfast left'
+    Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'uosc.conf'))) 'timeline_style=bar' 'the user uosc.conf back'
+}
+
 Test-Case 'record entries added on the way: a record is started when there is none and kept valid' {
     $d = New-TestDir 'rec-add'
     Add-HikariRecordEntries -ConfigDir $d -Entries @('a4k_commented_mpv=glsl-shaders="~~/shaders/Anime4K_A.glsl"', 'file=shaders/Anime4K_A.glsl')
