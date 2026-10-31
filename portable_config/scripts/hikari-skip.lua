@@ -220,36 +220,37 @@ local msg = require('mp.msg')
 local options = require('mp.options')
 local utils = require('mp.utils')
 
--- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
--- scripts get no mpv folder in package.path, so the folder is added for this
--- one require and taken out again (see the header of hikari-i18n.lua).
-local i18n = (function()
+-- hikari's modules in ~~/script-modules. Single-file scripts get no mpv folder
+-- in package.path, so the folder is added for each require and taken out again
+-- (see the header of hikari-i18n.lua). An optional one that cannot be loaded
+-- is a warning and nil, not an error.
+local function load_module(name, optional)
 	local dir = mp.command_native({'expand-path', '~~/script-modules'})
 	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		if optional then return nil end
 		error('hikari: unusable script-modules folder: ' .. tostring(dir))
 	end
 	local saved = package.path
 	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-i18n')
+	local ok, module = pcall(require, name)
 	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	if not ok then
+		local text = 'hikari: cannot load script-modules/' .. name .. '.lua (reinstall hikari): ' .. tostring(module)
+		if optional then
+			msg.warn(text)
+			return nil
+		end
+		error(text)
+	end
 	return module
-end)()
+end
+
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua.
+local i18n = load_module('hikari-i18n')
 
 -- Chapter kinds by title: ~~/script-modules/hikari-chapters.lua, loaded like
 -- the texts above.
-local chapter_kinds = (function()
-	local dir = mp.command_native({'expand-path', '~~/script-modules'})
-	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
-		error('hikari: unusable script-modules folder: ' .. tostring(dir))
-	end
-	local saved = package.path
-	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-chapters')
-	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/hikari-chapters.lua (reinstall hikari): ' .. tostring(module)) end
-	return module
-end)()
+local chapter_kinds = load_module('hikari-chapters')
 
 local OPTIONS_ID = 'hikari-skip'
 -- Input section names are global to mpv, so ours carries the script name.
@@ -343,36 +344,11 @@ options.read_options(opts, OPTIONS_ID)
 -- AniSkip lookups: ~~/script-modules/hikari-aniskip.lua, loaded like the
 -- texts above, and only when wanted. Without it the button still works with
 -- chapters.
-local aniskip = (function()
-	if not opts.aniskip then return nil end
-	local dir = mp.command_native({'expand-path', '~~/script-modules'})
-	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then return nil end
-	local saved = package.path
-	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-aniskip')
-	package.path = saved
-	if not ok then
-		msg.warn('hikari: cannot load script-modules/hikari-aniskip.lua (reinstall hikari): ' .. tostring(module))
-		return nil
-	end
-	return module
-end)()
+local aniskip = opts.aniskip and load_module('hikari-aniskip', true) or nil
 -- Menus: ~~/script-modules/hikari-menu.lua (uosc's, or mpv's own selector
 -- without uosc), loaded like AniSkip's module: without it the button still
 -- works, only the automatic skip menu does not open.
-local menu = (function()
-	local dir = mp.command_native({'expand-path', '~~/script-modules'})
-	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then return nil end
-	local saved = package.path
-	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-menu')
-	package.path = saved
-	if not ok then
-		msg.warn('hikari: cannot load script-modules/hikari-menu.lua (reinstall hikari): ' .. tostring(module))
-		return nil
-	end
-	return module
-end)()
+local menu = load_module('hikari-menu', true)
 -- Where hikari-title.lua publishes the series and episode of the file playing.
 local RELEASE_PROP = 'user-data/hikari_title/release'
 
