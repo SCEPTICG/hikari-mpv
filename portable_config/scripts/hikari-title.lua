@@ -206,6 +206,13 @@ local function title_for(path)
 
 	-- Last path segment, if any. Anchored so the match stays linear on long routes.
 	local segment = route:match('^.*/([^/]+)/*$')
+	-- Path parameters (`;jsessionid=...`) can carry a session: never in the title.
+	local had_params = false
+	if segment then
+		local cut = segment:gsub(';.*$', '')
+		had_params = cut ~= segment
+		segment = cut ~= '' and cut or nil
+	end
 	local segment_title, segment_parts
 	if segment then
 		segment_title, segment_parts = release_title(video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false)))
@@ -213,8 +220,9 @@ local function title_for(path)
 
 	if not query then
 		if segment_title then return segment_title, 'file', segment_parts end
-		-- Credentials in the URL and no path to show instead: the bare host.
-		if has_userinfo and route:match('^/*$') then
+		-- Credentials or only path parameters in the URL, and no path to show
+		-- instead: the bare host.
+		if (has_userinfo and route:match('^/*$')) or (had_params and not segment) then
 			local title = clean(host:sub(1, MAX_RAW))
 			if title then return title, 'fallback' end
 		end
