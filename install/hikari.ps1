@@ -465,6 +465,7 @@ $script:HikariStringsEn = @{
     includes_outside      = 'mpv.conf still includes {0} outside the hikari block: remove that line, or mpv will log an error at start-up.'
     uninstall_ok          = 'hikari removed from {0}.'
     nothing_to_uninstall  = 'hikari does not seem to be installed in any detected folder.'
+    uninstall_missing     = 'Nothing to uninstall: the folder {0} does not exist.'
     usage_yes_action      = '-Yes needs -Action install or -Action uninstall.'
     usage_many            = 'Several folders found; with -Yes, choose with -Target:'
     usage_none            = 'Nothing to work on.'
@@ -659,6 +660,7 @@ $script:HikariStringsEs = @{
     includes_outside      = 'mpv.conf sigue incluyendo {0} fuera del bloque de hikari: quita esa l\u00ednea o mpv dar\u00e1 un error al arrancar.'
     uninstall_ok          = 'hikari quitado de {0}.'
     nothing_to_uninstall  = 'No parece que hikari est\u00e9 instalado en ninguna de las carpetas encontradas.'
+    uninstall_missing     = 'No hay nada que desinstalar: la carpeta {0} no existe.'
     usage_yes_action      = '-Yes necesita -Action install o -Action uninstall.'
     usage_many            = 'Hay varias carpetas; con -Yes, elige con -Target:'
     usage_none            = 'No hay nada sobre lo que trabajar.'
@@ -4685,6 +4687,8 @@ function Uninstall-HikariTarget {
     param([Parameter(Mandatory = $true)]$Candidate, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $config = Get-HikariFullPath $Candidate.ConfigDir
+    # A folder typed with -Target that is not there (a typo): said so, not an error.
+    if (-not (Test-Path -LiteralPath $config -PathType Container)) { Write-HikariWarn (T 'uninstall_missing' @($config)); return '' }
     Write-HikariDetail ''
     Write-HikariDetail (T 'uninstalling_from' @($config))
     $backup = New-HikariBackupStep $config $Stamp

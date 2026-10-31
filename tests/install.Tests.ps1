@@ -2892,6 +2892,15 @@ Test-Case 'uninstall keeps scripts-desactivados when it holds only a link' {
     Assert-True (Test-Path -LiteralPath (P @($aside, 'mine', 'a.lua'))) 'the folder and its link are kept'
 }
 
+Test-Case 'uninstall from a folder that does not exist (a typo in -Target): a warning, nothing done' {
+    $d = New-TestDir 'uninstall-missing'
+    $cfg = P @($d, 'mvp')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-Equal (Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-130000') '' 'no backup'
+    Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*does not exist*' }).Count -eq 1) 'said so'
+    Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing created'
+}
+
 Test-Case 'record entries added on the way: a record is started when there is none and kept valid' {
     $d = New-TestDir 'rec-add'
     Add-HikariRecordEntries -ConfigDir $d -Entries @('a4k_commented_mpv=glsl-shaders="~~/shaders/Anime4K_A.glsl"', 'file=shaders/Anime4K_A.glsl')
