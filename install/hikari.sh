@@ -4148,7 +4148,7 @@ uninstall_steps() {
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do
-        if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" -type f -print 2>/dev/null | head -n 1)" ]; then
+        if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" ! -type d -print 2>/dev/null | head -n 1)" ]; then
             remove_item "$CFG/$d" "$CFG" || return 1
         fi
     done

@@ -1476,6 +1476,17 @@ b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
 check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
     test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
 
+# Only a link left in scripts-desactivados (one the user put there, or a linked
+# script set aside): the folder is not empty, so uninstall keeps it.
+h=$(newhome aside-link)
+cfg="$h/.config/mpv"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+mkdir -p "$cfg/scripts-desactivados"
+printf -- '-- mine\n' >"$h/modernz.lua"
+ln -s "$h/modernz.lua" "$cfg/scripts-desactivados/modernz.lua"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'uninstall: scripts-desactivados holding only a link is kept' test "$rc" = 0 -a -L "$cfg/scripts-desactivados/modernz.lua"
+
 # A first install that fails at the very end (writing input.conf): the
 # retry still knows uosc, thumbfast and the user's uosc.conf from before.
 h=$(newhome failed-first)

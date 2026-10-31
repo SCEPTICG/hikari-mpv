@@ -2857,6 +2857,21 @@ Test-Case 'a first install that fails late: the retry still knows uosc, thumbfas
     Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'uosc.conf'))) 'timeline_style=bar' 'the user uosc.conf back'
 }
 
+Test-Case 'uninstall keeps scripts-desactivados when it holds only a link' {
+    $d = New-TestDir 'aside-link'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261031-110000' 'yes')
+    $aside = P @($cfg, 'scripts-desactivados')
+    Set-TestFile (P @($d, 'mine', 'a.lua')) '--'
+    New-Item -ItemType Directory -Path $aside -Force | Out-Null
+    try { New-Item -ItemType Junction -Path (P @($aside, 'mine')) -Target (P @($d, 'mine')) | Out-Null }
+    catch { Write-Host '     (junctions not available, skipped)'; return }
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-110100')
+    Assert-True (Test-Path -LiteralPath (P @($aside, 'mine', 'a.lua'))) 'the folder and its link are kept'
+}
+
 Test-Case 'record entries added on the way: a record is started when there is none and kept valid' {
     $d = New-TestDir 'rec-add'
     Add-HikariRecordEntries -ConfigDir $d -Entries @('a4k_commented_mpv=glsl-shaders="~~/shaders/Anime4K_A.glsl"', 'file=shaders/Anime4K_A.glsl')

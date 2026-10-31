@@ -4908,7 +4908,7 @@ function Uninstall-HikariTarget {
         foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {
             $dir = Join-HikariPath $config $dirName
             if ((Test-Path -LiteralPath $dir -PathType Container) -and
-                @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force).Count -eq 0) {
+                @(Get-ChildItem -LiteralPath $dir -Recurse -Force | Where-Object { -not $_.PSIsContainer -or (Test-HikariLink $_) }).Count -eq 0) {
                 Remove-HikariItem -Path $dir -Root $config
             }
         }
