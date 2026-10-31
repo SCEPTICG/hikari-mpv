@@ -3620,6 +3620,16 @@ install_steps() {
     if [ "$FIRST" = 0 ] && rec_get mpv_conf_final_eol; then mpv_eol=$REC_VALUE; else mpv_eol=$(final_eol_state "$CFG/mpv.conf"); fi
     if [ "$FIRST" = 0 ] && rec_get input_conf_final_eol; then input_eol=$REC_VALUE; else input_eol=$(final_eol_state "$CFG/input.conf"); fi
 
+    # What was here before hikari, recorded before the first change: a first
+    # run that fails later must not leave the retry to take hikari's own uosc,
+    # thumbfast and their .conf files for the user's.
+    if [ "$FIRST" = 1 ]; then
+        add_record_entries "$CFG" "uosc_preexisting=$(yesno "$uosc_before")" "thumbfast_preexisting=$(yesno "$thumb_before")" \
+            "uosc_conf_preexisting=$(yesno "$uconf_before")" "thumbfast_conf_preexisting=$(yesno "$tconf_before")" \
+            "mpv_conf_preexisting=$(yesno "$mpv_before")" "input_conf_preexisting=$(yesno "$input_before")" \
+            "mpv_conf_final_eol=$mpv_eol" "input_conf_final_eol=$input_eol" "shaders_preexisting=$(yesno "$shaders_before")" || return 1
+    fi
+
     # a2. uosc or suji: hikari's copy of the one not chosen is set aside
     # (never deleted), and the chosen one comes back if hikari set it aside
     # before. With both, two rows of controls would be drawn.
@@ -3778,7 +3788,9 @@ install_steps() {
         if [ "$name" = "$SUJI_CONF" ]; then
             [ "$IFACE" = suji ] || continue
             if [ "$sconf_known" = 0 ]; then shared=1; else shared=0; fi
-        elif [ "$FIRST" = 0 ]; then
+        elif [ "$FIRST" = 0 ] && { rec_get hikari_version || [ -e "$CFG/$ORIGINALS_DIR/script-opts/$name" ]; }; then
+            # Kept aside only once: on the first run, or on the retry of one
+            # that failed before it got here.
             shared=0
         fi
         if [ "$shared" = 1 ] && [ -f "$CFG/script-opts/$name" ]; then

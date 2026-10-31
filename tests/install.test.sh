@@ -154,6 +154,8 @@ hikari_iina() { [ -n "${HIKARI_TEST_IINA:-}" ]; }
 hikari_flatpak_mpv() { [ -n "${HIKARI_TEST_FLATPAK:-}" ]; }
 hikari_snap_mpv() { [ -n "${HIKARI_TEST_SNAP:-}" ]; }
 if [ -n "${HIKARI_TEST_TTY+x}" ]; then hikari_tty_path() { printf '%s' "$HIKARI_TEST_TTY"; }; fi
+# HIKARI_TEST_FAIL_FN=<function>: that step fails, as a full disk would.
+if [ -n "${HIKARI_TEST_FAIL_FN:-}" ]; then eval "$HIKARI_TEST_FAIL_FN() { return 1; }"; fi
 EOF
 
 # run <home> <args...>: runs the test copy, output in $out, exit code in $rc.
@@ -1473,6 +1475,21 @@ HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
 b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
 check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
     test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
+
+# A first install that fails at the very end (writing input.conf): the
+# retry still knows uosc, thumbfast and the user's uosc.conf from before.
+h=$(newhome failed-first)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/script-opts"
+printf 'timeline_style=bar\n' >"$cfg/script-opts/uosc.conf"
+HIKARI_TEST_FAIL_FN=update_input_conf HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'failed first install: exit 1, what was there before already recorded' \
+    test "$rc" = 1 -a "$(rec "$cfg" uosc_preexisting)|$(rec "$cfg" uosc_conf_preexisting)" = 'no|yes'
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'failed first install, retry: exit 0' test "$rc" = 0
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'failed first install, retry, uninstall: no uosc or thumbfast left, the user uosc.conf back' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/scripts/thumbfast.lua" -a "$(cat "$cfg/script-opts/uosc.conf")" = 'timeline_style=bar'
 
 # --- the summary, --verbose, and what is already up to date ------------------------
 
