@@ -51,7 +51,7 @@ else
     die "the tag must look like vX.Y.Z (e.g. v0.1.0) or be preview, not '$tag'"
 fi
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$root"
 [[ "$(git rev-parse --show-toplevel)" == "$root" ]] || die "$root is not the top of a git repository"
 
