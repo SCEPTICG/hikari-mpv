@@ -15,7 +15,6 @@
 --   menu.uosc()                        -- uosc is loaded
 --   menu.on_uosc(fn)                   -- fn() when uosc says it has started
 --   menu.suji()                        -- suji is loaded and turned on, now
---   menu.on_suji(fn)                   -- fn() when suji says it has started
 --
 -- Decisions:
 -- - With uosc nothing changes from hikari 0.9.0: the same `script-message-to
@@ -61,8 +60,7 @@
 --   which sort before uosc in scripts/; see on_uosc). Until then it asks
 --   again each time with PROBE, a message uosc has no handler for (mpv's Lua
 --   drops it). It means uosc only, never suji. menu.suji() reads
---   SUJI_ENABLED each time; on_suji listens for the `suji-version` suji
---   broadcasts as it starts.
+--   SUJI_ENABLED each time.
 -- - The selector: one line per item, `title  ·  hint`; the active item
 --   marked `• ` and chosen by default, unless selected_index says another.
 --   Items that cannot be chosen (selectable = false): headings and notes (no
@@ -119,7 +117,6 @@ i18n.on_change(function() end)
 
 local uosc_seen = false
 local uosc_callbacks = {}
-local suji_callbacks = {}
 local observers = {}
 -- Per menu type, where open-menu last went: SUJI or UOSC (nil: the selector,
 -- or never opened).
@@ -395,17 +392,6 @@ function M.suji()
 	return suji_on()
 end
 
--- fn() when suji broadcasts `suji-version` as it starts.
-function M.on_suji(fn)
-	suji_callbacks[#suji_callbacks + 1] = fn
-	if #suji_callbacks == 1 then
-		mp.register_script_message('suji-version', function()
-			for _, callback in ipairs(suji_callbacks) do callback() end
-		end)
-	end
-end
-
 M.REOPEN_DELAY, M.OPEN_TIMEOUT = REOPEN_DELAY, OPEN_TIMEOUT
-M.lines_of = lines_of
 
 return M

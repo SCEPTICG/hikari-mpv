@@ -629,7 +629,7 @@ test('observe: one closes while the other still has a menu: the other type, then
 	eq(table.concat(seen, ','), 'hikari-b,hikari-a,hikari-b,nil')
 end)
 
-test('suji(): user-data/suji/enabled is true, now; on_suji: its suji-version broadcast', function()
+test('suji(): user-data/suji/enabled is true, now', function()
 	local menu = fresh(true)
 	eq(menu.suji(), false, 'nothing published')
 	mock.props[SUJI_ENABLED] = true
@@ -640,11 +640,6 @@ test('suji(): user-data/suji/enabled is true, now; on_suji: its suji-version bro
 	eq(menu.suji(), false, 'only true counts')
 	eq(#mock.commands, 0, 'no probe')
 	eq(menu.uosc(), true, 'uosc() still means uosc')
-	local calls = 0
-	menu.on_suji(function() calls = calls + 1 end)
-	menu.on_suji(function() calls = calls + 10 end)
-	mock.messages['suji-version']('0.2.0')
-	eq(calls, 11, 'every callback')
 	-- suji alone: uosc() stays false.
 	menu = fresh_suji(true, false)
 	menu.open(sample())
