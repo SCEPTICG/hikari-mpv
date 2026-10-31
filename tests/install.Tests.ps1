@@ -734,7 +734,7 @@ Test-Case 'backup copies only what the installer can change' {
     Assert-True (-not (Test-Path -LiteralPath ($empty + '-respaldo-hikari-20260101-000000'))) 'no empty backup folder'
 }
 
-Test-Case 'backup skips links and deletes a copy that fails half-way' {
+Test-Case 'backup follows a linked top-level folder, skips links further in, and deletes a copy that fails half-way' {
     $d = New-TestDir 'backup-links'
     $cfg = P @($d, 'cfg')
     $outside = P @($d, 'outside')
@@ -751,8 +751,9 @@ Test-Case 'backup skips links and deletes a copy that fails half-way' {
         $b = New-HikariBackup -ConfigDir $cfg -Stamp '20260101-000000'
         Assert-True (Test-Path -LiteralPath (P @($b, 'scripts', 'a.lua'))) 'real file copied'
         Assert-True (-not (Test-Path -LiteralPath (P @($b, 'scripts', 'loop')))) 'link inside scripts skipped'
-        Assert-True (-not (Test-Path -LiteralPath (P @($b, 'fonts')))) 'linked fonts folder skipped'
-        Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*link*' }).Count -eq 2) 'two warnings'
+        Assert-True (Test-Path -LiteralPath (P @($b, 'fonts', 'huge.bin'))) 'linked fonts folder copied with what it holds'
+        Assert-True (-not (Test-HikariLink (Get-Item -LiteralPath (P @($b, 'fonts')) -Force))) 'the copy of fonts is a real folder'
+        Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*link*' }).Count -eq 1) 'one warning, for the link inside scripts'
     }
     function Copy-HikariTree { param([string]$From, [string]$To) New-Item -ItemType Directory -Path $To -Force | Out-Null; throw 'disk full' }
     try { Assert-Throws { New-HikariBackup -ConfigDir $cfg -Stamp '20260202-000000' } '*disk full*' 'failing copy' }

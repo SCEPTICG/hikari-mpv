@@ -3925,7 +3925,9 @@ function New-HikariBackup {
         $p = Join-HikariPath $full $name
         $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
         if ($null -eq $item) { continue }
-        if (Test-HikariLink $item) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
+        # A linked item (dotfiles) is copied with what it holds, since the
+        # installer writes and deletes inside it; only a broken link is skipped.
+        if ((Test-HikariLink $item) -and -not (Test-Path -LiteralPath $p)) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
         $items += $item
     }
     if ($items.Count -eq 0) { return '' }
@@ -3935,7 +3937,13 @@ function New-HikariBackup {
     $n = 2
     while (Test-Path -LiteralPath $backup) { $backup = $base + '-' + $n; $n++ }
     $bytes = [long]0
-    foreach ($item in $items) { $bytes += (Get-HikariTreeSize $item) }
+    foreach ($item in $items) {
+        if ((Test-HikariLink $item) -and $item.PSIsContainer) {
+            foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue)) { $bytes += (Get-HikariTreeSize $child) }
+        }
+        elseif (Test-HikariLink $item) { $bytes += [long](Get-Item -LiteralPath $item.FullName).Length }
+        else { $bytes += (Get-HikariTreeSize $item) }
+    }
     Write-HikariDetail (T 'backup_size' @([math]::Round($bytes / 1MB, 1)))
     New-HikariDirectory $backup
     try {
