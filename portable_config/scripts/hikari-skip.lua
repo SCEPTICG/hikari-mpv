@@ -577,32 +577,8 @@ local function read_saved_mode()
 	return value
 end
 
--- Writes through a temporary file and a rename so a crash never leaves half a file.
-local function write_file_atomic(path, content)
-	local tmp = path .. '.tmp'
-	-- A leftover .tmp (or a link planted there) goes first, so io.open creates
-	-- a new file instead of writing through whatever was there.
-	os.remove(tmp)
-	local file, err = io.open(tmp, 'wb')
-	if not file then return false, err end
-	local ok, write_err = file:write(content)
-	local closed, close_err = file:close()
-	if not ok or not closed then
-		os.remove(tmp)
-		return false, write_err or close_err
-	end
-	local renamed, rename_err = os.rename(tmp, path)
-	if not renamed then
-		-- On Windows rename() won't replace an existing file: remove it and retry.
-		os.remove(path)
-		renamed, rename_err = os.rename(tmp, path)
-	end
-	if not renamed then
-		os.remove(tmp)
-		return false, rename_err
-	end
-	return true
-end
+-- Writes a whole file or none (script-modules/hikari-files.lua).
+local write_file_atomic = load_module('hikari-files').write_file_atomic
 
 -- Saves a mode of AUTO_MODES; on failure, a warning and a message on screen.
 local function save_mode(mode)

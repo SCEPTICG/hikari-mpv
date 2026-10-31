@@ -37,7 +37,7 @@ Everything lives in the player's config folder (the one the installer showed you
 | `hikari-palette.conf`, `hikari-subs.conf`, `hikari-upscale.conf`, `hikari-language.conf` | Your chosen palette, subtitle style, Anime4K mode and quality, and language, saved by the menus. Kept on update. |
 | `hikari-skip.txt` | The automatic skip picked with `Alt+S`. Wins over `hikari-skip.conf` while it exists; kept on update, deleted on uninstall. |
 | `hikari-resume.json` | The continue watching list: where you left each file and series. Not in the installer's backups; deleted on uninstall. |
-| `script-modules/hikari-i18n.lua`, `script-modules/hikari-chapters.lua`, `script-modules/hikari-release.lua` | hikari's texts in its 13 languages, how chapter titles are read (openings, endings) and how release names are read (series, season, episode), shared by its scripts (replaced on update). |
+| `script-modules/hikari-i18n.lua`, `script-modules/hikari-chapters.lua`, `script-modules/hikari-release.lua`, `script-modules/hikari-files.lua` | hikari's texts in its 13 languages, how chapter titles are read (openings, endings), how release names are read (series, season, episode) and how its choices are saved, shared by its scripts (replaced on update). |
 
 Updating hikari replaces the `script-opts` files above with hikari's, except `hikari-resume.conf` (your earlier `uosc.conf` and `thumbfast.conf` are kept in `hikari-originales` and put back on uninstall), so keep a copy of any change you make to them. Your own `mpv.conf` and `input.conf` lines are never changed: only the marked hikari block is.
 
