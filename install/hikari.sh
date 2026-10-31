@@ -316,6 +316,7 @@ hikari_text_en() {
         outside_target) s='Refusing to delete %s: it is outside %s.' ;;
         cancelled) s='Cancelled.' ;;
         link_skipped) s='Not copied to the backup: %s is a symbolic link.' ;;
+        read_only) s='%s cannot be written (it is read-only, or a link to a read-only place).' ;;
         path_bad) s='%s is not a valid folder path.' ;;
         target_root) s='Refusing %s: the root folder or your home folder is not an mpv config folder.' ;;
         not_mpv_folder) s='%s does not look like an mpv config folder: no mpv.conf, input.conf, scripts or script-opts in it.' ;;
@@ -511,6 +512,7 @@ hikari_text_es() {
         outside_target) s='No se borra %s: está fuera de %s.' ;;
         cancelled) s='Cancelado.' ;;
         link_skipped) s='No se copia a la copia de seguridad: %s es un enlace simbólico.' ;;
+        read_only) s='No se puede escribir %s (es de solo lectura, o un enlace a un sitio de solo lectura).' ;;
         path_bad) s='%s no es una ruta de carpeta válida.' ;;
         target_root) s='No se usa %s: la carpeta raíz o tu carpeta personal no son una carpeta de configuración de mpv.' ;;
         not_mpv_folder) s='%s no parece una carpeta de configuración de mpv: no tiene mpv.conf, input.conf, scripts ni script-opts.' ;;
@@ -3624,6 +3626,12 @@ install_steps() {
     fi
     if [ "$FIRST" = 0 ] && rec_get mpv_conf_final_eol; then mpv_eol=$REC_VALUE; else mpv_eol=$(final_eol_state "$CFG/mpv.conf"); fi
     if [ "$FIRST" = 0 ] && rec_get input_conf_final_eol; then input_eol=$REC_VALUE; else input_eol=$(final_eol_state "$CFG/input.conf"); fi
+
+    # mpv.conf and input.conf are written last: one that cannot be written
+    # (a link into a read-only store, say) is found before anything changes.
+    for f in "$CFG/mpv.conf" "$CFG/input.conf"; do
+        if [ -e "$f" ] && [ ! -w "$f" ]; then HIKARI_ERR=$(T read_only "$(clean_text "$f")"); return 1; fi
+    done
 
     # What was here before hikari, recorded before the first change: a first
     # run that fails later must not leave the retry to take hikari's own uosc,

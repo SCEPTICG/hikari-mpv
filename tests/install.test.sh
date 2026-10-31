@@ -1476,6 +1476,17 @@ b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
 check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
     test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
 
+# A read-only mpv.conf: found before anything changes, and said so.
+h=$(newhome ro-mpvconf)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg"
+printf 'volume=50\n' >"$cfg/mpv.conf"
+chmod 444 "$cfg/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'read-only mpv.conf: exit 1, said so, nothing installed' \
+    test "$rc" = 1 -a -n "$(grep 'mpv.conf cannot be written' "$out")" -a ! -e "$cfg/scripts" -a ! -e "$cfg/hikari-installed.txt"
+chmod 644 "$cfg/mpv.conf"
+
 # Only the old ~/.mpv: mpv reads it, so hikari installs there and does not
 # create ~/.config/mpv (which would hide it from mpv).
 h=$(newhome dot-mpv)
