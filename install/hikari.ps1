@@ -3927,7 +3927,9 @@ function New-HikariBackup {
         if ($null -eq $item) { continue }
         # A linked item (dotfiles) is copied with what it holds, since the
         # installer writes and deletes inside it; only a broken link is skipped.
-        if ((Test-HikariLink $item) -and -not (Test-Path -LiteralPath $p)) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
+        # As administrator links are not followed: the copy would not keep the
+        # target's permissions (Assert-HikariNoLink guards the writes then).
+        if ((Test-HikariLink $item) -and ($script:HikariElevated -or -not (Test-Path -LiteralPath $p))) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
         $items += $item
     }
     if ($items.Count -eq 0) { return '' }
