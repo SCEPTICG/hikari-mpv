@@ -3225,7 +3225,6 @@ make_backup() {
     for name in "${BACKUP_ITEMS[@]}"; do
         p="$cfg/$name"
         [ -e "$p" ] || [ -L "$p" ] || continue
-        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         items[${#items[@]}]=$name
     done
@@ -3242,7 +3241,9 @@ make_backup() {
     if ! mkdir "$BACKUP"; then HIKARI_ERR=$BACKUP; BACKUP=''; return 1; fi
     for name in "${items[@]}"; do
         if [ -d "$cfg/$name" ]; then
-            cp -pPR "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
+            # -H: a linked folder (dotfiles) is copied with what it holds, since
+            # the installer writes and deletes inside it; links further in stay links.
+            cp -pRH "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         else
             cp -p "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         fi

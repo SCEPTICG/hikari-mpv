@@ -1460,6 +1460,20 @@ HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
 check 'broken link for the record: nothing written through it, said so' \
     test ! -e "$tmp/outside-record.txt" -a -n "$(grep "hikari-installed.txt is a symbolic link" "$out")"
 
+# scripts/ is a link (dotfiles) holding the user's own uosc: the installer
+# replaces scripts/uosc inside it, so the backup has what the link held.
+h=$(newhome linked-scripts)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg" "$h/dotfiles/scripts/uosc"
+printf -- '-- my uosc\n' >"$h/dotfiles/scripts/uosc/main.lua"
+ln -s "$h/dotfiles/notes.txt" "$h/dotfiles/scripts/notes.lua"
+ln -s "$h/dotfiles/scripts" "$cfg/scripts"
+printf 'osc=no\n' >"$cfg/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
+check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
+    test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
+
 # --- the summary, --verbose, and what is already up to date ------------------------
 
 # ascii_glyphs: the summary with its glyphs as ASCII (the installer uses them
