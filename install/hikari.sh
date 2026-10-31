@@ -3476,7 +3476,6 @@ restore_note() {
     [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP") $(T restore_how "$CFG")"
 }
 
-# Installs into the candidate $1 (index).
 # mpv.conf and input.conf are written last: one that cannot be written (a link
 # into a read-only store, say) is found before anything in the folder changes,
 # a sosc migration included.
@@ -3487,6 +3486,7 @@ confs_writable() {
     done
 }
 
+# Installs into the candidate $1 (index).
 install_target() {
     CFG=${C_DIR[$1]}
     local kind=${C_KIND[$1]} exe=${C_EXE[$1]} had_record=0

@@ -86,6 +86,7 @@ test('URL without filename: last path segment, no query', function()
 	eq(t.title_for('https://h.example/;jsessionid=S3CR3T'), 'h.example', 'only path parameters: the host')
 	eq(t.title_for('https://h/video.mp4;jsessionid=S3CR3T'), 'video.mp4', 'path parameters left out (not a release)')
 	eq(t.title_for('https://h/stream;jsessionid=S3CR3T'), 'stream', 'path parameters left out (no extension)')
+	eq(t.title_for('https://h.example/%20;jsessionid=S3CR3T'), 'h.example', 'blank segment and path parameters: the host')
 end)
 
 test('names that are not releases, and other protocols, are untouched', function()

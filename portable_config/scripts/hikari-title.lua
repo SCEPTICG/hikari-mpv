@@ -226,9 +226,9 @@ local function title_for(path)
 			local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
 			if title then return title, 'fallback' end
 		end
-		-- Credentials or only path parameters in the URL, and no path to show
+		-- Credentials or path parameters in the URL, and no path to show
 		-- instead: the bare host.
-		if (has_userinfo and route:match('^/*$')) or (had_params and not segment) then
+		if (has_userinfo and route:match('^/*$')) or had_params then
 			local title = clean(host:sub(1, MAX_RAW))
 			if title then return title, 'fallback' end
 		end

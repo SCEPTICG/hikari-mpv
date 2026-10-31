@@ -4309,7 +4309,7 @@ function Install-HikariTarget {
         # run that fails later must not leave the retry to take hikari's own uosc,
         # thumbfast and their .conf files for the user's.
         if ($first) {
-            Add-HikariRecordEntries -ConfigDir $config -Entries @(
+            $early = @(
                 ('uosc_preexisting=' + (ConvertTo-HikariYesNo $uoscBefore)),
                 ('thumbfast_preexisting=' + (ConvertTo-HikariYesNo $thumbBefore)),
                 ('uosc_conf_preexisting=' + (ConvertTo-HikariYesNo $confBefore['uosc.conf'])),
@@ -4320,7 +4320,8 @@ function Install-HikariTarget {
                 ('input_conf_final_eol=' + $finalEol['input_conf']),
                 ('shaders_preexisting=' + (ConvertTo-HikariYesNo $shadersBefore)))
             # The backup of this first run is the one from before hikari, also for a retry.
-            if ($backup) { Add-HikariRecordEntries -ConfigDir $config -Entries @('first_backup=' + $backup) }
+            if ($backup) { $early += ('first_backup=' + $backup) }
+            Add-HikariRecordEntries -ConfigDir $config -Entries $early
         }
 
         # a2. uosc or suji: hikari's copy of the one not chosen is set aside

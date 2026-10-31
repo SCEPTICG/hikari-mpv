@@ -780,6 +780,7 @@ Test-Case 'backup follows a linked top-level folder, skips links further in, and
         $script:HikariElevated = $true
         try { $b3 = New-HikariBackup -ConfigDir $cfg -Stamp '20260101-000300' }
         finally { $script:HikariElevated = $false }
+        Assert-True ($b3 -and (Test-Path -LiteralPath (P @($b3, 'mpv.conf')))) 'as administrator: a backup all the same'
         Assert-True (-not (Test-Path -LiteralPath (P @($b3, 'fonts')))) 'as administrator the linked fonts folder is skipped'
     }
     function Copy-HikariTree { param([string]$From, [string]$To) New-Item -ItemType Directory -Path $To -Force | Out-Null; throw 'disk full' }
