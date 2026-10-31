@@ -3501,14 +3501,20 @@ function Find-HikariOscOffLines {
 function Update-HikariLines {
     param([string]$Path, [hashtable]$Map)
     $file = Read-HikariText $Path
+    Write-HikariText -Path $Path -Text (Join-HikariLines @(Split-HikariLines $file.Text) $Map) -Encoding $file.Encoding -Bom $file.Bom
+}
+
+# The text of $Lines (from Split-HikariLines), each with its own line break,
+# with the lines whose index is in $Map replaced by that content.
+function Join-HikariLines {
+    param([object[]]$Lines, [hashtable]$Map)
     $sb = New-Object System.Text.StringBuilder
-    $lines = @(Split-HikariLines $file.Text)
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $content = $lines[$i].Content
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $content = $Lines[$i].Content
         if ($Map.ContainsKey($i)) { $content = [string]$Map[$i] }
-        [void]$sb.Append($content + $lines[$i].Eol)
+        [void]$sb.Append($content + $Lines[$i].Eol)
     }
-    Write-HikariText -Path $Path -Text $sb.ToString() -Encoding $file.Encoding -Bom $file.Bom
+    return $sb.ToString()
 }
 
 # Turns lines off by putting $script:CommentPrefix in front of them (never deleted).
@@ -3796,13 +3802,7 @@ function Update-HikariSoscFile {
             Write-HikariWarn (T 'sosc_line_changed' @($Name, ($converted.Trim() -replace '\p{Cc}', '')))
         }
     }
-    $sb = New-Object System.Text.StringBuilder
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $content = $lines[$i].Content
-        if ($map.ContainsKey($i)) { $content = [string]$map[$i] }
-        [void]$sb.Append($content + $lines[$i].Eol)
-    }
-    $newText = $sb.ToString()
+    $newText = Join-HikariLines $lines $map
     if ($newText -cne $file.Text) { Write-HikariText -Path $path -Text $newText -Encoding $file.Encoding -Bom $file.Bom }
 }
 

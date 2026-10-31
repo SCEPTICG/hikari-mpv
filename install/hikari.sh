@@ -1462,14 +1462,6 @@ dir_writable() {
     [ -w "$p" ]
 }
 
-sha256_of() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
-    else
-        shasum -a 256 "$1" | cut -d' ' -f1
-    fi
-}
-
 # The SHA256 of each file given (relative to the current folder), one per line
 # and in the same order, in a single run. A name the tool has to escape gives
 # a line that is no hash, so it never matches.
@@ -2093,7 +2085,7 @@ verified_download() {
         [ -z "$label" ] || row_done "$label" fail
         return 1
     fi
-    actual=$(sha256_of "$out")
+    actual=$(sha256_list "$out")
     if [ "$actual" != "$(lower "$sha")" ]; then
         rm -f "$out"
         HIKARI_ERR=$(T hash_bad "$url" "$(lower "$sha")" "$actual")
@@ -2300,7 +2292,7 @@ pick_sums() {
 # Is the thumbfast of folder $1 the pinned file, byte for byte?
 thumbfast_uptodate() {
     local f="$1/scripts/thumbfast.lua"
-    [ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256_of "$f")" = "$(lower "$THUMBFAST_SHA256")" ]
+    [ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256_list "$f")" = "$(lower "$THUMBFAST_SHA256")" ]
 }
 
 # What the downloads must bring, decided before anything is downloaded or
