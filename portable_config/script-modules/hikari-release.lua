@@ -792,15 +792,20 @@ end
 
 -- The name of the next episode after `current` (a file name) among `names`
 -- (the file names of its folder), or nil. None when `names` has more than
--- `max` entries.
-local function next_episode(current, names, max)
+-- `max` entries. `parsed` (name -> episode_of or false), when given, keeps what
+-- each name is, so several series in one big folder read each name once.
+local function next_episode(current, names, max, parsed)
 	if type(names) ~= 'table' or (max and #names > max) then return nil end
 	local now = episode_of(current)
 	if not now then return nil end
 	local best
 	for _, name in ipairs(names) do
 		if type(name) == 'string' and name ~= current then
-			local e = episode_of(name)
+			local e = parsed and parsed[name]
+			if e == nil then
+				e = episode_of(name) or false
+				if parsed then parsed[name] = e end
+			end
 			if e and e.key == now.key and e.episode > now.episode then
 				e.name = name
 				if better(e, best, now.group) then best = e end

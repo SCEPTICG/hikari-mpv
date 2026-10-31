@@ -563,9 +563,11 @@ local state = {
 	prompt = nil,
 	-- For the list menu while it is open: key -> the file exists, root -> it
 	-- answers (see root_of), folder -> its file names (false: unreadable),
-	-- watched episode -> {path, episode} of its next one (false: none), so the
-	-- redraws of an open menu (a save every SAVE_INTERVAL) read no names again.
-	exists = nil, roots = nil, folders = nil, nexts = nil,
+	-- watched episode -> {path, episode} of its next one (false: none), folder
+	-- -> what each of its names is (see release.next_episode), so the redraws
+	-- of an open menu (a save every SAVE_INTERVAL) read no names again, and
+	-- several series in one big folder read each name once.
+	exists = nil, roots = nil, folders = nil, nexts = nil, parsed = nil,
 	cleared = false, -- Clear history while this file plays: only end-file saves it
 }
 
@@ -686,11 +688,11 @@ end
 
 -- The path of the next episode after the file at `path` among `names` (the
 -- file names of its folder), and that episode (see hikari-release); nil when
--- there is none.
-local function next_in(path, names)
+-- there is none. `parsed`: see release.next_episode.
+local function next_in(path, names, parsed)
 	local dir, name = split_file(path)
 	if not dir or not names then return nil end
-	local next_name = release.next_episode(name, names, MAX_FOLDER)
+	local next_name = release.next_episode(name, names, MAX_FOLDER, parsed)
 	if not next_name then return nil end
 	return dir .. next_name, release.episode_of(next_name)
 end
@@ -727,7 +729,9 @@ local function watched_item(entry, windows, now)
 	if not names then return unavailable(item) end
 	local key = path_key(entry.path, windows)
 	if state.nexts[key] == nil then
-		local next_path, next_episode = next_in(entry.path, names)
+		local dir_key = path_key(dir, windows)
+		state.parsed[dir_key] = state.parsed[dir_key] or {}
+		local next_path, next_episode = next_in(entry.path, names, state.parsed[dir_key])
 		state.nexts[key] = next_path and {path = next_path, episode = next_episode} or false
 	end
 	local found = state.nexts[key]
@@ -747,7 +751,7 @@ local function list_menu_data(entries)
 	entries = entries or read_list()
 	local windows, now = is_windows(), clock.now()
 	state.exists, state.roots, state.folders = state.exists or {}, state.roots or {}, state.folders or {}
-	state.nexts = state.nexts or {}
+	state.nexts, state.parsed = state.nexts or {}, state.parsed or {}
 	local items = {}
 	for _, entry in ipairs(entries) do
 		if entry.series and entry.state == 'watched' then
@@ -791,7 +795,7 @@ local function open_menu()
 		mp.osd_message(i18n.t('resume_disabled'), 3)
 		return
 	end
-	state.exists, state.roots, state.folders, state.nexts = {}, {}, {}, {}
+	state.exists, state.roots, state.folders, state.nexts, state.parsed = {}, {}, {}, {}, {}
 	local entries = read_list()
 	-- Keeps the button in step with a list another mpv window changed.
 	publish(entries)
