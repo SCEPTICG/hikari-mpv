@@ -154,6 +154,8 @@ hikari_iina() { [ -n "${HIKARI_TEST_IINA:-}" ]; }
 hikari_flatpak_mpv() { [ -n "${HIKARI_TEST_FLATPAK:-}" ]; }
 hikari_snap_mpv() { [ -n "${HIKARI_TEST_SNAP:-}" ]; }
 if [ -n "${HIKARI_TEST_TTY+x}" ]; then hikari_tty_path() { printf '%s' "$HIKARI_TEST_TTY"; }; fi
+# HIKARI_TEST_FAIL_FN=<function>: that step fails, as a full disk would.
+if [ -n "${HIKARI_TEST_FAIL_FN:-}" ]; then eval "$HIKARI_TEST_FAIL_FN() { return 1; }"; fi
 EOF
 
 # run <home> <args...>: runs the test copy, output in $out, exit code in $rc.
@@ -1020,6 +1022,11 @@ mkdir -p "$h/elsewhere/mpvcfg"
 answers '1\no\n'"$h/elsewhere/mpvcfg"'\n\n\n\n\n\n\n' 
 run "$h"
 check 'typed folder ("O"): installed there' test "$rc" = 0 -a -f "$h/elsewhere/mpvcfg/hikari-installed.txt"
+h=$(newhome dragged)
+mkdir -p "$h/My Folder (mpv)"
+answers '1\no\n'"$h"'/My\\ Folder\\ \\(mpv\\)\n\n\n\n\n\n\n'
+run "$h"
+check 'typed folder dragged from the macOS Terminal (My\ Folder): installed there' test "$rc" = 0 -a -f "$h/My Folder (mpv)/hikari-installed.txt"
 answers '1\n0\n'
 run "$h"
 check '"0" at the folder list: cancelled, exit 0, nothing done' test "$rc" = 0 -a ! -e "$h/.config/mpv" -a -n "$(grep Cancelled "$out")"
@@ -1459,6 +1466,71 @@ ln -s "$tmp/outside-record.txt" "$cfg/hikari-installed.txt"
 HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
 check 'broken link for the record: nothing written through it, said so' \
     test ! -e "$tmp/outside-record.txt" -a -n "$(grep "hikari-installed.txt is a symbolic link" "$out")"
+
+# scripts/ is a link (dotfiles) holding the user's own uosc: the installer
+# replaces scripts/uosc inside it, so the backup has what the link held.
+h=$(newhome linked-scripts)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg" "$h/dotfiles/scripts/uosc"
+printf -- '-- my uosc\n' >"$h/dotfiles/scripts/uosc/main.lua"
+ln -s "$h/dotfiles/notes.txt" "$h/dotfiles/scripts/notes.lua"
+ln -s "$h/dotfiles/scripts" "$cfg/scripts"
+printf 'osc=no\n' >"$cfg/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+b=$(ls -d "$h"/.config/mpv-respaldo-hikari-* 2>/dev/null | head -n 1)
+check 'linked scripts/: the backup has the uosc the link held, and links inside stay links' \
+    test "$rc" = 0 -a -n "$b" -a -f "$b/scripts/uosc/main.lua" -a ! -L "$b/scripts" -a -L "$b/scripts/notes.lua"
+
+# A read-only mpv.conf: found before anything changes, and said so.
+h=$(newhome ro-mpvconf)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg"
+printf 'volume=50\n' >"$cfg/mpv.conf"
+chmod 444 "$cfg/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'read-only mpv.conf: exit 1, said so, nothing installed' \
+    test "$rc" = 1 -a -n "$(grep 'mpv.conf cannot be written' "$out")" -a ! -e "$cfg/scripts" -a ! -e "$cfg/hikari-installed.txt"
+chmod 644 "$cfg/mpv.conf"
+
+# Only the old ~/.mpv: mpv reads it, so hikari installs there and does not
+# create ~/.config/mpv (which would hide it from mpv).
+h=$(newhome dot-mpv)
+mkdir -p "$h/.mpv"
+printf 'volume=50\n' >"$h/.mpv/mpv.conf"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'only ~/.mpv (Linux): installed there, no ~/.config/mpv' test "$rc" = 0 -a -f "$h/.mpv/hikari-installed.txt" -a ! -e "$h/.config/mpv"
+h=$(newhome dot-mpv-mac)
+mkdir -p "$h/.mpv"
+run "$h" --yes
+check 'only ~/.mpv (macOS): installed there, no ~/.config/mpv' test "$rc" = 0 -a -f "$h/.mpv/hikari-installed.txt" -a ! -e "$h/.config/mpv"
+
+# Only a link left in scripts-desactivados (one the user put there, or a linked
+# script set aside): the folder is not empty, so uninstall keeps it.
+h=$(newhome aside-link)
+cfg="$h/.config/mpv"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+mkdir -p "$cfg/scripts-desactivados"
+printf -- '-- mine\n' >"$h/modernz.lua"
+ln -s "$h/modernz.lua" "$cfg/scripts-desactivados/modernz.lua"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'uninstall: scripts-desactivados holding only a link is kept' test "$rc" = 0 -a -L "$cfg/scripts-desactivados/modernz.lua"
+
+# A first install that fails at the very end (writing input.conf): the
+# retry still knows uosc, thumbfast and the user's uosc.conf from before.
+h=$(newhome failed-first)
+cfg="$h/.config/mpv"
+mkdir -p "$cfg/script-opts"
+printf 'timeline_style=bar\n' >"$cfg/script-opts/uosc.conf"
+HIKARI_TEST_FAIL_FN=update_input_conf HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'failed first install: exit 1, what was there before already recorded' \
+    test "$rc" = 1 -a "$(rec "$cfg" uosc_preexisting)|$(rec "$cfg" uosc_conf_preexisting)" = 'no|yes'
+first_b=$(rec "$cfg" first_backup)
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --yes
+check 'failed first install, retry: exit 0, first_backup still the backup from before hikari' \
+    test "$rc" = 0 -a -n "$first_b" -a "$(rec "$cfg" first_backup)" = "$first_b"
+HIKARI_TEST_OS=Linux HIKARI_TEST_MPV=/usr/bin/mpv run "$h" --uninstall --yes
+check 'failed first install, retry, uninstall: no uosc or thumbfast left, the user uosc.conf back' \
+    test "$rc" = 0 -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/scripts/thumbfast.lua" -a "$(cat "$cfg/script-opts/uosc.conf")" = 'timeline_style=bar'
 
 # --- the summary, --verbose, and what is already up to date ------------------------
 

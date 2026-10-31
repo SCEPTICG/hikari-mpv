@@ -148,21 +148,33 @@
 local msg = require('mp.msg')
 local utils = require('mp.utils')
 
--- Texts and languages of hikari: ~~/script-modules/hikari-i18n.lua. Single-file
--- scripts get no mpv folder in package.path, so the folder is added for this
--- one require and taken out again (see the header of hikari-i18n.lua).
-local i18n = (function()
+-- hikari's modules in ~~/script-modules. Single-file scripts get no mpv folder
+-- in package.path, so the folder is added for each require and taken out again
+-- (see the header of hikari-i18n.lua). An optional one that cannot be loaded
+-- is a warning and nil, not an error.
+local function load_module(name, optional)
 	local dir = mp.command_native({'expand-path', '~~/script-modules'})
 	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		if optional then return nil end
 		error('hikari: unusable script-modules folder: ' .. tostring(dir))
 	end
 	local saved = package.path
 	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-i18n')
+	local ok, module = pcall(require, name)
 	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	if not ok then
+		local text = 'hikari: cannot load script-modules/' .. name .. '.lua (reinstall hikari): ' .. tostring(module)
+		if optional then
+			msg.warn(text)
+			return nil
+		end
+		error(text)
+	end
 	return module
-end)()
+end
+
+-- Texts and languages of hikari: ~~/script-modules/hikari-i18n.lua.
+local i18n = load_module('hikari-i18n')
 
 -- The options hikari may set, in the order it sets them.
 local OPTIONS = {'alang', 'slang', 'subs-with-matching-audio'}

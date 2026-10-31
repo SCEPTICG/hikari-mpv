@@ -259,17 +259,19 @@ test('on_change: a switch between variants calls back with the same language', f
 	eq(table.concat(calls, ' '), 'es/es-419 pt/pt-BR')
 end)
 
--- The loader block, from its comment to the end of the function call.
+-- The module loader, from its comment to the end of the function.
 local function loader_of(src)
-	local s = src:find('-- Texts in the chosen language:', 1, true)
-	local e = s and select(2, src:find('end)()\n', s, true))
+	local s = src:find("-- hikari's modules in ~~/script-modules.", 1, true)
+	local e = s and select(2, src:find('\nend\n', s, true))
 	return s and src:sub(s, e) or nil
 end
 
-test('every hikari script loads the module with the same loader', function()
+test('every hikari script loads its modules with the same loader', function()
 	local reference = loader_of(read('portable_config/scripts/hikari-language.lua'))
 	assert(reference, 'loader in hikari-language.lua')
-	for _, name in ipairs(SCRIPTS) do
+	local all = {'hikari-media-language', 'hikari-resume'}
+	for _, name in ipairs(SCRIPTS) do all[#all + 1] = name end
+	for _, name in ipairs(all) do
 		eq(loader_of(read('portable_config/scripts/' .. name .. '.lua')), reference, name)
 	end
 end)
@@ -278,19 +280,25 @@ test('the loader finds the module in ~~/script-modules and leaves package.path a
 	mock.install('hikari_test')
 	local before = package.path
 	local chunk = loader_of(read('portable_config/scripts/hikari-language.lua'))
-	local i18n = assert((loadstring or load)('local i18n = ' .. chunk:match('local i18n = (.*)$') .. ' return i18n'))()
+	local function run(optional)
+		return (loadstring or load)('local msg = require(\'mp.msg\') ' .. chunk
+			.. ' return load_module(\'hikari-i18n\'' .. (optional and ', true' or '') .. ')')
+	end
+	local i18n = assert(run())()
 	eq(type(i18n.t), 'function', 'module')
 	eq(package.path, before, 'package.path restored')
 	for _, dir in ipairs({'C:\\a;b', '/a?b', ''}) do
 		mock.install('hikari_test')
 		mock.expand['~~/script-modules'] = dir
-		local ok, err = pcall((loadstring or load)('local i18n = ' .. chunk:match('local i18n = (.*)$') .. ' return i18n'))
+		local ok, err = pcall(run())
 		assert(not ok and tostring(err):find('unusable', 1, true), 'refused: ' .. dir)
+		eq(run(true)(), nil, 'optional: nil')
 		eq(package.path, before, 'unchanged after ' .. dir)
 	end
 	mock.expand['~~/script-modules'] = '/nonexistent/hikari'
-	local ok, err = pcall((loadstring or load)('local i18n = ' .. chunk:match('local i18n = (.*)$') .. ' return i18n'))
+	local ok, err = pcall(run())
 	assert(not ok and tostring(err):find('reinstall hikari', 1, true), 'missing module: clear error')
+	eq(run(true)(), nil, 'optional missing module: nil')
 	eq(package.path, before, 'restored after a failure')
 	mock.expand['~~/script-modules'] = nil
 end)

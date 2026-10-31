@@ -102,36 +102,37 @@
 local msg = require('mp.msg')
 local options = require('mp.options')
 
--- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua. Single-file
--- scripts get no mpv folder in package.path, so the folder is added for this
--- one require and taken out again (see the header of hikari-i18n.lua).
-local i18n = (function()
+-- hikari's modules in ~~/script-modules. Single-file scripts get no mpv folder
+-- in package.path, so the folder is added for each require and taken out again
+-- (see the header of hikari-i18n.lua). An optional one that cannot be loaded
+-- is a warning and nil, not an error.
+local function load_module(name, optional)
 	local dir = mp.command_native({'expand-path', '~~/script-modules'})
 	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		if optional then return nil end
 		error('hikari: unusable script-modules folder: ' .. tostring(dir))
 	end
 	local saved = package.path
 	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-i18n')
+	local ok, module = pcall(require, name)
 	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/hikari-i18n.lua (reinstall hikari): ' .. tostring(module)) end
+	if not ok then
+		local text = 'hikari: cannot load script-modules/' .. name .. '.lua (reinstall hikari): ' .. tostring(module)
+		if optional then
+			msg.warn(text)
+			return nil
+		end
+		error(text)
+	end
 	return module
-end)()
+end
+
+-- Texts in the chosen language: ~~/script-modules/hikari-i18n.lua.
+local i18n = load_module('hikari-i18n')
 
 -- Release names: ~~/script-modules/hikari-release.lua (shared with
 -- hikari-resume.lua), loaded like the texts above.
-local release = (function()
-	local dir = mp.command_native({'expand-path', '~~/script-modules'})
-	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
-		error('hikari: unusable script-modules folder: ' .. tostring(dir))
-	end
-	local saved = package.path
-	package.path = dir .. '/?.lua;' .. saved
-	local ok, module = pcall(require, 'hikari-release')
-	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/hikari-release.lua (reinstall hikari): ' .. tostring(module)) end
-	return module
-end)()
+local release = load_module('hikari-release')
 
 local OPTIONS_ID = 'hikari-title'
 -- suji (0.7.0 or newer) shows a title in parts: whether it is on, and its version.
@@ -206,6 +207,13 @@ local function title_for(path)
 
 	-- Last path segment, if any. Anchored so the match stays linear on long routes.
 	local segment = route:match('^.*/([^/]+)/*$')
+	-- Path parameters (`;jsessionid=...`) can carry a session: never in the title.
+	local had_params = false
+	if segment then
+		local cut = segment:gsub(';.*$', '')
+		had_params = cut ~= segment
+		segment = cut ~= '' and cut or nil
+	end
 	local segment_title, segment_parts
 	if segment then
 		segment_title, segment_parts = release_title(video_file_name(url_decode(segment:sub(1, MAX_RAW * 4), false)))
@@ -213,8 +221,14 @@ local function title_for(path)
 
 	if not query then
 		if segment_title then return segment_title, 'file', segment_parts end
-		-- Credentials in the URL and no path to show instead: the bare host.
-		if has_userinfo and route:match('^/*$') then
+		-- mpv's own title would be the whole segment, parameters included.
+		if had_params and segment then
+			local title = clean(url_decode(segment:sub(1, MAX_RAW), false))
+			if title then return title, 'fallback' end
+		end
+		-- Credentials or path parameters in the URL, and no path to show
+		-- instead: the bare host.
+		if (has_userinfo and route:match('^/*$')) or had_params then
 			local title = clean(host:sub(1, MAX_RAW))
 			if title then return title, 'fallback' end
 		end

@@ -65,6 +65,10 @@ fails 'refuses an untracked file' 'not clean' tools/make-release.sh v1.2.3
 rm -f stray.txt
 
 fails 'refuses a tag that does not exist' 'does not exist' tools/make-release.sh v1.2.3
+# Run through a link to the repository (macOS's /var -> /private/var, say):
+# the top of the repository is still found, so it gets to the tag check.
+ln -s "$work" "$tmp/link"
+fails 'through a linked path: the repository top is still found' 'does not exist' "$tmp/link/tools/make-release.sh" v1.2.3
 check 'nothing built without a tag' test ! -e dist/hikari.ps1
 
 git tag v0.0.1 "$base"

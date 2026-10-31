@@ -125,6 +125,20 @@ function New-TestDir {
     return $d
 }
 
+# A link to the folder $Target at $Path: a junction, or a symbolic link where
+# there are no junctions (on Linux, New-Item -ItemType Junction makes nothing
+# and says nothing). False when neither can be made (Windows without the right
+# to make symbolic links falls back on the junction).
+function New-TestFolderLink {
+    param([string]$Path, [string]$Target)
+    foreach ($type in @('Junction', 'SymbolicLink')) {
+        try { New-Item -ItemType $type -Path $Path -Target $Target -ErrorAction Stop | Out-Null } catch { }
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and (Test-HikariLink $item)) { return $true }
+    }
+    return $false
+}
+
 function Set-TestFile {
     param([string]$Path, [string]$Content = 'x')
     $dir = Split-Path -Path $Path -Parent
@@ -734,7 +748,26 @@ Test-Case 'backup copies only what the installer can change' {
     Assert-True (-not (Test-Path -LiteralPath ($empty + '-respaldo-hikari-20260101-000000'))) 'no empty backup folder'
 }
 
-Test-Case 'backup skips links and deletes a copy that fails half-way' {
+Test-Case 'a config folder that is a link (scoop persist): backups go next to where it points' {
+    $d = New-TestDir 'backup-base'
+    $real = P @($d, 'persist', 'mpv', 'portable_config')
+    Set-TestFile (P @($real, 'mpv.conf')) 'x=1'
+    New-Item -ItemType Directory -Path (P @($d, 'apps', 'mpv', 'current')) -Force | Out-Null
+    $cfg = P @($d, 'apps', 'mpv', 'current', 'portable_config')
+    $linked = New-TestFolderLink -Path $cfg -Target $real
+    if (-not $linked) { Write-Host '     (links not available, skipped)' }
+    if ($linked) {
+        $b = New-HikariBackup -ConfigDir $cfg -Stamp '20261031-120000'
+        Assert-Equal $b ((Get-HikariFullPath $real) + '-respaldo-hikari-20261031-120000') 'next to the persisted folder'
+        Assert-True (Test-Path -LiteralPath (P @($b, 'mpv.conf'))) 'with what the folder holds'
+        Assert-Equal @(Find-HikariOriginalBackups -ConfigDir $cfg).Count 0 'found from the link too (none marked)'
+        $script:HikariElevated = $true
+        try { Assert-Equal (Get-HikariBackupBase $cfg) (Get-HikariFullPath $cfg) 'as administrator the link is not followed' }
+        finally { $script:HikariElevated = $false }
+    }
+}
+
+Test-Case 'backup follows a linked top-level folder, skips links further in, and deletes a copy that fails half-way' {
     $d = New-TestDir 'backup-links'
     $cfg = P @($d, 'cfg')
     $outside = P @($d, 'outside')
@@ -751,8 +784,14 @@ Test-Case 'backup skips links and deletes a copy that fails half-way' {
         $b = New-HikariBackup -ConfigDir $cfg -Stamp '20260101-000000'
         Assert-True (Test-Path -LiteralPath (P @($b, 'scripts', 'a.lua'))) 'real file copied'
         Assert-True (-not (Test-Path -LiteralPath (P @($b, 'scripts', 'loop')))) 'link inside scripts skipped'
-        Assert-True (-not (Test-Path -LiteralPath (P @($b, 'fonts')))) 'linked fonts folder skipped'
-        Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*link*' }).Count -eq 2) 'two warnings'
+        Assert-True (Test-Path -LiteralPath (P @($b, 'fonts', 'huge.bin'))) 'linked fonts folder copied with what it holds'
+        Assert-True (-not (Test-HikariLink (Get-Item -LiteralPath (P @($b, 'fonts')) -Force))) 'the copy of fonts is a real folder'
+        Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*link*' }).Count -eq 1) 'one warning, for the link inside scripts'
+        $script:HikariElevated = $true
+        try { $b3 = New-HikariBackup -ConfigDir $cfg -Stamp '20260101-000300' }
+        finally { $script:HikariElevated = $false }
+        Assert-True ($b3 -and (Test-Path -LiteralPath (P @($b3, 'mpv.conf')))) 'as administrator: a backup all the same'
+        Assert-True (-not (Test-Path -LiteralPath (P @($b3, 'fonts')))) 'as administrator the linked fonts folder is skipped'
     }
     function Copy-HikariTree { param([string]$From, [string]$To) New-Item -ItemType Directory -Path $To -Force | Out-Null; throw 'disk full' }
     try { Assert-Throws { New-HikariBackup -ConfigDir $cfg -Stamp '20260202-000000' } '*disk full*' 'failing copy' }
@@ -2836,6 +2875,47 @@ Test-Case 'Anime4K by hand: what was moved or turned off is in the record even i
     Assert-Equal ([Convert]::ToBase64String((Get-TestBytes (P @($cfg, 'input.conf'))))) ([Convert]::ToBase64String($inputBefore)) 'input.conf back'
     Assert-Equal (Get-TestText (P @($cfg, 'shaders', 'Anime4K_Upscale_CNN_x2_M.glsl'))) '// mine Anime4K_Upscale_CNN_x2_M.glsl' 'own shaders back'
     Assert-Equal (Get-TestShaders (P @($cfg, 'shaders'))) ([string]::Join(',', @($script:Anime4KRequired | Sort-Object))) 'hikari shaders gone'
+}
+
+Test-Case 'a first install that fails late: the retry still knows uosc, thumbfast and the user uosc.conf from before' {
+    $d = New-TestDir 'first-latefail'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    Set-TestFile (P @($cfg, 'script-opts', 'uosc.conf')) 'timeline_style=bar'
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    function Update-HikariManagedFile { throw 'disk full' }
+    try { Assert-Throws { Invoke-TestInstall $cand $art '20261031-100000' 'yes' } '*disk full*' 'later failure' }
+    finally { Remove-Item Function:\Update-HikariManagedFile }
+    $rec = Read-HikariRecord $cfg
+    Assert-Equal ($rec.Values['uosc_preexisting'] + '|' + $rec.Values['uosc_conf_preexisting']) 'no|yes' 'what was there before, recorded before the failure'
+    [void](Invoke-TestInstall $cand $art '20261031-100100' 'yes')
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-100200')
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'uosc')))) 'no uosc left'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'scripts', 'thumbfast.lua')))) 'no thumbfast left'
+    Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'uosc.conf'))) 'timeline_style=bar' 'the user uosc.conf back'
+}
+
+Test-Case 'uninstall keeps scripts-desactivados when it holds only a link' {
+    $d = New-TestDir 'aside-link'
+    $art = New-FakeArtifacts (P @($d, 'dl'))
+    $cfg = P @($d, 'mpv')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'mpv' -Exe '' -ConfigDir $cfg -Portable $false
+    [void](Invoke-TestInstall $cand $art '20261031-110000' 'yes')
+    $aside = P @($cfg, 'scripts-desactivados')
+    Set-TestFile (P @($d, 'mine', 'a.lua')) '--'
+    New-Item -ItemType Directory -Path $aside -Force | Out-Null
+    if (-not (New-TestFolderLink -Path (P @($aside, 'mine')) -Target (P @($d, 'mine')))) { Write-Host '     (links not available, skipped)'; return }
+    [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-110100')
+    Assert-True (Test-Path -LiteralPath (P @($aside, 'mine', 'a.lua'))) 'the folder and its link are kept'
+}
+
+Test-Case 'uninstall from a folder that does not exist (a typo in -Target): a warning, nothing done' {
+    $d = New-TestDir 'uninstall-missing'
+    $cfg = P @($d, 'mvp')
+    $cand = New-HikariCandidate -Env (New-FakeEnv $d) -Kind 'folder' -Exe '' -ConfigDir $cfg -Portable $false
+    Assert-Equal (Uninstall-HikariTarget -Candidate $cand -Stamp '20261031-130000') '' 'no backup'
+    Assert-True (@($script:HikariWarnings | Where-Object { $_ -like '*does not exist*' }).Count -eq 1) 'said so'
+    Assert-True (-not (Test-Path -LiteralPath $cfg)) 'nothing created'
 }
 
 Test-Case 'record entries added on the way: a record is started when there is none and kept valid' {

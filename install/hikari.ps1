@@ -465,6 +465,7 @@ $script:HikariStringsEn = @{
     includes_outside      = 'mpv.conf still includes {0} outside the hikari block: remove that line, or mpv will log an error at start-up.'
     uninstall_ok          = 'hikari removed from {0}.'
     nothing_to_uninstall  = 'hikari does not seem to be installed in any detected folder.'
+    uninstall_missing     = 'Nothing to uninstall: the folder {0} does not exist.'
     usage_yes_action      = '-Yes needs -Action install or -Action uninstall.'
     usage_many            = 'Several folders found; with -Yes, choose with -Target:'
     usage_none            = 'Nothing to work on.'
@@ -659,6 +660,7 @@ $script:HikariStringsEs = @{
     includes_outside      = 'mpv.conf sigue incluyendo {0} fuera del bloque de hikari: quita esa l\u00ednea o mpv dar\u00e1 un error al arrancar.'
     uninstall_ok          = 'hikari quitado de {0}.'
     nothing_to_uninstall  = 'No parece que hikari est\u00e9 instalado en ninguna de las carpetas encontradas.'
+    uninstall_missing     = 'No hay nada que desinstalar: la carpeta {0} no existe.'
     usage_yes_action      = '-Yes necesita -Action install o -Action uninstall.'
     usage_many            = 'Hay varias carpetas; con -Yes, elige con -Target:'
     usage_none            = 'No hay nada sobre lo que trabajar.'
@@ -1661,6 +1663,25 @@ function Get-HikariFullPath {
     $trim = $full.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
     if ($trim -eq '' -or $trim -match '^[A-Za-z]:$') { return $full }
     return $trim
+}
+
+# The folder whose siblings hold the backups: the config folder, or where it
+# points when it is a link. Scoop's portable_config is a junction from
+# apps\<app>\current (itself a junction to the version folder, which
+# `scoop cleanup` deletes) to persist\<app>\portable_config. As administrator
+# the link is not followed.
+function Get-HikariBackupBase {
+    param([string]$ConfigDir)
+    $full = Get-HikariFullPath $ConfigDir
+    if ($script:HikariElevated) { return $full }
+    $item = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item -or -not (Test-HikariLink $item)) { return $full }
+    $target = [string]@($item.Target)[0]
+    if (-not $target) { return $full }
+    if ($target.StartsWith('\\?\UNC\')) { $target = '\\' + $target.Substring(8) }
+    elseif ($target.StartsWith('\\?\')) { $target = $target.Substring(4) }
+    if (-not [System.IO.Path]::IsPathRooted($target)) { $target = Join-Path (Split-Path -Path $full -Parent) $target }
+    return (Get-HikariFullPath $target)
 }
 
 function Test-HikariSamePath {
@@ -2907,14 +2928,7 @@ function Test-HikariSujiUpToDate {
     if ($null -eq $Record) { return $false }
     if ([string]$Record.Values['suji_version'] -ne $script:SujiVersion) { return $false }
     if ([string]$Record.Values['suji_sha256'] -cne $script:SujiSha256.ToLowerInvariant()) { return $false }
-    $dir = Join-HikariPath $ConfigDir @('scripts', 'suji')
-    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
-    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
-    $entries = @(Select-HikariSumsByPrefix -Sums @($Record.Sums) -Prefixes @('scripts/suji/'))
-    if ($entries.Count -eq 0) { return $false }
-    $files = Get-HikariTreeFiles $dir
-    if ($null -eq $files -or @($files).Count -ne $entries.Count) { return $false }
-    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+    return ((Test-HikariCopyIntact -ConfigDir $ConfigDir -Dir 'scripts/suji' -Sums @($Record.Sums)) -eq 0)
 }
 
 # Is $Dir (scripts/uosc or scripts/suji) exactly what hikari copied there, by
@@ -3035,15 +3049,8 @@ function Test-HikariUoscUpToDate {
     foreach ($legacy in $script:UoscLegacy) {
         if (Test-Path -LiteralPath (Join-HikariPath $ConfigDir @('scripts', $legacy))) { return $false }
     }
-    $dir = Join-HikariPath $ConfigDir @('scripts', 'uosc')
-    $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
-    if ($null -eq $item -or -not $item.PSIsContainer -or (Test-HikariLink $item)) { return $false }
-    $entries = @(Select-HikariUoscSums @($Record.Sums))
-    $inside = @($entries | Where-Object { $_.StartsWith('scripts/uosc/') })
-    if ($inside.Count -eq 0) { return $false }
-    $files = Get-HikariTreeFiles $dir
-    if ($null -eq $files -or @($files).Count -ne $inside.Count) { return $false }
-    return (Test-HikariSums -ConfigDir $ConfigDir -Entries $entries)
+    $fonts = @($script:UoscFonts | ForEach-Object { 'fonts/' + $_ })
+    return ((Test-HikariCopyIntact -ConfigDir $ConfigDir -Dir 'scripts/uosc' -Prefixes $fonts -Sums @($Record.Sums)) -eq 0)
 }
 
 # Is the thumbfast of the folder the pinned file, byte for byte?
@@ -3495,14 +3502,20 @@ function Find-HikariOscOffLines {
 function Update-HikariLines {
     param([string]$Path, [hashtable]$Map)
     $file = Read-HikariText $Path
+    Write-HikariText -Path $Path -Text (Join-HikariLines @(Split-HikariLines $file.Text) $Map) -Encoding $file.Encoding -Bom $file.Bom
+}
+
+# The text of $Lines (from Split-HikariLines), each with its own line break,
+# with the lines whose index is in $Map replaced by that content.
+function Join-HikariLines {
+    param([object[]]$Lines, [hashtable]$Map)
     $sb = New-Object System.Text.StringBuilder
-    $lines = @(Split-HikariLines $file.Text)
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $content = $lines[$i].Content
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $content = $Lines[$i].Content
         if ($Map.ContainsKey($i)) { $content = [string]$Map[$i] }
-        [void]$sb.Append($content + $lines[$i].Eol)
+        [void]$sb.Append($content + $Lines[$i].Eol)
     }
-    Write-HikariText -Path $Path -Text $sb.ToString() -Encoding $file.Encoding -Bom $file.Bom
+    return $sb.ToString()
 }
 
 # Turns lines off by putting $script:CommentPrefix in front of them (never deleted).
@@ -3790,13 +3803,7 @@ function Update-HikariSoscFile {
             Write-HikariWarn (T 'sosc_line_changed' @($Name, ($converted.Trim() -replace '\p{Cc}', '')))
         }
     }
-    $sb = New-Object System.Text.StringBuilder
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $content = $lines[$i].Content
-        if ($map.ContainsKey($i)) { $content = [string]$map[$i] }
-        [void]$sb.Append($content + $lines[$i].Eol)
-    }
-    $newText = $sb.ToString()
+    $newText = Join-HikariLines $lines $map
     if ($newText -cne $file.Text) { Write-HikariText -Path $path -Text $newText -Encoding $file.Encoding -Bom $file.Bom }
 }
 
@@ -3912,12 +3919,15 @@ function Invoke-HikariSoscMigration {
 # ---------------------------------------------------------------------------
 
 # Copies what the installer may change ($script:BackupItems) to
-# <config>-respaldo-hikari-<stamp>, next to it. Links are skipped, not followed.
+# <config>-respaldo-hikari-<stamp>, next to it (next to where it points when the
+# config folder is a link, see Get-HikariBackupBase). A linked item is copied
+# with what it holds; links further in, broken links and, as administrator, all
+# links are skipped.
 # Returns '' when there is nothing to copy. A copy that fails half-way is deleted.
 function New-HikariBackup {
     param([string]$ConfigDir, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent) { throw (T 'target_root' @($full)) }
     $items = @()
@@ -3925,7 +3935,11 @@ function New-HikariBackup {
         $p = Join-HikariPath $full $name
         $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
         if ($null -eq $item) { continue }
-        if (Test-HikariLink $item) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
+        # A linked item (dotfiles) is copied with what it holds, since the
+        # installer writes and deletes inside it; only a broken link is skipped.
+        # As administrator links are not followed: the copy would not keep the
+        # target's permissions (Assert-HikariNoLink guards the writes then).
+        if ((Test-HikariLink $item) -and ($script:HikariElevated -or -not (Test-Path -LiteralPath $p))) { Write-HikariWarn (T 'link_skipped' @($item.FullName)); continue }
         $items += $item
     }
     if ($items.Count -eq 0) { return '' }
@@ -3935,7 +3949,12 @@ function New-HikariBackup {
     $n = 2
     while (Test-Path -LiteralPath $backup) { $backup = $base + '-' + $n; $n++ }
     $bytes = [long]0
-    foreach ($item in $items) { $bytes += (Get-HikariTreeSize $item) }
+    foreach ($item in $items) {
+        if ((Test-HikariLink $item) -and $item.PSIsContainer) {
+            foreach ($child in @(Get-ChildItem -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue)) { $bytes += (Get-HikariTreeSize $child) }
+        }
+        else { $bytes += (Get-HikariTreeSize $item) }
+    }
     Write-HikariDetail (T 'backup_size' @([math]::Round($bytes / 1MB, 1)))
     New-HikariDirectory $backup
     try {
@@ -3960,7 +3979,7 @@ function New-HikariBackup {
 # holds $script:BackupOriginalMark, and $Protect (the record's first_backup).
 function Remove-HikariOldBackups {
     param([string]$ConfigDir, [int]$Keep = $script:BackupKeep, [string[]]$Protect = @())
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
     $re = '^' + [regex]::Escape((Split-Path -Path $full -Leaf)) + '-respaldo-hikari-(\d{8}-\d{6})(?:-(\d+))?\z'
@@ -4006,7 +4025,7 @@ function Test-HikariOriginalBackup {
 # hold the mark of the backup from before hikari's first install.
 function Find-HikariOriginalBackups {
     param([string]$ConfigDir)
-    $full = Get-HikariFullPath $ConfigDir
+    $full = Get-HikariBackupBase $ConfigDir
     $parent = Split-Path -Path $full -Parent
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return @() }
     $prefix = (Split-Path -Path $full -Leaf) + '-respaldo-hikari-'
@@ -4286,6 +4305,25 @@ function Install-HikariTarget {
             $uoscSums = @(Select-HikariUoscSums $oldSums)
         }
 
+        # What was here before hikari, recorded before the first change: a first
+        # run that fails later must not leave the retry to take hikari's own uosc,
+        # thumbfast and their .conf files for the user's.
+        if ($first) {
+            $early = @(
+                ('uosc_preexisting=' + (ConvertTo-HikariYesNo $uoscBefore)),
+                ('thumbfast_preexisting=' + (ConvertTo-HikariYesNo $thumbBefore)),
+                ('uosc_conf_preexisting=' + (ConvertTo-HikariYesNo $confBefore['uosc.conf'])),
+                ('thumbfast_conf_preexisting=' + (ConvertTo-HikariYesNo $confBefore['thumbfast.conf'])),
+                ('mpv_conf_preexisting=' + (ConvertTo-HikariYesNo $mpvConfBefore)),
+                ('input_conf_preexisting=' + (ConvertTo-HikariYesNo $inputConfBefore)),
+                ('mpv_conf_final_eol=' + $finalEol['mpv_conf']),
+                ('input_conf_final_eol=' + $finalEol['input_conf']),
+                ('shaders_preexisting=' + (ConvertTo-HikariYesNo $shadersBefore)))
+            # The backup of this first run is the one from before hikari, also for a retry.
+            if ($backup) { $early += ('first_backup=' + $backup) }
+            Add-HikariRecordEntries -ConfigDir $config -Entries $early
+        }
+
         # a2. uosc or suji: hikari's copy of the one not chosen is set aside
         # (never deleted), and the chosen one comes back if hikari set it aside
         # before. With both, two rows of controls would be drawn.
@@ -4455,7 +4493,10 @@ function Install-HikariTarget {
             }
             # suji.conf only goes with suji, and is kept aside like uosc.conf the
             # first time hikari installs it here (also on an update).
-            $keepOriginal = ($first -and $script:SharedConfs -contains $f.Name)
+            # Kept aside only once: on the first run, or on the retry of one that
+            # failed before it got here.
+            $keepOriginal = ($script:SharedConfs -contains $f.Name) -and ($first -or
+                (-not $oldValues.ContainsKey('hikari_version') -and -not (Test-Path -LiteralPath (Join-HikariPath $origDir $f.Name))))
             if ($f.Name -eq $script:SujiConf) {
                 if ($iface -ne 'suji') { continue }
                 $keepOriginal = -not $sujiConfKnown
@@ -4652,6 +4693,8 @@ function Uninstall-HikariTarget {
     param([Parameter(Mandatory = $true)]$Candidate, [string]$Stamp = '')
     if (-not $Stamp) { $Stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') }
     $config = Get-HikariFullPath $Candidate.ConfigDir
+    # A folder typed with -Target that is not there (a typo): said so, not an error.
+    if (-not (Test-Path -LiteralPath $config -PathType Container)) { Write-HikariWarn (T 'uninstall_missing' @($config)); return '' }
     Write-HikariDetail ''
     Write-HikariDetail (T 'uninstalling_from' @($config))
     $backup = New-HikariBackupStep $config $Stamp
@@ -4879,7 +4922,7 @@ function Uninstall-HikariTarget {
         foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {
             $dir = Join-HikariPath $config $dirName
             if ((Test-Path -LiteralPath $dir -PathType Container) -and
-                @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force).Count -eq 0) {
+                @(Get-ChildItem -LiteralPath $dir -Recurse -Force | Where-Object { -not $_.PSIsContainer -or (Test-HikariLink $_) }).Count -eq 0) {
                 Remove-HikariItem -Path $dir -Root $config
             }
         }

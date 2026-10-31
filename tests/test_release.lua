@@ -131,6 +131,19 @@ test('next episode: of several versions, the same group, otherwise the first by 
 	eq(r.next_episode('Show - 05.mkv', {'show - 06 b.mkv', 'Show - 06 a.mkv'}), 'Show - 06 a.mkv', 'by name, without case')
 end)
 
+test('next episode: what each name is, kept in `parsed`, is read once for several series', function()
+	local r = fresh()
+	local folder = {'Show - 05.mkv', 'Show - 06.mkv', 'Other - 01.mkv', 'Other - 02.mkv', 'notes.txt'}
+	local parsed = {}
+	eq(r.next_episode('Show - 05.mkv', folder, nil, parsed), 'Show - 06.mkv')
+	eq(parsed['notes.txt'], false, 'not an episode: kept as false')
+	eq(parsed['Other - 02.mkv'].episode, 2, 'kept')
+	-- What is kept is what is used: a name marked as not an episode is skipped.
+	parsed['Other - 02.mkv'] = false
+	eq(r.next_episode('Other - 01.mkv', folder, nil, parsed), nil, 'from parsed')
+	eq(r.next_episode('Other - 01.mkv', folder), 'Other - 02.mkv', 'without parsed: read again')
+end)
+
 test('next episode: a folder over the limit has none; junk is ignored', function()
 	local r = fresh()
 	local folder = {}

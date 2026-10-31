@@ -316,6 +316,7 @@ hikari_text_en() {
         outside_target) s='Refusing to delete %s: it is outside %s.' ;;
         cancelled) s='Cancelled.' ;;
         link_skipped) s='Not copied to the backup: %s is a symbolic link.' ;;
+        read_only) s='%s cannot be written (it is read-only, or a link to a read-only place).' ;;
         path_bad) s='%s is not a valid folder path.' ;;
         target_root) s='Refusing %s: the root folder or your home folder is not an mpv config folder.' ;;
         not_mpv_folder) s='%s does not look like an mpv config folder: no mpv.conf, input.conf, scripts or script-opts in it.' ;;
@@ -511,6 +512,7 @@ hikari_text_es() {
         outside_target) s='No se borra %s: está fuera de %s.' ;;
         cancelled) s='Cancelado.' ;;
         link_skipped) s='No se copia a la copia de seguridad: %s es un enlace simbólico.' ;;
+        read_only) s='No se puede escribir %s (es de solo lectura, o un enlace a un sitio de solo lectura).' ;;
         path_bad) s='%s no es una ruta de carpeta válida.' ;;
         target_root) s='No se usa %s: la carpeta raíz o tu carpeta personal no son una carpeta de configuración de mpv.' ;;
         not_mpv_folder) s='%s no parece una carpeta de configuración de mpv: no tiene mpv.conf, input.conf, scripts ni script-opts.' ;;
@@ -1460,14 +1462,6 @@ dir_writable() {
     [ -w "$p" ]
 }
 
-sha256_of() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
-    else
-        shasum -a 256 "$1" | cut -d' ' -f1
-    fi
-}
-
 # The SHA256 of each file given (relative to the current folder), one per line
 # and in the same order, in a single run. A name the tool has to escape gives
 # a line that is no hash, so it never matches.
@@ -2091,7 +2085,7 @@ verified_download() {
         [ -z "$label" ] || row_done "$label" fail
         return 1
     fi
-    actual=$(sha256_of "$out")
+    actual=$(sha256_list "$out")
     if [ "$actual" != "$(lower "$sha")" ]; then
         rm -f "$out"
         HIKARI_ERR=$(T hash_bad "$url" "$(lower "$sha")" "$actual")
@@ -2211,30 +2205,13 @@ uosc_manifest() {
 # else in scripts/uosc; no uosc 4 leftovers. Any doubt: no (it is installed
 # again).
 uosc_uptodate() {
-    local cfg=$1 e rel p n=0 legacy font own
+    local cfg=$1 legacy
     rec_get uosc_version && [ "$REC_VALUE" = "$UOSC_VERSION" ] || return 1
     rec_get uosc_sha256 && [ "$REC_VALUE" = "$(lower "$UOSC_SHA256")" ] || return 1
     for legacy in "${UOSC_LEGACY[@]}"; do
         if [ -e "$cfg/scripts/$legacy" ] || [ -L "$cfg/scripts/$legacy" ]; then return 1; fi
     done
-    [ -d "$cfg/scripts/uosc" ] && [ ! -L "$cfg/scripts/uosc" ] || return 1
-    SUM_PATHS=()
-    SUM_WANT=()
-    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
-        rel=${e%%|*}
-        own=0
-        case $rel in scripts/uosc/*) own=1; n=$((n + 1)) ;; esac
-        for font in "${UOSC_FONTS[@]}"; do [ "$rel" = "fonts/$font" ] && own=1; done
-        [ "$own" = 1 ] || continue
-        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
-        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
-        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
-        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
-    done
-    [ "$n" -gt 0 ] || return 1
-    [ -z "$(find "$cfg/scripts/uosc" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
-    [ "$(find "$cfg/scripts/uosc" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
-    sums_match "$cfg"
+    copy_intact "$cfg" scripts/uosc "${UOSC_FONTS[@]/#/fonts/}"
 }
 
 # SUJI_SUMS: "path|sha256" of each file of the verified suji zip that
@@ -2263,24 +2240,10 @@ suji_manifest() {
 # and this zip and lists the hash of every file it copied, all of them there,
 # unchanged, not links, and nothing else in scripts/suji.
 suji_uptodate() {
-    local cfg=$1 e rel p n=0
+    local cfg=$1
     rec_get suji_version && [ "$REC_VALUE" = "$SUJI_VERSION" ] || return 1
     rec_get suji_sha256 && [ "$REC_VALUE" = "$(lower "$SUJI_SHA256")" ] || return 1
-    [ -d "$cfg/scripts/suji" ] && [ ! -L "$cfg/scripts/suji" ] || return 1
-    SUM_PATHS=()
-    SUM_WANT=()
-    for e in ${REC_SUMS[@]+"${REC_SUMS[@]}"}; do
-        rel=${e%%|*}
-        case $rel in scripts/suji/*) n=$((n + 1)) ;; *) continue ;; esac
-        for p in ${SUM_PATHS[@]+"${SUM_PATHS[@]}"}; do [ "$p" != "$rel" ] || return 1; done
-        [ -f "$cfg/$rel" ] && [ ! -L "$cfg/$rel" ] || return 1
-        SUM_PATHS[${#SUM_PATHS[@]}]=$rel
-        SUM_WANT[${#SUM_WANT[@]}]=${e#*|}
-    done
-    [ "$n" -gt 0 ] || return 1
-    [ -z "$(find "$cfg/scripts/suji" ! -type d ! -type f -print 2>/dev/null | head -n 1)" ] || return 1
-    [ "$(find "$cfg/scripts/suji" -type f -print 2>/dev/null | wc -l | tr -d ' ')" = "$n" ] || return 1
-    sums_match "$cfg"
+    copy_intact "$cfg" scripts/suji
 }
 
 # copy_intact <folder> <dir> [prefix...]: is <dir> (scripts/uosc or
@@ -2329,7 +2292,7 @@ pick_sums() {
 # Is the thumbfast of folder $1 the pinned file, byte for byte?
 thumbfast_uptodate() {
     local f="$1/scripts/thumbfast.lua"
-    [ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256_of "$f")" = "$(lower "$THUMBFAST_SHA256")" ]
+    [ -f "$f" ] && [ ! -L "$f" ] && [ "$(sha256_list "$f")" = "$(lower "$THUMBFAST_SHA256")" ]
 }
 
 # What the downloads must bring, decided before anything is downloaded or
@@ -2458,18 +2421,23 @@ add_candidate() {
     C_EXE[i]=$3
 }
 
-# macOS: $MPV_HOME, or ~/.config/mpv (Homebrew's mpv and mpv.app). Linux: the
+# macOS: $MPV_HOME, or ~/.config/mpv (Homebrew's mpv and mpv.app), or ~/.mpv
+# when only that one exists, as mpv does. Linux: the
 # same for a native mpv (with $XDG_CONFIG_HOME), plus the Flatpak and Snap
 # folders when those are installed.
 find_candidates() {
     C_KIND=(); C_DIR=(); C_EXE=()
     local xdg=${XDG_CONFIG_HOME:-$HOME/.config}
+    [ "$OS" = Darwin ] && xdg=$HOME/.config
+    # mpv still reads the old ~/.mpv while the new folder does not exist.
+    local home_dir="$xdg/mpv"
+    if [ ! -d "$home_dir" ] && [ -d "$HOME/.mpv" ]; then home_dir=$HOME/.mpv; fi
     if [ "$OS" = Darwin ]; then
-        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$HOME/.config/mpv" "$MPV_EXE"; fi
+        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$home_dir" "$MPV_EXE"; fi
         return 0
     fi
-    if [ -n "$MPV_EXE" ] || [ -d "$xdg/mpv" ] || [ -n "${MPV_HOME:-}" ]; then
-        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$xdg/mpv" "$MPV_EXE"; fi
+    if [ -n "$MPV_EXE" ] || [ -d "$home_dir" ] || [ -n "${MPV_HOME:-}" ]; then
+        if [ -n "${MPV_HOME:-}" ]; then add_candidate mpv "$MPV_HOME" "$MPV_EXE"; else add_candidate mpv "$home_dir" "$MPV_EXE"; fi
     fi
     if hikari_flatpak_mpv; then add_candidate flatpak "$HOME/.var/app/io.mpv.Mpv/config/mpv" ''; fi
     if hikari_snap_mpv; then add_candidate snap "$HOME/snap/mpv/current/.config/mpv" ''; fi
@@ -3213,9 +3181,10 @@ migrate_sosc() {
 # ---------------------------------------------------------------------------
 
 # Copies what the installer may change to <config>-respaldo-hikari-<stamp>, next
-# to it (BACKUP; '' when there is nothing to copy). Symbolic links to folders
-# are skipped, never followed; a linked file is copied as the file. A copy
-# that fails half-way is deleted.
+# to it (BACKUP; '' when there is nothing to copy). A linked item (dotfiles) is
+# copied with what it holds, since the installer writes inside it; links further
+# in stay links, and a broken link is skipped. A copy that fails half-way is
+# deleted.
 make_backup() {
     local cfg=$1 parent name p items kb=0 k base n
     BACKUP=''
@@ -3225,7 +3194,6 @@ make_backup() {
     for name in "${BACKUP_ITEMS[@]}"; do
         p="$cfg/$name"
         [ -e "$p" ] || [ -L "$p" ] || continue
-        if [ -L "$p" ] && [ -d "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         if [ -L "$p" ] && [ ! -e "$p" ]; then warn "$(T link_skipped "$(clean_text "$p")")"; continue; fi
         items[${#items[@]}]=$name
     done
@@ -3235,14 +3203,16 @@ make_backup() {
     n=2
     while [ -e "$BACKUP" ] || [ -L "$BACKUP" ]; do BACKUP="$base-$n"; n=$((n + 1)); done
     for name in "${items[@]}"; do
-        k=$(du -skL "$cfg/$name" 2>/dev/null | cut -f1)
+        k=$(du -skH "$cfg/$name" 2>/dev/null | cut -f1)
         kb=$((kb + ${k:-0}))
     done
     detail "$(T backup_size "$((kb / 1024)).$(((kb % 1024) * 10 / 1024))")"
     if ! mkdir "$BACKUP"; then HIKARI_ERR=$BACKUP; BACKUP=''; return 1; fi
     for name in "${items[@]}"; do
         if [ -d "$cfg/$name" ]; then
-            cp -pPR "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
+            # -H: a linked folder (dotfiles) is copied with what it holds, since
+            # the installer writes and deletes inside it; links further in stay links.
+            cp -pRH "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         else
             cp -p "$cfg/$name" "$BACKUP/$name" || { rm -rf "$BACKUP"; HIKARI_ERR=$name; BACKUP=''; return 1; }
         fi
@@ -3506,6 +3476,16 @@ restore_note() {
     [ -z "$BACKUP" ] || HIKARI_ERR="$HIKARI_ERR $(T restore_hint "$BACKUP") $(T restore_how "$CFG")"
 }
 
+# mpv.conf and input.conf are written last: one that cannot be written (a link
+# into a read-only store, say) is found before anything in the folder changes,
+# a sosc migration included.
+confs_writable() {
+    local f
+    for f in "$CFG/mpv.conf" "$CFG/input.conf"; do
+        if [ -e "$f" ] && [ ! -w "$f" ]; then HIKARI_ERR=$(T read_only "$(clean_text "$f")"); return 1; fi
+    done
+}
+
 # Installs into the candidate $1 (index).
 install_target() {
     CFG=${C_DIR[$1]}
@@ -3524,7 +3504,7 @@ install_target() {
         mkdir -p "$CFG" || { HIKARI_ERR=$CFG; return 1; }
     fi
     step_begin "$(T ui_installing)"
-    if ! migrate_sosc || ! install_steps "$kind" "$exe"; then
+    if ! confs_writable || ! migrate_sosc || ! install_steps "$kind" "$exe"; then
         step_end fail
         restore_note
         return 1
@@ -3618,6 +3598,19 @@ install_steps() {
     fi
     if [ "$FIRST" = 0 ] && rec_get mpv_conf_final_eol; then mpv_eol=$REC_VALUE; else mpv_eol=$(final_eol_state "$CFG/mpv.conf"); fi
     if [ "$FIRST" = 0 ] && rec_get input_conf_final_eol; then input_eol=$REC_VALUE; else input_eol=$(final_eol_state "$CFG/input.conf"); fi
+
+    # What was here before hikari, recorded before the first change: a first
+    # run that fails later must not leave the retry to take hikari's own uosc,
+    # thumbfast and their .conf files for the user's.
+    if [ "$FIRST" = 1 ]; then
+        local early=("uosc_preexisting=$(yesno "$uosc_before")" "thumbfast_preexisting=$(yesno "$thumb_before")"
+            "uosc_conf_preexisting=$(yesno "$uconf_before")" "thumbfast_conf_preexisting=$(yesno "$tconf_before")"
+            "mpv_conf_preexisting=$(yesno "$mpv_before")" "input_conf_preexisting=$(yesno "$input_before")"
+            "mpv_conf_final_eol=$mpv_eol" "input_conf_final_eol=$input_eol" "shaders_preexisting=$(yesno "$shaders_before")")
+        # The backup of this first run is the one from before hikari, also for a retry.
+        [ -z "$BACKUP" ] || early[${#early[@]}]="first_backup=$BACKUP"
+        add_record_entries "$CFG" "${early[@]}" || return 1
+    fi
 
     # a2. uosc or suji: hikari's copy of the one not chosen is set aside
     # (never deleted), and the chosen one comes back if hikari set it aside
@@ -3777,7 +3770,9 @@ install_steps() {
         if [ "$name" = "$SUJI_CONF" ]; then
             [ "$IFACE" = suji ] || continue
             if [ "$sconf_known" = 0 ]; then shared=1; else shared=0; fi
-        elif [ "$FIRST" = 0 ]; then
+        elif [ "$FIRST" = 0 ] && { rec_get hikari_version || [ -e "$CFG/$ORIGINALS_DIR/script-opts/$name" ]; }; then
+            # Kept aside only once: on the first run, or on the retry of one
+            # that failed before it got here.
             shared=0
         fi
         if [ "$shared" = 1 ] && [ -f "$CFG/script-opts/$name" ]; then
@@ -4135,7 +4130,7 @@ uninstall_steps() {
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do
-        if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" -type f -print 2>/dev/null | head -n 1)" ]; then
+        if [ -d "$CFG/$d" ] && [ ! -L "$CFG/$d" ] && [ -z "$(find "$CFG/$d" ! -type d -print 2>/dev/null | head -n 1)" ]; then
             remove_item "$CFG/$d" "$CFG" || return 1
         fi
     done
@@ -4194,6 +4189,9 @@ read_folder() {
         trim "$REPLY_LINE"
         p=$TRIMMED
         p=${p#\"}; p=${p%\"}; p=${p#\'}; p=${p%\'}
+        # A folder dragged into the macOS Terminal comes with its spaces and
+        # brackets escaped (My\ Folder): unescaped when the path as typed is not there.
+        if [ ! -e "$p" ] && [[ $p == *\\* ]]; then p=$(printf '%s' "$p" | sed 's/\\\(.\)/\1/g'); fi
         case $p in '' | 0) return 1 ;; esac
         if ! p=$(abs_path "$p"); then warn "$(T path_bad "$(clean_text "$REPLY_LINE")")"; continue; fi
         parent=${p%/*}

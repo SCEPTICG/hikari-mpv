@@ -147,24 +147,32 @@ local msg = require('mp.msg')
 local options = require('mp.options')
 local utils = require('mp.utils')
 
--- hikari's modules in ~~/script-modules: the texts (hikari-i18n.lua), the
--- chapter kinds (hikari-chapters.lua), the release names (hikari-release.lua)
--- and the menus (hikari-menu.lua), these two needing the texts first.
--- Single-file scripts get no mpv folder in package.path, so the folder is
--- added for each require and taken out again (see the header of
--- hikari-i18n.lua).
-local function load_module(name)
+-- hikari's modules in ~~/script-modules. Single-file scripts get no mpv folder
+-- in package.path, so the folder is added for each require and taken out again
+-- (see the header of hikari-i18n.lua). An optional one that cannot be loaded
+-- is a warning and nil, not an error.
+local function load_module(name, optional)
 	local dir = mp.command_native({'expand-path', '~~/script-modules'})
 	if type(dir) ~= 'string' or dir == '' or dir:find('[;?]') then
+		if optional then return nil end
 		error('hikari: unusable script-modules folder: ' .. tostring(dir))
 	end
 	local saved = package.path
 	package.path = dir .. '/?.lua;' .. saved
 	local ok, module = pcall(require, name)
 	package.path = saved
-	if not ok then error('hikari: cannot load script-modules/' .. name .. '.lua (reinstall hikari): ' .. tostring(module)) end
+	if not ok then
+		local text = 'hikari: cannot load script-modules/' .. name .. '.lua (reinstall hikari): ' .. tostring(module)
+		if optional then
+			msg.warn(text)
+			return nil
+		end
+		error(text)
+	end
 	return module
 end
+-- The texts, the chapter kinds, the release names and the menus, these two
+-- needing the texts first.
 local i18n = load_module('hikari-i18n')
 local chapter_kinds = load_module('hikari-chapters')
 local release = load_module('hikari-release')
@@ -394,28 +402,31 @@ end
 -- Warned once until the list can be read again, not on every save.
 local warned_broken = false
 
-local function warn_broken(why)
+local function warn_broken(why, kept)
 	if warned_broken then return end
 	warned_broken = true
 	msg.warn('Ignoring ' .. LIST_PATH .. ' (' .. why .. '): continue watching starts empty, '
-		.. 'and the file is only written again when there is something to save')
+		.. (kept and 'and nothing is saved until it can be read'
+			or 'and the file is only written again when there is something to save'))
 end
 
 -- The entries of the list, checked, newest first, one per file. Missing file:
--- empty. Broken or unreadable: empty, and a warning.
+-- empty. Broken: empty, and a warning. Unreadable (held by a sync tool or an
+-- antivirus for a moment): empty, a warning, and true, so it is not written over.
 local function read_list()
 	local path = list_path()
 	if not path then return {} end
 	local file = io.open(path, 'rb')
 	if not file then
-		if utils.file_info(path) then warn_broken('cannot be read') end
-		return {}
+		if not utils.file_info(path) then return {} end
+		warn_broken('cannot be read', true)
+		return {}, true
 	end
 	local content = file:read(MAX_LIST_BYTES + 1)
 	file:close()
 	if type(content) ~= 'string' then
-		warn_broken('cannot be read')
-		return {}
+		warn_broken('cannot be read', true)
+		return {}, true
 	end
 	if #content > MAX_LIST_BYTES then
 		warn_broken('too big')
@@ -551,9 +562,11 @@ local state = {
 	prompt = nil,
 	-- For the list menu while it is open: key -> the file exists, root -> it
 	-- answers (see root_of), folder -> its file names (false: unreadable),
-	-- watched episode -> {path, episode} of its next one (false: none), so the
-	-- redraws of an open menu (a save every SAVE_INTERVAL) read no names again.
-	exists = nil, roots = nil, folders = nil, nexts = nil,
+	-- watched episode -> {path, episode} of its next one (false: none), folder
+	-- -> what each of its names is (see release.next_episode), so the redraws
+	-- of an open menu (a save every SAVE_INTERVAL) read no names again, and
+	-- several series in one big folder read each name once.
+	exists = nil, roots = nil, folders = nil, nexts = nil, parsed = nil,
 	cleared = false, -- Clear history while this file plays: only end-file saves it
 }
 
@@ -674,11 +687,11 @@ end
 
 -- The path of the next episode after the file at `path` among `names` (the
 -- file names of its folder), and that episode (see hikari-release); nil when
--- there is none.
-local function next_in(path, names)
+-- there is none. `parsed`: see release.next_episode.
+local function next_in(path, names, parsed)
 	local dir, name = split_file(path)
 	if not dir or not names then return nil end
-	local next_name = release.next_episode(name, names, MAX_FOLDER)
+	local next_name = release.next_episode(name, names, MAX_FOLDER, parsed)
 	if not next_name then return nil end
 	return dir .. next_name, release.episode_of(next_name)
 end
@@ -715,7 +728,9 @@ local function watched_item(entry, windows, now)
 	if not names then return unavailable(item) end
 	local key = path_key(entry.path, windows)
 	if state.nexts[key] == nil then
-		local next_path, next_episode = next_in(entry.path, names)
+		local dir_key = path_key(dir, windows)
+		state.parsed[dir_key] = state.parsed[dir_key] or {}
+		local next_path, next_episode = next_in(entry.path, names, state.parsed[dir_key])
 		state.nexts[key] = next_path and {path = next_path, episode = next_episode} or false
 	end
 	local found = state.nexts[key]
@@ -735,7 +750,7 @@ local function list_menu_data(entries)
 	entries = entries or read_list()
 	local windows, now = is_windows(), clock.now()
 	state.exists, state.roots, state.folders = state.exists or {}, state.roots or {}, state.folders or {}
-	state.nexts = state.nexts or {}
+	state.nexts, state.parsed = state.nexts or {}, state.parsed or {}
 	local items = {}
 	for _, entry in ipairs(entries) do
 		if entry.series and entry.state == 'watched' then
@@ -779,7 +794,7 @@ local function open_menu()
 		mp.osd_message(i18n.t('resume_disabled'), 3)
 		return
 	end
-	state.exists, state.roots, state.folders, state.nexts = {}, {}, {}, {}
+	state.exists, state.roots, state.folders, state.nexts, state.parsed = {}, {}, {}, {}, {}
 	local entries = read_list()
 	-- Keeps the button in step with a list another mpv window changed.
 	publish(entries)
@@ -791,8 +806,8 @@ end
 -- Reads the list again, lets `change` modify it (it returns true when it did)
 -- and writes it back, newest first and within history_size.
 local function update_list(change)
-	local entries = read_list()
-	if not change(entries) then return end
+	local entries, unreadable = read_list()
+	if unreadable or not change(entries) then return end
 	sort_entries(entries)
 	for i = #entries, opts.history_size + 1, -1 do entries[i] = nil end
 	write_list(entries)
