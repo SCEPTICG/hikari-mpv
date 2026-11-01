@@ -14,7 +14,7 @@
 --   menu.observe(fn)                   -- fn(type or nil) when the open menu changes
 --   menu.uosc()                        -- uosc is loaded
 --   menu.on_uosc(fn)                   -- fn() when uosc says it has started
---   menu.show_uosc(whole)              -- uosc's interface held whole, or not
+--   menu.hold_uosc(hold)               -- hold uosc's interface whole, or let go
 --   menu.suji()                        -- suji is loaded and turned on, now
 --
 -- Decisions:
@@ -62,10 +62,17 @@
 --   again each time with PROBE, a message uosc has no handler for (mpv's Lua
 --   drops it). It means uosc only, never suji. menu.suji() reads
 --   SUJI_ENABLED each time.
--- - menu.show_uosc(true) sends uosc `set-min-visibility 1` (its interface
---   whole, as when it is toggled on), false sends 0 (back to following the
---   pointer). hikari-skip holds it while the pointer is on its button, which
---   sits where uosc would show its bar only half faded in.
+-- - menu.hold_uosc(true) sends uosc `set-min-visibility 1` (its interface
+--   whole, as when it is toggled on), and hold_uosc(false) sends 0 (back to
+--   following the pointer), only after a 1 that was sent. hikari-skip holds
+--   it while the pointer is on its button, which sits where uosc would show
+--   its bar only half faded in. uosc keeps one min_visibility for everyone
+--   (toggle-ui, toggle-elements), so a bar already up for good is left alone:
+--   when user-data/osc/margins has `b` above 0 (uosc publishes it while its
+--   controls or timeline are persistent or at min_visibility above 0.5)
+--   nothing is sent, so no 0 later takes away a bar the user pinned. Our own
+--   0 takes uosc's animation to bring that `b` back to 0: for UOSC_SETTLE
+--   seconds after it, `b` is not read.
 -- - The selector: one line per item, `title  ·  hint`; the active item
 --   marked `• ` and chosen by default, unless selected_index says another.
 --   Items that cannot be chosen (selectable = false): headings and notes (no
@@ -113,6 +120,9 @@ local SUJI_ENABLED = 'user-data/suji/enabled'
 local PROBE = 'hikari-probe'
 local REOPEN_DELAY = 0.1
 local OPEN_TIMEOUT = 2
+-- Seconds uosc's fade (animation_duration, 100 ms by default) gets after our
+-- set-min-visibility 0 (see hold_uosc).
+local UOSC_SETTLE = 0.5
 
 local unpack = table.unpack or unpack
 
@@ -381,8 +391,16 @@ function M.uosc()
 	return uosc_seen
 end
 
-function M.show_uosc(whole)
-	if mp.commandv('script-message-to', UOSC, 'set-min-visibility', whole and '1' or '0') then uosc_seen = true end
+local uosc_held, uosc_let_go = false, nil
+function M.hold_uosc(hold)
+	if hold == uosc_held then return end
+	if hold and not (uosc_let_go and mp.get_time() - uosc_let_go < UOSC_SETTLE) then
+		local margins = mp.get_property_native('user-data/osc/margins')
+		if type(margins) == 'table' and type(margins.b) == 'number' and margins.b > 0 then return end
+	end
+	if mp.commandv('script-message-to', UOSC, 'set-min-visibility', hold and '1' or '0') then uosc_seen = true end
+	uosc_held = hold
+	if not hold then uosc_let_go = mp.get_time() end
 end
 
 -- fn() when uosc broadcasts `uosc-version` as it starts.

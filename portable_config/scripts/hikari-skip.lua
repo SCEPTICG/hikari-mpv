@@ -86,9 +86,14 @@
 -- - uosc fades its bar in by how near the pointer is (fully within 40 px,
 --   not at all past 120), and the button sits 15 px above it: on the button
 --   the bar would show half way. So while the pointer is on our button uosc's
---   interface is held whole (menu.show_uosc), as other players show their
+--   interface is held whole (menu.hold_uosc), as other players show their
 --   controls, and let go when it leaves, the button goes, or the pointer
---   rests there for cursor-autohide ms (mpv hides it, and uosc its bar).
+--   rests there for cursor-autohide ms (mpv hides it, and uosc its bar with
+--   uosc's default autohide; with autohide=no or cursor-autohide-fs-only in a
+--   window the bar shows half way again then). A bar the user pinned
+--   (toggle-ui) is left alone. When the button turns up under a pointer
+--   already at rest, the bar shows for cursor-autohide ms: mpv's first
+--   mouse-pos after observe_property starts the timer, as a move would.
 -- - The skip seeks `absolute+exact` to the next chapter's start, and the range
 --   is "dismissed" so the button goes away at once even if the seek lands a
 --   frame short. A dismissed range shows again when playback leaves it, goes
@@ -809,7 +814,7 @@ local function refresh()
 	local whole = state.hovered and not state.uosc_rested
 	if menu and whole ~= state.uosc_shown then
 		state.uosc_shown = whole
-		menu.show_uosc(whole)
+		menu.hold_uosc(whole)
 	end
 	if not rect then
 		if state.drawn then

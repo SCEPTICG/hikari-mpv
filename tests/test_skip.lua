@@ -805,6 +805,17 @@ test('uosc shows its interface whole while the pointer is on the button', functi
 	eq(visibility(), 'uosc 1, uosc 0, uosc 1, uosc 0', 'nothing more off the button')
 end)
 
+test('uosc is let go when a uosc menu opens over the button', function()
+	local s = play(95)
+	mock.set('mouse-pos', center(s.layout()))
+	mock.set('user-data/uosc/menu/type', 'hikari-speed')
+	local last
+	for _, c in ipairs(mock.commands) do
+		if c[3] == 'set-min-visibility' then last = c[4] end
+	end
+	eq(last, '0')
+end)
+
 test('uosc lets its interface hide when the pointer rests on the button (cursor-autohide)', function()
 	local s = play(95)
 	mock.props['cursor-autohide'] = 1000
