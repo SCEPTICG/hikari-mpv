@@ -14,6 +14,7 @@
 --   menu.observe(fn)                   -- fn(type or nil) when the open menu changes
 --   menu.uosc()                        -- uosc is loaded
 --   menu.on_uosc(fn)                   -- fn() when uosc says it has started
+--   menu.show_uosc(whole)              -- uosc's interface held whole, or not
 --   menu.suji()                        -- suji is loaded and turned on, now
 --
 -- Decisions:
@@ -61,6 +62,10 @@
 --   again each time with PROBE, a message uosc has no handler for (mpv's Lua
 --   drops it). It means uosc only, never suji. menu.suji() reads
 --   SUJI_ENABLED each time.
+-- - menu.show_uosc(true) sends uosc `set-min-visibility 1` (its interface
+--   whole, as when it is toggled on), false sends 0 (back to following the
+--   pointer). hikari-skip holds it while the pointer is on its button, which
+--   sits where uosc would show its bar only half faded in.
 -- - The selector: one line per item, `title  ·  hint`; the active item
 --   marked `• ` and chosen by default, unless selected_index says another.
 --   Items that cannot be chosen (selectable = false): headings and notes (no
@@ -374,6 +379,10 @@ end
 function M.uosc()
 	if not uosc_seen and mp.commandv('script-message-to', UOSC, PROBE) then uosc_seen = true end
 	return uosc_seen
+end
+
+function M.show_uosc(whole)
+	if mp.commandv('script-message-to', UOSC, 'set-min-visibility', whole and '1' or '0') then uosc_seen = true end
 end
 
 -- fn() when uosc broadcasts `uosc-version` as it starts.
