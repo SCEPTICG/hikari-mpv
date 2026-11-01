@@ -58,6 +58,14 @@ end
 local function overlay(s) return s.overlay end
 local function section(s) return mock.sections[s.MOUSE_SECTION] end
 local function center(rect) return {x = (rect.x0 + rect.x1) / 2, y = (rect.y0 + rect.y1) / 2, hover = true} end
+-- The commands sent, less uosc's set-min-visibility (the pointer on the button).
+local function skips()
+	local list = {}
+	for _, c in ipairs(mock.commands) do
+		if c[3] ~= 'set-min-visibility' then list[#list + 1] = c end
+	end
+	return list
+end
 
 -- Classification ----------------------------------------------------------------
 
@@ -683,10 +691,10 @@ test('mouse bindings: release on the button skips, double click is swallowed', f
 	local on_up, on_down = sec.bindings[1][2], sec.bindings[1][3]
 	mock.set('mouse-pos', center(s.layout()))
 	on_down()
-	eq(#mock.commands, 0, 'nothing on press')
+	eq(#skips(), 0, 'nothing on press')
 	on_up()
-	eq(#mock.commands, 1)
-	local c = mock.commands[1]
+	eq(#skips(), 1)
+	local c = skips()[1]
 	eq(c[1], 'seek'); eq(c[2], '180.000'); eq(c[3], 'absolute+exact')
 	eq(s.is_visible(), false, 'hidden right after skipping')
 	-- Second click of a double click, inside input-doubleclick-time (300 ms).
@@ -695,7 +703,7 @@ test('mouse bindings: release on the button skips, double click is swallowed', f
 	eq(sec.enabled, true, 'guard keeps the section')
 	on_down()
 	on_up()
-	eq(#mock.commands, 1, 'second click swallowed, one skip only')
+	eq(#skips(), 1, 'second click swallowed, one skip only')
 	eq(sec.enabled, true, 'still guarded: MBTN_LEFT_DBL lands in our section (ignore)')
 	mock.advance(0.2)
 	eq(s.guard_active(), false)
@@ -728,7 +736,7 @@ test('the guard outlives end-file after a playlist-next skip', function()
 	local on_up, on_down = sec.bindings[1][2], sec.bindings[1][3]
 	mock.set('mouse-pos', center(s.layout()))
 	on_down(); on_up()
-	eq(mock.commands[1][1], 'playlist-next')
+	eq(skips()[1][1], 'playlist-next')
 	mock.advance(0.03)
 	mock.events['end-file']()
 	eq(s.guard_active(), true, 'guard survives the end of the file')
@@ -739,7 +747,7 @@ test('the guard outlives end-file after a playlist-next skip', function()
 	eq(#mock.observers['time-pos'], 0, 'time-pos not observed')
 	eq(#mock.observers['mouse-pos'], 0, 'mouse-pos not observed')
 	on_down(); on_up()
-	eq(#mock.commands, 1, 'second click swallowed')
+	eq(#skips(), 1, 'second click swallowed')
 	mock.advance(0.3)
 	eq(s.guard_active(), false); eq(sec.enabled, false, 'released by the timer, no file loaded')
 end)
@@ -752,16 +760,16 @@ test('a click started in the guard never skips a range that appears under it', f
 	local rect = s.layout()
 	mock.set('mouse-pos', center(rect))
 	on_down(); on_up()
-	eq(#mock.commands, 1)
+	eq(#skips(), 1)
 	mock.advance(0.1)
 	mock.set('time-pos', 180.02) -- the preview button shows up under the pointer
 	eq(s.is_visible(), true)
 	mock.set('mouse-pos', center(s.layout()))
 	on_down(); on_up()
-	eq(#mock.commands, 1, 'second click of the double click does not skip the preview')
+	eq(#skips(), 1, 'second click of the double click does not skip the preview')
 	mock.advance(0.5)
 	on_down(); on_up()
-	eq(#mock.commands, 2, 'a later, separate click does')
+	eq(#skips(), 2, 'a later, separate click does')
 end)
 
 test('last ending with a non-finite duration: no skip', function()
@@ -772,8 +780,61 @@ test('last ending with a non-finite duration: no skip', function()
 		mock.props['playlist-count'] = 1
 		mock.props.duration = d
 		eq(s.skip(), false, tostring(d))
-		eq(#mock.commands, 0); eq(s.is_visible(), true)
+		eq(#skips(), 0); eq(s.is_visible(), true)
 	end
+end)
+
+test('uosc shows its interface whole while the pointer is on the button', function()
+	local s = play(95)
+	local function visibility()
+		local list = {}
+		for _, c in ipairs(mock.commands) do
+			if c[3] == 'set-min-visibility' then list[#list + 1] = c[2] .. ' ' .. c[4] end
+		end
+		return table.concat(list, ', ')
+	end
+	mock.commands = {}
+	mock.set('mouse-pos', center(s.layout()))
+	eq(visibility(), 'uosc 1', 'on the button')
+	mock.set('mouse-pos', {x = 1, y = 1, hover = true})
+	eq(visibility(), 'uosc 1, uosc 0', 'off it')
+	mock.set('mouse-pos', center(s.layout()))
+	mock.set('time-pos', 180)
+	eq(visibility(), 'uosc 1, uosc 0, uosc 1, uosc 0', 'the button goes from under the pointer')
+	mock.set('mouse-pos', {x = 2, y = 2, hover = true})
+	eq(visibility(), 'uosc 1, uosc 0, uosc 1, uosc 0', 'nothing more off the button')
+end)
+
+test('uosc is let go when a uosc menu opens over the button', function()
+	local s = play(95)
+	mock.set('mouse-pos', center(s.layout()))
+	mock.set('user-data/uosc/menu/type', 'hikari-speed')
+	local last
+	for _, c in ipairs(mock.commands) do
+		if c[3] == 'set-min-visibility' then last = c[4] end
+	end
+	eq(last, '0')
+end)
+
+test('uosc lets its interface hide when the pointer rests on the button (cursor-autohide)', function()
+	local s = play(95)
+	mock.props['cursor-autohide'] = 1000
+	local function last()
+		local value
+		for _, c in ipairs(mock.commands) do
+			if c[3] == 'set-min-visibility' then value = c[4] end
+		end
+		return value
+	end
+	mock.set('mouse-pos', center(s.layout()))
+	eq(last(), '1', 'on the button')
+	mock.advance(0.9)
+	eq(last(), '1', 'not yet')
+	mock.advance(0.2)
+	eq(last(), '0', 'rested: let go')
+	local moved = center(s.layout()); moved.x = moved.x + 1
+	mock.set('mouse-pos', moved)
+	eq(last(), '1', 'a move shows it again')
 end)
 
 test('press on the button and release outside does not skip', function()
@@ -786,7 +847,7 @@ test('press on the button and release outside does not skip', function()
 	mock.set('mouse-pos', {x = 5, y = 5, hover = true})
 	eq(sec.enabled, true, 'kept until release')
 	on_up()
-	eq(#mock.commands, 0, 'no skip')
+	eq(#skips(), 0, 'no skip')
 	eq(sec.enabled, false, 'released')
 end)
 
@@ -799,7 +860,7 @@ test('section held while pressed even if the button hides, then released', funct
 	mock.set('time-pos', 200)
 	eq(sec.enabled, true, 'up event still ours')
 	on_up()
-	eq(#mock.commands, 0, 'no skip once hidden')
+	eq(#skips(), 0, 'no skip once hidden')
 	eq(sec.enabled, false)
 end)
 
@@ -807,13 +868,13 @@ test('keyboard binding skips only while visible', function()
 	local s = play(10)
 	assert(mock.bindings.skip, 'skip binding')
 	mock.bindings.skip()
-	eq(#mock.commands, 0, 'outside the range')
+	eq(#skips(), 0, 'outside the range')
 	mock.set('time-pos', 1300.5)
 	mock.bindings.skip()
-	eq(#mock.commands, 1)
-	eq(mock.commands[1][2], '1390.000')
+	eq(#skips(), 1)
+	eq(skips()[1][2], '1390.000')
 	mock.bindings.skip()
-	eq(#mock.commands, 1, 'dismissed: second press ignored')
+	eq(#skips(), 1, 'dismissed: second press ignored')
 end)
 
 test('dismissed range comes back after leaving and re-entering it', function()
@@ -832,7 +893,7 @@ test('ending as last chapter: next playlist entry if there is one', function()
 	mock.props['playlist-pos'] = 0
 	mock.props['playlist-count'] = 3
 	mock.bindings.skip()
-	eq(#mock.commands, 1); eq(mock.commands[1][1], 'playlist-next')
+	eq(#skips(), 1); eq(skips()[1][1], 'playlist-next')
 	eq(s.is_visible(), false)
 end)
 
@@ -842,8 +903,8 @@ test('ending as last chapter with nothing next: seek near the end', function()
 	mock.props['playlist-pos'] = 0
 	mock.props['playlist-count'] = 1
 	mock.bindings.skip()
-	eq(#mock.commands, 1)
-	local c = mock.commands[1]
+	eq(#skips(), 1)
+	local c = skips()[1]
 	eq(c[1], 'seek'); eq(c[2], '1419.000'); eq(c[3], 'absolute+exact')
 	eq(s.is_visible(), false, 'button gone while the last second plays')
 end)

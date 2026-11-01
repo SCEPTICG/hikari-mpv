@@ -749,6 +749,43 @@ test('the eight menu scripts load the module; nobody else talks to uosc directly
 	end
 end)
 
+-- The set-min-visibility values sent to uosc, in order.
+local function holds()
+	local list = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'script-message-to' and c[2] == 'uosc' and c[3] == 'set-min-visibility' then list[#list + 1] = c[4] end
+	end
+	return table.concat(list, ',')
+end
+
+test('hold_uosc: 1 then 0, once each; a pinned bar is left alone', function()
+	local menu = fresh(true)
+	menu.hold_uosc(false)
+	eq(holds(), '', 'nothing to let go')
+	menu.hold_uosc(true); menu.hold_uosc(true)
+	eq(holds(), '1', 'held once')
+	menu.hold_uosc(false); menu.hold_uosc(false)
+	eq(holds(), '1,0', 'let go once')
+	-- Our own 0 still fading: the margins are not read.
+	mock.props['user-data/osc/margins'] = {l = 0, r = 0, t = 0, b = 0.1}
+	menu.hold_uosc(true)
+	eq(holds(), '1,0,1', 'held again while uosc fades')
+	menu.hold_uosc(false)
+	-- Later, the bar is up for good (toggle-ui): neither 1 nor 0.
+	mock.advance(1)
+	menu.hold_uosc(true); menu.hold_uosc(false)
+	eq(holds(), '1,0,1,0', 'pinned bar left alone')
+	mock.props['user-data/osc/margins'] = {l = 0, r = 0, t = 0, b = 0}
+	menu.hold_uosc(true)
+	eq(holds(), '1,0,1,0,1', 'unpinned: held')
+end)
+
+test('hold_uosc without uosc: nothing breaks', function()
+	local menu = fresh(false)
+	menu.hold_uosc(true); menu.hold_uosc(false)
+	eq(#mock.logs.error, 0); eq(menu.uosc(), false)
+end)
+
 test('no uosc: only command lists run; any other value is ignored with a warning', function()
 	local menu = fresh(false, true)
 	menu.open({type = 'hikari-test', title = 'T', items = {

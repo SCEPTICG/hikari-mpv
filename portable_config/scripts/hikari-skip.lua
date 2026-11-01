@@ -83,6 +83,17 @@
 --   is gone, but the section stays enabled for one `input-doubleclick-time`
 --   (the guard): the second click of a double click is swallowed there, along
 --   with MBTN_LEFT_DBL, so it neither toggles fullscreen nor drags the window.
+-- - uosc fades its bar in by how near the pointer is (fully within 40 px,
+--   not at all past 120), and the button sits 15 px above it: on the button
+--   the bar would show half way. So while the pointer is on our button uosc's
+--   interface is held whole (menu.hold_uosc), as other players show their
+--   controls, and let go when it leaves, the button goes, or the pointer
+--   rests there for cursor-autohide ms (mpv hides it, and uosc its bar with
+--   uosc's default autohide; with autohide=no or cursor-autohide-fs-only in a
+--   window the bar shows half way again then). A bar the user pinned
+--   (toggle-ui) is left alone. When the button turns up under a pointer
+--   already at rest, the bar shows for cursor-autohide ms: mpv's first
+--   mouse-pos after observe_property starts the timer, as a move would.
 -- - The skip seeks `absolute+exact` to the next chapter's start, and the range
 --   is "dismissed" so the button goes away at once even if the seek lands a
 --   frame short. A dismissed range shows again when playback leaves it, goes
@@ -619,6 +630,9 @@ local state = {
 	fullscreen = false, maximized = false, hidpi = 1,
 	colors = parse_colors(nil),
 	mouse = nil, hovered = false, pressed = false, guard_press = false, section_enabled = false,
+	-- uosc_shown: uosc's interface is held whole (set-min-visibility 1);
+	-- uosc_rested: the pointer has rested cursor-autohide ms (uosc_timer).
+	uosc_shown = false, uosc_rested = false, uosc_timer = nil,
 	drawn = nil, -- last data sent to the overlay, nil when nothing is drawn
 	-- Automatic skip. auto_saved: the mode saved by the menu, which wins over
 	-- opts.auto_skip. For this file: auto_done, the ranges skipped on their own
@@ -795,6 +809,13 @@ local function refresh()
 	end
 	state.hovered = inside(rect, state.mouse)
 	update_section()
+	-- uosc fades its bar in by the pointer's distance, so on the button it
+	-- would show half way: whole while the pointer is on the button.
+	local whole = state.hovered and not state.uosc_rested
+	if menu and whole ~= state.uosc_shown then
+		state.uosc_shown = whole
+		menu.hold_uosc(whole)
+	end
 	if not rect then
 		if state.drawn then
 			overlay:remove()
@@ -813,6 +834,15 @@ end
 
 on_mouse_pos = function(_, mouse)
 	state.mouse = mouse
+	-- A resting pointer hides (cursor-autohide) and uosc's bar with it: let
+	-- go of the bar then too. A move brings both back.
+	state.uosc_rested = false
+	if state.uosc_timer then state.uosc_timer:kill() end
+	local ms = mp.get_property_native('cursor-autohide')
+	state.uosc_timer = type(ms) == 'number' and inside(layout(), mouse) and mp.add_timeout(ms / 1000, function()
+		state.uosc_rested = true
+		refresh()
+	end) or nil
 	-- While the pointer stays on the button, refresh() re-enables our section
 	-- on every move, keeping it above anything enabled since.
 	refresh()
