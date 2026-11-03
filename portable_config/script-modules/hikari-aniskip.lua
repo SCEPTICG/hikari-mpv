@@ -35,10 +35,11 @@
 --   one of whose titles is, once normalised (lower case, punctuation as
 --   spaces, apostrophes dropped, × as x), exactly the series name; for a
 --   season N > 1, exactly the name followed by `Season N`, `Nth Season`,
---   `Second Season`, `SN` or `N` (as AniList and Kitsu name sequels). More
---   than one MyAnimeList id among the matches, or an episode number above the
---   episode count the service knows, and the lookup stops. A Kitsu series
---   linked to two or more MyAnimeList ids is ambiguous in the same way.
+--   `Second Season`, `SN`, `N` or N in Roman numerals up to X (as AniList and
+--   Kitsu name sequels: `II`). More than one MyAnimeList id among the
+--   matches, or an episode number above the episode count the service
+--   knows, and the lookup stops. A Kitsu series linked to two or more
+--   MyAnimeList ids is ambiguous in the same way.
 -- - AniSkip keeps times submitted by players, each for one length of the
 --   episode, and answers with at most one per type: with `episodeLength`, the
 --   one whose length is closest to it; without (or 0), the most voted
@@ -180,6 +181,8 @@ function M.normalize(text)
 end
 
 local ORDINAL_WORDS = {'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'}
+-- Sequels named with a Roman numeral (Gaikotsu Kishi-sama, ... Odekakechuu II), lower case as normalised.
+local ROMAN = {nil, 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'}
 
 local function ordinal(n)
 	local last2, last = n % 100, n % 10
@@ -205,6 +208,7 @@ function M.season_names(series, season)
 	names[series .. ' s' .. season] = true
 	names[series .. ' ' .. season] = true
 	if ORDINAL_WORDS[season] then names[series .. ' ' .. ORDINAL_WORDS[season] .. ' season'] = true end
+	if ROMAN[season] then names[series .. ' ' .. ROMAN[season]] = true end
 	return names
 end
 
