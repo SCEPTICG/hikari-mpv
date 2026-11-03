@@ -67,6 +67,7 @@ extra:
 
 nav:
   - Home: index.md
+  - What's new: whats-new.md
   - Install:
       - Windows: install/windows.md
       - macOS and Linux: install/macos-linux.md
