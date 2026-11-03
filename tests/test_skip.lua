@@ -122,6 +122,46 @@ test('intros and outros can be enabled, openings and endings disabled', function
 	eq(i18n.t(s.classify('Preview').label), 'Saltar avance ›')
 end)
 
+-- An episode that starts with the recap: recap, opening, part A, ending.
+local RECAP_EPISODE = chapters({
+	{0, 'Recap'}, {60, 'Opening'}, {150, 'Part A'}, {1300, 'Ending'},
+})
+
+test('recaps are recognised, on by default, and can be turned off', function()
+	local s = load()
+	for _, title in ipairs({'Recap', 'RECAP', '  recap  ', 'Recap of episode 3', 'Episode Recap',
+		'Previously', 'Previously...', 'Previously…', 'Previously on', 'Previously on...', 'Previously on…',
+		'Previously on Frieren', 'あらすじ', '前回のあらすじ'}) do
+		local kind = s.classify(title)
+		eq(kind and kind.name, 'recaps', title)
+	end
+	eq(s.classify('Recap').label, 'skip_recap')
+	-- Content, not a recap: a wrong match would skip it.
+	for _, title in ipairs({'Recapture', 'Recaps', 'Recap1', 'Summary', 'Résumé', 'Previously unseen',
+		'Previous episode', 'Previouslyon', 'The previously lost tape'}) do
+		eq(s.classify(title), nil, title)
+	end
+	s = load({['hikari-skip-recaps'] = 'no'})
+	eq(s.classify('Recap'), nil, 'recaps=no')
+	eq(#s.build_ranges(RECAP_EPISODE, 1420), 2, 'only the opening and the ending')
+	s = load({['hikari-skip-extra_recaps'] = '^rückblick$'})
+	eq(s.classify('Rückblick').name, 'recaps', 'extra_recaps')
+end)
+
+test('ranges: a recap to the next chapter; never as the last chapter', function()
+	local s = load()
+	local ranges = s.build_ranges(RECAP_EPISODE, 1420)
+	eq(#ranges, 3)
+	eq(ranges[1].kind.name, 'recaps'); eq(ranges[1].start, 0); eq(ranges[1].finish, 60)
+	eq(ranges[1].next_time, 60)
+	eq(ranges[2].kind.name, 'openings')
+	-- A recap episode with one chapter called Recap is not skipped whole.
+	eq(#s.build_ranges(chapters({{0, 'Recap'}}), 1420), 0, 'a single chapter')
+	eq(#s.build_ranges(chapters({{0, 'Part A'}, {1300, 'Recap'}}), 1420), 0, 'the last chapter')
+	local i18n = dofile('portable_config/script-modules/hikari-i18n.lua')
+	eq(i18n.t(ranges[1].kind.label), 'Saltar resumen ›')
+end)
+
 test('extra patterns are added; malformed ones are ignored safely', function()
 	local s = load({['hikari-skip-extra_openings'] = '^op%d+$|^opening %d+$|[',
 		['hikari-skip-extra_endings'] = '^credits$'})
@@ -345,6 +385,18 @@ test('suji 0.3.0: show-action with the label and a command back, nothing drawn h
 	mock.set('osd-dimensions', {w = 1920, h = 1080})
 	eq(#actions(), 1, 'no resend')
 	eq(overlay(s).updates, 1, 'drawn once, before suji')
+end)
+
+test('suji 0.3.0: a recap goes through show-action like the other kinds', function()
+	local s = play(5, RECAP_EPISODE)
+	suji('0.3.0')
+	shown(actions()[1], 'Saltar resumen ›')
+	eq(overlay(s).visible, false, 'drawn by suji')
+	mock.messages['skip-action']()
+	local seek
+	for _, c in ipairs(mock.commands) do if c[1] == 'seek' then seek = c end end
+	eq(seek and seek[2], '60.000', 'the command skips the recap')
+	eq(actions()[#actions()][3], 'hide-action', 'and the button goes')
 end)
 
 test('suji 0.3.0: in a range from the start, no overlay at all', function()
@@ -1238,6 +1290,33 @@ test('automatic skip: all skips both; intros count as openings, outros as ending
 	aplay(80, nil, {[AUTO] = 'all', ['hikari-skip-openings'] = 'no'})
 	play_to(95)
 	eq(#jumps(), 0, 'openings=no')
+end)
+
+test('automatic skip: a recap goes with the openings (openings and all), not with the endings', function()
+	local s = aplay(0, RECAP_EPISODE, {[AUTO] = 'openings'})
+	play_to(1)
+	local j = jumps()
+	eq(#j, 1, 'the recap the file starts in')
+	eq(j[1][2], '60.000', 'to the next chapter')
+	eq(mock.osd[#mock.osd], 'Resumen saltado')
+	eq(label(s), '‹ Ver resumen', 'the button to go back')
+	-- Going back: to the recap's start, and not skipped on its own again.
+	mock.bindings.skip()
+	eq(mock.commands[#mock.commands][2], '0.000', 'back to the recap')
+	seek_to(0)
+	play_to(5)
+	eq(#jumps(), 2, 'only the seek back')
+	eq(label(s), 'Saltar resumen ›', 'its own button, as usual')
+	aplay(0, RECAP_EPISODE, {[AUTO] = 'all'})
+	play_to(1)
+	eq(jumps()[1][2], '60.000', 'all')
+	s = aplay(0, RECAP_EPISODE, {[AUTO] = 'endings'})
+	play_to(5)
+	eq(#jumps(), 0, 'endings: not the recap')
+	eq(label(s), 'Saltar resumen ›')
+	aplay(0, RECAP_EPISODE, {[AUTO] = 'openings', ['hikari-skip-recaps'] = 'no'})
+	play_to(5)
+	eq(#jumps(), 0, 'recaps=no: no button, no automatic skip')
 end)
 
 test('automatic skip: a seek by hand into a range does not skip it; a file that starts or resumes in one does', function()

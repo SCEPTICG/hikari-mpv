@@ -909,6 +909,15 @@ local STRINGS = {
 		ru = 'Пропустить интро ›', tr = 'İntro’yu atla ›', uk = 'Пропустити інтро ›',
 		['zh-HK'] = '跳過序幕 ›', ['zh-hans'] = '跳过序幕 ›',
 	},
+	-- The "previously on" at the start of an episode, with the word for a
+	-- recap in each language (as streaming services say it); not yet checked
+	-- by native speakers.
+	skip_recap = {
+		en = 'Skip recap ›', es = 'Saltar resumen ›', de = 'Rückblick überspringen ›', fr = 'Passer le récap ›',
+		it = 'Salta riassunto ›', pl = 'Pomiń streszczenie ›', pt = 'Pular recapitulação ›', ro = 'Sari peste rezumat ›',
+		ru = 'Пропустить пересказ ›', tr = 'Özeti atla ›', uk = 'Пропустити переказ ›',
+		['zh-HK'] = '跳過前情提要 ›', ['zh-hans'] = '跳过前情提要 ›',
+	},
 	skip_ending = {
 		en = 'Skip ending ›', es = 'Saltar ending ›', de = 'Ending überspringen ›', fr = 'Passer l’ending ›',
 		it = 'Salta ending ›', pl = 'Pomiń ending ›', pt = 'Pular encerramento ›', ro = 'Sari peste ending ›',
@@ -944,6 +953,12 @@ local STRINGS = {
 		ru = '‹ Смотреть интро', tr = '‹ İntro’yu izle', uk = '‹ Дивитися інтро',
 		['zh-HK'] = '‹ 觀看序幕', ['zh-hans'] = '‹ 观看序幕',
 	},
+	skip_undo_recap = {
+		en = '‹ Watch recap', es = '‹ Ver resumen', de = '‹ Rückblick ansehen', fr = '‹ Voir le récap',
+		it = '‹ Guarda riassunto', pl = '‹ Obejrzyj streszczenie', pt = '‹ Ver recapitulação', ro = '‹ Vezi rezumatul',
+		ru = '‹ Смотреть пересказ', tr = '‹ Özeti izle', uk = '‹ Дивитися переказ',
+		['zh-HK'] = '‹ 觀看前情提要', ['zh-hans'] = '‹ 观看前情提要',
+	},
 	skip_undo_ending = {
 		en = '‹ Watch ending', es = '‹ Ver ending', de = '‹ Ending ansehen', fr = '‹ Voir l’ending',
 		it = '‹ Guarda ending', pl = '‹ Obejrzyj ending', pt = '‹ Ver encerramento', ro = '‹ Vezi ending',
@@ -968,6 +983,12 @@ local STRINGS = {
 		it = 'Intro saltata', pl = 'Pominięto intro', pt = 'Introdução pulada', ro = 'Intro sărit',
 		ru = 'Интро пропущено', tr = 'İntro atlandı', uk = 'Інтро пропущено',
 		['zh-HK'] = '已跳過序幕', ['zh-hans'] = '已跳过序幕',
+	},
+	skip_done_recap = {
+		en = 'Recap skipped', es = 'Resumen saltado', de = 'Rückblick übersprungen', fr = 'Récap passé',
+		it = 'Riassunto saltato', pl = 'Pominięto streszczenie', pt = 'Recapitulação pulada', ro = 'Rezumat sărit',
+		ru = 'Пересказ пропущен', tr = 'Özet atlandı', uk = 'Переказ пропущено',
+		['zh-HK'] = '已跳過前情提要', ['zh-hans'] = '已跳过前情提要',
 	},
 	skip_done_ending = {
 		en = 'Ending skipped', es = 'Ending saltado', de = 'Ending übersprungen', fr = 'Ending passé',

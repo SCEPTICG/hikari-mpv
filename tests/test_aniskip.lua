@@ -427,7 +427,8 @@ test('AniSkip: impossible or hostile results are dropped, broken answers refused
 	end
 	eq(one(r('"op"', 10, 100, 1400)), 1, 'valid')
 	eq(one(r('"mixed-ed"', 1300, 1390, 1400)), 1, 'mixed-ed')
-	eq(one(r('"recap"', 10, 100, 1400)), 0, 'recap is not asked for')
+	eq(one(r('"recap"', 10, 100, 1400)), 1, 'recap')
+	eq(one(r('"recap"', 10, 700, 1400)), 0, 'a recap longer than MAX_SEGMENT')
 	eq(one(r('"op\\"; rm -rf ~"', 10, 100, 1400)), 0, 'odd type')
 	eq(one(r('"op"', -5, 100, 1400)), 0, 'negative start')
 	eq(one(r('"op"', 100, 100, 1400)), 0, 'empty')
@@ -471,6 +472,21 @@ test('times are chosen for this file\'s duration', function()
 	ranges = m.select(mixed, 1406)
 	near(ranges[1].start, 12, 'closest opening')
 	near(ranges[2].finish, 1406, 'ending cut to the duration')
+end)
+
+test('AniSkip (recorded): a recap is a range like the others, by start', function()
+	local m = load_module()
+	local results = assert(m.parse_aniskip(data('aniskip-40748-5-1435.json')))
+	eq(#results, 3)
+	eq(results[3].type, 'recap'); near(results[3].start, 0.5); near(results[3].finish, 17.917)
+	local ranges = m.select(results, 1435)
+	eq(#ranges, 3)
+	eq(ranges[1].kind, 'recap'); near(ranges[1].start, 0.5); near(ranges[1].finish, 17.917)
+	eq(ranges[2].kind, 'opening'); near(ranges[2].start, 142.739)
+	eq(ranges[3].kind, 'ending'); near(ranges[3].start, 1274.723)
+	-- The same checks as the others: another cut's recap is not used.
+	local other = {{type = 'recap', start = 0, finish = 60, length = 1400}}
+	eq(#m.select(other, 1435), 0, 'another cut (35 s longer)')
 end)
 
 test('AniSkip (recorded): without the length it answers for another cut', function()
@@ -548,7 +564,7 @@ test('first lookup: AniList, then AniSkip, both cached; the second asks nothing'
 	eq(#mock.async, 1, 'AniSkip asked')
 	args = mock.async[1].cmd.args
 	eq(args[#args], 'https://api.aniskip.com/v2/skip-times/52991/5'
-		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=1470')
+		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&types%5B%5D=recap&episodeLength=1470')
 	eq(mock.async[1].cmd.stdin_data, nil, 'GET')
 	mock.finish_async(ok_answer(data('aniskip-52991-5.json')))
 	eq(got.called, true); eq(#got.results, 2)
@@ -706,7 +722,7 @@ test('AniList disabled (403): Kitsu is asked, and its id goes to AniSkip', funct
 	eq(#mock.async, 1, 'AniSkip asked')
 	args = mock.async[1].cmd.args
 	eq(args[#args], 'https://api.aniskip.com/v2/skip-times/41587/6'
-		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength=1434')
+		.. '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&types%5B%5D=recap&episodeLength=1434')
 	mock.finish_async(ok_answer(data('aniskip-41587-6-1434.json')))
 	eq(got.called, true)
 	local ranges = m.select(got.results, 1434)
@@ -1174,8 +1190,10 @@ test('skip: no lookup without a release for this very file, or for non-anime', f
 	eq(#mock.async, 0, 'not anime')
 	play(nil, nil, nil, 0)
 	eq(#mock.async, 0, 'no duration')
+	play({['hikari-skip-openings'] = 'no', ['hikari-skip-recaps'] = 'no', ['hikari-skip-endings'] = 'no'})
+	eq(#mock.async, 0, 'openings, recaps and endings turned off')
 	play({['hikari-skip-openings'] = 'no', ['hikari-skip-endings'] = 'no'})
-	eq(#mock.async, 0, 'openings and endings turned off')
+	eq(#mock.async, 1, 'recaps alone are worth asking')
 end)
 
 test('skip: a release published after file-loaded is still looked up, once', function()
@@ -1341,6 +1359,45 @@ test('skip: the double-click guard works with AniSkip\'s button too', function()
 	s.on_up()
 	eq(mock.commands[#mock.commands][2], '243.346')
 	assert(s.guard_active(), 'guard on after a mouse skip')
+end)
+
+-- Frieren's id, then Jujutsu Kaisen 5's times (a recap, an opening and an
+-- ending) for a file of 1435 s: only the times matter here.
+local function answer_recap()
+	mock.finish_async(ok_answer(data('anilist-sousou-no-frieren.json')))
+	mock.finish_async(ok_answer(data('aniskip-40748-5-1435.json')))
+end
+
+test('skip: AniSkip\'s recap has its button and skips to its end; recaps=no leaves it out', function()
+	os.remove(CACHE)
+	local s = play(nil, nil, nil, 1435, 0)
+	answer_recap()
+	eq(#s.state.ranges, 3)
+	eq(s.state.ranges[1].kind.name, 'recaps')
+	mock.set('time-pos', 5)
+	eq(label(s), 'Saltar resumen ›')
+	assert(s.skip(), 'skipped')
+	local seek = mock.commands[#mock.commands]
+	eq(seek[1], 'seek'); eq(seek[2], '17.917'); eq(seek[3], 'absolute+exact')
+	os.remove(CACHE)
+	s = play({['hikari-skip-recaps'] = 'no'}, nil, nil, 1435, 0)
+	answer_recap()
+	eq(#s.state.ranges, 2, 'the opening and the ending')
+	eq(s.state.ranges[1].kind.name, 'openings')
+	mock.set('time-pos', 5)
+	eq(s.is_visible(), false, 'no button in the recap')
+end)
+
+test('skip: automatic skip (openings) skips AniSkip\'s recap as playback enters it', function()
+	os.remove(CACHE)
+	local s = play({['hikari-skip-auto_skip'] = 'openings'}, nil, nil, 1435)
+	answer_recap()
+	mock.advance(s.LOAD_GRACE)
+	for _, t in ipairs({0, 0.5, 1}) do mock.set('time-pos', t) end
+	local seek = mock.commands[#mock.commands]
+	eq(seek[1], 'seek'); eq(seek[2], '17.917', 'to the end of the recap')
+	eq(label(s), '‹ Ver resumen')
+	eq(mock.osd[#mock.osd], 'Resumen saltado')
 end)
 
 test('skip: automatic skip with AniSkip\'s times: the opening as playback enters it, the ending only to its end', function()

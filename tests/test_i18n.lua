@@ -170,6 +170,28 @@ test('the Spanish and English texts that used to be fixed', function()
 	eq(i18n.t('title_season', {season = 1}, 'en'), 'S1')
 end)
 
+test('every kind of chapter has its button, its undo button and its message in the 13 languages', function()
+	local i18n = fresh()
+	local kinds = dofile('portable_config/script-modules/hikari-chapters.lua').kinds()
+	local names = {}
+	for _, kind in ipairs(kinds) do
+		names[#names + 1] = kind.name
+		for _, prefix in ipairs({'skip_', 'skip_undo_', 'skip_done_'}) do
+			local key = kind.label:gsub('^skip_', prefix)
+			local entry = i18n.STRINGS[key]
+			assert(entry, 'no ' .. key)
+			for _, code in ipairs(CODES) do assert(entry[code], key .. ' has no ' .. code) end
+		end
+	end
+	eq(table.concat(names, ' '), 'openings intros recaps endings outros')
+	i18n = fresh({['hikari-language'] = 'es'})
+	eq(i18n.t('skip_recap'), 'Saltar resumen ›')
+	eq(i18n.t('skip_undo_recap'), '‹ Ver resumen')
+	eq(i18n.t('skip_done_recap'), 'Resumen saltado')
+	eq(i18n.t('skip_recap', nil, 'en'), 'Skip recap ›')
+	eq(i18n.t('skip_undo_recap', nil, 'en'), '‹ Watch recap')
+end)
+
 test('normalize: locale names and tags to one of the 13 codes', function()
 	local i18n = fresh()
 	local cases = {

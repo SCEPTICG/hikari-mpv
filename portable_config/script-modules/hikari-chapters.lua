@@ -1,5 +1,5 @@
--- hikari-chapters: which chapters are an opening, intro, ending or outro, by
--- their title. A module, not a script: hikari-skip.lua (the skip button) and
+-- hikari-chapters: which chapters are an opening, intro, recap, ending or
+-- outro, by their title. A module, not a script: hikari-skip.lua (the skip button) and
 -- hikari-resume.lua (an episode counts as watched once its ending starts)
 -- load it, so both read chapter titles the same way.
 --
@@ -18,6 +18,17 @@
 --   Credits (and Preview). Like ED and Ending, with or without a chapter
 --   after it. `End Credits` is one of them; `Credit` alone is not (no release
 --   we know of uses it), nor are `Discredits` or `Creditscene`.
+-- - Recaps (the "previously on" at the start of an episode): `Recap`,
+--   `Recap ...` and `... Recap` (Crunchyroll calls the segment Recap, as its
+--   other skip segments Intro, Credits and Preview); `Previously`,
+--   `Previously on`, each alone or followed by `...` or `…`, and `Previously
+--   on ...` (not `Previously unseen` and the like: content); the Japanese
+--   あらすじ (前回のあらすじ). Like an opening, only with another chapter
+--   after it: a recap episode with a single chapter called Recap is not
+--   skipped whole. `Summary` and `Résumé` are left out on purpose: they also
+--   name a part of the content (the summary of a lecture, a review), and a
+--   wrong match skips what the user wants to see. `Recapture` and `Recaps`
+--   are no recap.
 -- - kinds() hands out a new table each time: hikari-skip adds the user's
 --   extra patterns and its on/off options to its copy, and nobody else sees
 --   them.
@@ -40,6 +51,12 @@ local KINDS = {
 		name = 'intros', label = 'skip_intro', requires_next = true,
 		patterns = {'^intro$', ' intro$', '^avant$', '^prologue$'},
 		words = {},
+	},
+	{
+		name = 'recaps', label = 'skip_recap', requires_next = true,
+		patterns = {'^recap$', '^recap ', ' recap$', '^previously$', '^previously%.', '^previously…',
+			'^previously on$', '^previously on ', '^previously on%.', '^previously on…'},
+		words = {'あらすじ'},
 	},
 	{
 		name = 'endings', label = 'skip_ending',
