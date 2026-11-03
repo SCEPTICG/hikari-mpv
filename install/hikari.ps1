@@ -288,6 +288,12 @@ $script:SkipState = 'hikari-skip.txt'
 # of its writes (<list>.<pid>-<n>.tmp, ResumeTmpPattern).
 $script:ResumeList = 'hikari-resume.json'
 $script:ResumeTmpPattern = '^hikari-resume\.json\.[0-9]+-[0-9]+\.tmp\z'
+# The audio and subtitles picked per series that hikari-media-language.lua
+# remembers (series names and languages): like the continue watching list,
+# never in a backup, removed on uninstall with the temporary files of its
+# writes (TracksTmpPattern).
+$script:TracksList = 'hikari-tracks.json'
+$script:TracksTmpPattern = '^hikari-tracks\.json\.[0-9]+-[0-9]+\.tmp\z'
 $script:DisabledDir = 'scripts-desactivados'
 $script:OriginalsDir = 'hikari-originales'
 
@@ -4912,11 +4918,11 @@ function Uninstall-HikariTarget {
         }
         Remove-HikariItem -Path (Join-HikariPath $config $script:OriginalsDir) -Root $config
         Remove-HikariItem -Path (Join-HikariPath $config $script:RecordName) -Root $config
-        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'), $script:SkipState, ($script:SkipState + '.tmp'), $script:ResumeList)) {
+        foreach ($name in @($script:UpdateState, ($script:UpdateState + '.tmp'), $script:AniSkipCache, ($script:AniSkipCache + '.tmp'), $script:SkipState, ($script:SkipState + '.tmp'), $script:ResumeList, $script:TracksList)) {
             $statePath = Join-HikariPath $config $name
             if (Test-Path -LiteralPath $statePath -PathType Leaf) { Remove-HikariItem -Path $statePath -Root $config }
         }
-        foreach ($f in @(Get-ChildItem -LiteralPath $config -File -Force | Where-Object { $_.Name -match $script:ResumeTmpPattern })) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $config -File -Force | Where-Object { $_.Name -match $script:ResumeTmpPattern -or $_.Name -match $script:TracksTmpPattern })) {
             Remove-HikariItem -Path $f.FullName -Root $config
         }
         foreach ($dirName in @($script:DisabledDir, $script:ShadersDisabledDir)) {

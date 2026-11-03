@@ -1301,6 +1301,8 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Set-TestFile (P @($cfg, 'hikari-skip.txt')) $skipState
     $resumeList = '{"version":1,"entries":[{"path":"C:\\x\\ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}' + "`n"
     Set-TestFile (P @($cfg, 'hikari-resume.json')) $resumeList
+    $tracksList = '{"version":1,"series":[{"key":"show","updated":1,"subs":{"kind":"none"}}]}' + "`n"
+    Set-TestFile (P @($cfg, 'hikari-tracks.json')) $tracksList
     $resumeConf = "enabled=yes`nask=no`nhistory_size=5`n"
     Set-TestFile (P @($cfg, 'script-opts', 'hikari-resume.conf')) $resumeConf
     $backup2 = Install-HikariTarget -Candidate $cand -Source $Source -Artifacts $art -Stamp '20261005-120100'
@@ -1309,6 +1311,8 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Assert-True (@((Read-HikariRecord $cfg).Files) -contains 'script-opts/hikari-resume.conf') 'kept hikari-resume.conf still in the record'
     Assert-True (Test-Path -LiteralPath (P @($backup2, 'script-opts', 'hikari-resume.conf'))) 'the backup has the options'
     Assert-True (-not (Test-Path -LiteralPath (P @($backup2, 'hikari-resume.json')))) 'the continue watching list is not in the backup'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-tracks.json'))) $tracksList 'tracks per series kept on update'
+    Assert-True (-not (Test-Path -LiteralPath (P @($backup2, 'hikari-tracks.json')))) 'the tracks per series are not in the backup'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-update.txt'))) $updateState 'update check state kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-aniskip.json'))) $aniskipCache 'AniSkip cache kept on update'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-skip.txt'))) $skipState 'automatic skip pick kept on update'
@@ -1328,10 +1332,15 @@ Test-Case 'install, update and uninstall on an AnimeJaNai-like folder' {
     Set-TestFile (P @($cfg, 'hikari-skip.txt.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-resume.json.4242-1.tmp')) 'x'
     Set-TestFile (P @($cfg, 'hikari-resume.json.bak')) 'mine'
+    Set-TestFile (P @($cfg, 'hikari-tracks.json.4242-1.tmp')) 'x'
+    Set-TestFile (P @($cfg, 'hikari-tracks.json.bak')) 'mine'
     [void](Uninstall-HikariTarget -Candidate $cand -Stamp '20261005-120200')
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json')))) 'continue watching list gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-resume.json.4242-1.tmp')))) 'continue watching temporary file gone'
     Assert-Equal (Get-TestText (P @($cfg, 'hikari-resume.json.bak'))) 'mine' 'a file of the user named like the list stays'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-tracks.json')))) 'tracks per series gone'
+    Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'hikari-tracks.json.4242-1.tmp')))) 'tracks per series temporary file gone'
+    Assert-Equal (Get-TestText (P @($cfg, 'hikari-tracks.json.bak'))) 'mine' 'a file of the user named like the tracks list stays'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'hikari-resume.conf')))) 'continue watching options gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-chapters.lua')))) 'chapters module gone'
     Assert-True (-not (Test-Path -LiteralPath (P @($cfg, 'script-modules', 'hikari-release.lua')))) 'release names module gone'

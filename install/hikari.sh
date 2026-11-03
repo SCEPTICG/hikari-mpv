@@ -169,6 +169,12 @@ hikari_defaults() {
     # files of its writes (<list>.<pid>-<n>.tmp, RESUME_TMP_RE).
     RESUME_LIST='hikari-resume.json'
     RESUME_TMP_RE='^hikari-resume\.json\.[0-9]+-[0-9]+\.tmp$'
+    # The audio and subtitles picked per series that hikari-media-language.lua
+    # remembers (series names and languages): like the continue watching list,
+    # never in a backup, removed on uninstall with the temporary files of its
+    # writes (TRACKS_TMP_RE).
+    TRACKS_LIST='hikari-tracks.json'
+    TRACKS_TMP_RE='^hikari-tracks\.json\.[0-9]+-[0-9]+\.tmp$'
     DISABLED_DIR='scripts-desactivados'
     ORIGINALS_DIR='hikari-originales'
     # What the backup copies: only what the installer can change (and the files
@@ -4122,11 +4128,11 @@ uninstall_steps() {
     done
     remove_item "$CFG/$ORIGINALS_DIR" "$CFG" || return 1
     remove_item "$CFG/$RECORD_NAME" "$CFG" || return 1
-    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp" "$SKIP_STATE" "$SKIP_STATE.tmp" "$RESUME_LIST"; do
+    for f in "$UPDATE_STATE" "$UPDATE_STATE.tmp" "$ANISKIP_CACHE" "$ANISKIP_CACHE.tmp" "$SKIP_STATE" "$SKIP_STATE.tmp" "$RESUME_LIST" "$TRACKS_LIST"; do
         if [ -f "$CFG/$f" ] || [ -L "$CFG/$f" ]; then remove_item "$CFG/$f" "$CFG" || return 1; fi
     done
-    for f in "$CFG/$RESUME_LIST".*.tmp; do
-        [[ ${f##*/} =~ $RESUME_TMP_RE ]] || continue
+    for f in "$CFG/$RESUME_LIST".*.tmp "$CFG/$TRACKS_LIST".*.tmp; do
+        [[ ${f##*/} =~ $RESUME_TMP_RE || ${f##*/} =~ $TRACKS_TMP_RE ]] || continue
         if [ -f "$f" ] || [ -L "$f" ]; then remove_item "$f" "$CFG" || return 1; fi
     done
     for d in "$DISABLED_DIR" "$SHADERS_DISABLED_DIR"; do

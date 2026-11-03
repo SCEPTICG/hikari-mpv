@@ -331,6 +331,8 @@ printf 'auto_skip=openings\n' >"$cfg/hikari-skip.txt"
 cp "$cfg/hikari-skip.txt" "$tmp/skip-state-before"
 printf '{"version":1,"entries":[{"path":"/nas/anime/ep.mkv","title":"ep","position":100,"duration":1420,"updated":1}]}\n' >"$cfg/hikari-resume.json"
 cp "$cfg/hikari-resume.json" "$tmp/resume-list-before"
+printf '{"version":1,"series":[{"key":"show","updated":1,"subs":{"kind":"none"}}]}\n' >"$cfg/hikari-tracks.json"
+cp "$cfg/hikari-tracks.json" "$tmp/tracks-list-before"
 printf 'enabled=yes\nask=no\nhistory_size=5\n' >"$cfg/script-opts/hikari-resume.conf"
 cp "$cfg/script-opts/hikari-resume.conf" "$tmp/resume-conf-before"
 cp "$cfg/input.conf" "$tmp/input-before-update"
@@ -343,11 +345,14 @@ check 'update: update check state kept as it was' same "$tmp/update-state-before
 check 'update: AniSkip cache kept as it was' same "$tmp/aniskip-cache-before" "$cfg/hikari-aniskip.json"
 check 'update: automatic skip pick kept as it was' same "$tmp/skip-state-before" "$cfg/hikari-skip.txt"
 check 'update: continue watching list kept as it was' same "$tmp/resume-list-before" "$cfg/hikari-resume.json"
+check 'update: tracks per series kept as they were' same "$tmp/tracks-list-before" "$cfg/hikari-tracks.json"
 check 'update: your hikari-resume.conf kept' same "$tmp/resume-conf-before" "$cfg/script-opts/hikari-resume.conf"
 check 'update: said hikari-resume.conf was kept' has "$out" 'script-opts/hikari-resume.conf already exists: kept'
 check 'update: hikari-resume.conf still in the record' grep -qx 'file=script-opts/hikari-resume.conf' "$cfg/hikari-installed.txt"
 check 'update: the continue watching list is not in the backup' \
     test -z "$(ls "$h"/.config/mpv-respaldo-hikari-*/hikari-resume.json 2>/dev/null)" -a -n "$(ls -d "$h"/.config/mpv-respaldo-hikari-*/script-opts 2>/dev/null)"
+check 'update: the tracks per series are not in the backup' \
+    test -z "$(ls "$h"/.config/mpv-respaldo-hikari-*/hikari-tracks.json* 2>/dev/null)" -a -n "$(ls -d "$h"/.config/mpv-respaldo-hikari-*/script-opts 2>/dev/null)"
 check 'update: Anime4K up to date, not copied again' has "$out" 'Anime4K 4.0.1 is already installed'
 check 'update: blocks not repeated' same "$tmp/input-before-update" "$cfg/input.conf"
 check 'update: mpv.conf block still once' test "$(count_of "$cfg/mpv.conf" '# >>> hikari')" = 1
@@ -403,11 +408,18 @@ printf 'x' >"$cfg/hikari-skip.txt.tmp"
 printf '{"version":1,"entries":[]}\n' >"$cfg/hikari-resume.json"
 printf 'x' >"$cfg/hikari-resume.json.4242-1.tmp"
 printf 'mine' >"$cfg/hikari-resume.json.bak"
+printf '{"version":1,"series":[]}\n' >"$cfg/hikari-tracks.json"
+printf 'x' >"$cfg/hikari-tracks.json.4242-1.tmp"
+printf 'mine' >"$cfg/hikari-tracks.json.bak"
 run "$h" --uninstall --yes
 check 'created by hikari: continue watching list and its temporary files removed' \
     test ! -e "$cfg/hikari-resume.json" -a ! -e "$cfg/hikari-resume.json.4242-1.tmp" -a ! -e "$cfg/scripts/hikari-resume.lua" -a ! -e "$cfg/script-opts/hikari-resume.conf" -a ! -e "$cfg/script-modules/hikari-chapters.lua" -a ! -e "$cfg/script-modules/hikari-release.lua"
 check 'created by hikari: a file of the user named like the list stays' test "$(cat "$cfg/hikari-resume.json.bak")" = mine
 rm -f "$cfg/hikari-resume.json.bak"
+check 'created by hikari: tracks per series and their temporary files removed' \
+    test ! -e "$cfg/hikari-tracks.json" -a ! -e "$cfg/hikari-tracks.json.4242-1.tmp"
+check 'created by hikari: a file of the user named like the tracks list stays' test "$(cat "$cfg/hikari-tracks.json.bak")" = mine
+rm -f "$cfg/hikari-tracks.json.bak"
 check 'created by hikari: update check state removed (no question)' test ! -e "$cfg/hikari-update.txt" -a ! -e "$cfg/hikari-update.txt.tmp" -a ! -e "$cfg/scripts/hikari-update.lua"
 check 'created by hikari: AniSkip cache removed (no question)' test ! -e "$cfg/hikari-aniskip.json" -a ! -e "$cfg/hikari-aniskip.json.tmp" -a ! -e "$cfg/script-modules/hikari-aniskip.lua"
 check 'created by hikari: automatic skip pick removed (no question)' test ! -e "$cfg/hikari-skip.txt" -a ! -e "$cfg/hikari-skip.txt.tmp"
