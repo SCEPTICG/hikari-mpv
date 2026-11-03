@@ -7,10 +7,10 @@
 -- -> Sousou no Frieren, episode 5). From there:
 -- 1. MyAnimeList id of the series: AniList's public GraphQL API
 --    (https://graphql.anilist.co, no key), searched with the series name. When
---    AniList cannot be reached or answers with an error, Kitsu
---    (https://kitsu.app/api/edge, no key, JSON:API) is asked instead, and when
---    Kitsu fails too, Jikan (https://api.jikan.moe, an unofficial MyAnimeList
---    API).
+--    AniList cannot be reached, answers with an error or knows no such
+--    series, Kitsu (https://kitsu.app/api/edge, no key, JSON:API) is asked
+--    instead, and when Kitsu fails or finds nothing too, Jikan
+--    (https://api.jikan.moe, an unofficial MyAnimeList API).
 -- 2. Times: AniSkip (https://api.aniskip.com/v2/skip-times/<id>/<episode>),
 --    asking for `op`, `ed`, `mixed-op` and `mixed-ed` (an opening or ending
 --    mixed with scenes of the episode: skipped as openings and endings too)
@@ -28,9 +28,12 @@
 --   abbreviated titles, subtype, episode count, and its mappings to other
 --   sites, MyAnimeList's among them), and it answers fast. Jikan last: it
 --   scrapes MyAnimeList, allows 3 requests a second and 60 a minute, and is
---   the slowest and the one down most often. Each is asked only when the one
---   before fails (cannot be reached, an error, an answer that is not valid),
---   not when it answers "no such series".
+--   the slowest and the one down most often. Each is asked when the one
+--   before fails (cannot be reached, an error, an answer that is not valid)
+--   or has no series that matches clearly: their searches differ (AniList
+--   finds nothing for Seanime's "Odekake-chuu", Kitsu finds the series). Not
+--   when the matches it found disagree (two MyAnimeList ids): another
+--   service's clearer answer could still be the wrong series.
 -- - A match must be clear, or nothing is shown: a series (TV, TV_SHORT or ONA)
 --   one of whose titles is, once normalised (lower case, punctuation as
 --   spaces, apostrophes dropped, × as x), exactly the series name, or
@@ -128,8 +131,9 @@ local LENGTH_TOLERANCE = 10     -- seconds between AniSkip's episode length and 
 local DAY = 24 * 3600
 M.TTL = {title = 30 * DAY, title_miss = 7 * DAY, times = 30 * DAY, times_miss = 3 * DAY}
 -- The way titles are matched (pick): a title miss saved with another `rev`
--- (or none) is asked again. 2: Roman numerals and joined hyphens.
-M.MATCH_REV = 2
+-- (or none) is asked again. 2: Roman numerals and joined hyphens; 3: a
+-- service that knows no such series hands over to the next.
+M.MATCH_REV = 3
 M.CACHE_LIMITS = {titles = 500, episodes = 2000}
 M.CACHE_BUDGET = CACHE_BUDGET
 
@@ -223,7 +227,7 @@ end
 
 -- The one MyAnimeList id among `candidates` ({mal, format, episodes, names})
 -- that is clearly `series` in `season`, and its episode count (or nil).
--- nil when none is, or when the matches disagree.
+-- nil when none is; nil, nil, true when the matches disagree.
 function M.pick(candidates, series, season)
 	local wanted = M.season_names(M.normalize(series), season)
 	local wanted_joined = M.season_names(M.normalize(series, true), season)
@@ -232,7 +236,7 @@ function M.pick(candidates, series, season)
 		if c.mal and FORMATS[c.format] then
 			for _, name in ipairs(c.names) do
 				if wanted[M.normalize(name)] or wanted_joined[M.normalize(name, true)] then
-					if found and found ~= c.mal then return nil end
+					if found and found ~= c.mal then return nil, nil, true end
 					found, episodes = c.mal, c.episodes
 					break
 				end
@@ -776,20 +780,29 @@ local function url_encode(text)
 	return (text:gsub('[^%w%-%._~]', function(c) return string.format('%%%02X', c:byte()) end))
 end
 
--- Candidates for `series`: from AniList; when it cannot be reached or does
--- not answer validly, from Kitsu; and then the same, from Jikan. done(list),
--- empty when the one that answered knows no such series (the next is not
--- asked then), or done(nil) when none answered.
-local function search(series, done)
+-- The MyAnimeList id of `series`: AniList is asked first; when it cannot be
+-- reached, does not answer validly, or knows no series that judge(list)
+-- picks, Kitsu; and then the same, Jikan. judge(list) -> mal, episodes,
+-- ambiguous. done(mal, episodes, true) from the first that picks one, or as
+-- soon as one finds the matches ambiguous (mal nil: the others are not
+-- asked, a clearer answer from them may still be the wrong series);
+-- done(nil, nil, true) when all three answered and know no such series;
+-- done(nil) when one of them did not answer (it might have known it: asked
+-- again next time instead of a miss kept for days).
+local function search(series, judge, done)
 	local sources = {
 		{name = 'AniList', url = M.ANILIST_URL, parse = M.parse_anilist,
 			body = utils.format_json({query = M.ANILIST_QUERY, variables = {search = series}})},
 		{name = 'Kitsu', url = M.KITSU_URL .. url_encode(series), parse = M.parse_kitsu, accept = M.KITSU_ACCEPT},
 		{name = 'Jikan', url = M.JIKAN_URL .. url_encode(series), parse = M.parse_jikan},
 	}
+	local failed = false
 	local function ask(i)
 		local source = sources[i]
-		if not source then return done(nil) end
+		if not source then
+			if failed then return done(nil) end
+			return done(nil, nil, true)
+		end
 		if i == 1 then
 			msg.verbose('AniSkip: asking ' .. source.name .. ' for the MyAnimeList id of "' .. series .. '"')
 		else
@@ -797,8 +810,14 @@ local function search(series, done)
 		end
 		fetch(source.name, source.url, source.body, function(answer)
 			local list, err = source.parse(answer)
-			if list then return done(list) end
-			if answer then msg.verbose('AniSkip: ' .. source.name .. ': ' .. tostring(err)) end
+			if list then
+				local mal, episodes, ambiguous = judge(list)
+				if mal or ambiguous then return done(mal, episodes, true) end
+				msg.verbose('AniSkip: ' .. source.name .. ' knows no such series')
+			else
+				failed = true
+				if answer then msg.verbose('AniSkip: ' .. source.name .. ': ' .. tostring(err)) end
+			end
 			ask(i + 1)
 		end, source.accept)
 	end
@@ -854,9 +873,9 @@ function M.lookup(query, done)
 		msg.verbose('AniSkip: MyAnimeList id of "' .. query.series .. '" from the cache')
 		return times(entry.mal, entry.episodes)
 	end
-	search(query.series, function(candidates)
-		if not candidates then return done(nil) end
-		local mal, episodes = M.pick(candidates, query.series, query.season)
+	local function judge(candidates) return M.pick(candidates, query.series, query.season) end
+	search(query.series, judge, function(mal, episodes, answered)
+		if not answered then return done(nil) end
 		M.save('titles', query.key, {at = M.now(), mal = mal or 0, episodes = mal and episodes or nil, rev = M.MATCH_REV})
 		times(mal or 0, episodes)
 	end)

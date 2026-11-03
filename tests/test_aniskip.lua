@@ -606,10 +606,18 @@ test('a "not found" for one length does not stop a file of another length', func
 	eq(#cache.episodes['52991:5:1420'].results, 2)
 end)
 
+-- What each service answers for a series it does not know.
+local NONE_ANILIST = '{"data":{"Page":{"media":[]}}}'
+local NONE_KITSU = '{"data":[],"meta":{"count":0},"links":{}}'
+local NONE_JIKAN = '{"data":[],"pagination":{"has_next_page":false}}'
+
 test('no clear match: cached as such, nothing sent to AniSkip', function()
 	local m = load_module()
 	local got = lookup(m, {series = 'Some Unknown Show', episode = 3, anime = true})
-	mock.finish_async(ok_answer('{"data":{"Page":{"media":[]}}}'))
+	mock.finish_async(ok_answer(NONE_ANILIST))
+	eq(got.called, false, 'AniList knows no such series: Kitsu is asked')
+	mock.finish_async(ok_answer(NONE_KITSU))
+	mock.finish_async(ok_answer(NONE_JIKAN))
 	eq(got.called, true); eq(got.results, nil)
 	eq(#mock.async, 0, 'no AniSkip')
 	eq(assert(mock.parse_json(read(CACHE))).titles['some unknown show|1'].mal, 0)
@@ -740,19 +748,77 @@ test('Kitsu fails: Jikan is asked', function()
 	end
 end)
 
-test('Kitsu says "no such series": Jikan is not asked, the miss is cached', function()
+test('AniList down, Kitsu says "no such series": Jikan is asked, and no miss is cached', function()
 	for what, answer in pairs({
-		['nothing found'] = '{"data":[],"meta":{"count":0},"links":{}}',
+		['nothing found'] = NONE_KITSU,
 		['no clear match'] = data('kitsu-sousou-no-frieren.json'),
 	}) do
 		local m = load_module()
 		local got = lookup(m, {series = 'Sousou no Frieren', season = 3, episode = 1, anime = true})
 		mock.finish_async(ok_answer(ANILIST_DISABLED))
 		mock.finish_async(ok_answer(answer))
-		eq(#mock.async, 0, what .. ': no Jikan, no AniSkip')
+		eq(#mock.async, 1, what .. ': Jikan asked')
+		mock.finish_async(ok_answer(NONE_JIKAN))
+		eq(#mock.async, 0, what .. ': no AniSkip')
 		eq(got.called, true, what); eq(got.results, nil, what)
-		eq(assert(mock.parse_json(read(CACHE))).titles['sousou no frieren|3'].mal, 0, what .. ': cached as no match')
+		-- AniList did not answer: it might know the series, so it is asked again next time.
+		eq(read(CACHE), nil, what .. ': nothing cached')
 	end
+end)
+
+test('AniList finds nothing for the name, Kitsu does: its id is used (Seanime\'s Odekake-chuu)', function()
+	local m = load_module()
+	local got = lookup(m, {series = 'Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu', episode = 8, anime = true})
+	mock.finish_async(ok_answer(NONE_ANILIST))
+	mock.finish_async(ok_answer(data('kitsu-gaikotsu-kishi-sama.json')))
+	local args = mock.async[1].cmd.args
+	assert(args[#args]:find('/48760/8?', 1, true), 'AniSkip with the id from Kitsu')
+	eq(got.called, false)
+	eq(assert(mock.parse_json(read(CACHE))).titles['gaikotsu kishi sama tadaima isekai e odekake chuu|1'].mal, 48760, 'cached')
+end)
+
+test('AniList knows no such series and Kitsu is down: no miss is cached, asked again', function()
+	local m = load_module()
+	local got = lookup(m, {series = 'Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu', episode = 8, anime = true})
+	mock.finish_async(ok_answer(NONE_ANILIST))
+	mock.finish_async(ok_answer('<html>502 Bad Gateway</html>'))
+	mock.finish_async(ok_answer(NONE_JIKAN))
+	eq(got.called, true); eq(got.results, nil)
+	eq((mock.parse_json(read(CACHE) or '{}') or {}).titles, nil, 'nothing cached')
+	lookup(m, {series = 'Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu', episode = 8, anime = true})
+	eq(#mock.async, 1, 'asked again')
+end)
+
+test('AniList knows no such series and Kitsu is ambiguous: Jikan is not asked', function()
+	local m = load_module()
+	local got = lookup(m, {series = 'Show', episode = 1, anime = true})
+	mock.finish_async(ok_answer(NONE_ANILIST))
+	local _, _, ambiguous = m.pick({{mal = 1, format = 'TV', names = {'Show'}}, {mal = 2, format = 'TV', names = {'Show'}}}, 'Show')
+	eq(ambiguous, true, 'pick says ambiguous')
+	mock.finish_async(ok_answer(mock.format_json({data = {
+		{id = '1', type = 'anime', attributes = {canonicalTitle = 'Show', titles = {}, abbreviatedTitles = {}, subtype = 'TV', episodeCount = 12},
+			relationships = {mappings = {data = {{type = 'mappings', id = '11'}}}}},
+		{id = '2', type = 'anime', attributes = {canonicalTitle = 'Show', titles = {}, abbreviatedTitles = {}, subtype = 'TV', episodeCount = 12},
+			relationships = {mappings = {data = {{type = 'mappings', id = '12'}}}}},
+	}, included = {
+		{id = '11', type = 'mappings', attributes = {externalSite = 'myanimelist/anime', externalId = '1'}},
+		{id = '12', type = 'mappings', attributes = {externalSite = 'myanimelist/anime', externalId = '2'}},
+	}})))
+	eq(#mock.async, 0, 'no Jikan, no AniSkip')
+	eq(got.called, true)
+	eq(assert(mock.parse_json(read(CACHE))).titles['show|1'].mal, 0)
+end)
+
+test('ambiguous on AniList: Kitsu is not asked, the miss is cached', function()
+	local m = load_module()
+	local got = lookup(m, {series = 'Show', episode = 1, anime = true})
+	mock.finish_async(ok_answer(mock.format_json({data = {Page = {media = {
+		{idMal = 1, format = 'TV', episodes = 12, title = {romaji = 'Show'}, synonyms = {}},
+		{idMal = 2, format = 'TV', episodes = 12, title = {romaji = 'Show'}, synonyms = {}},
+	}}}})))
+	eq(#mock.async, 0, 'nothing more asked')
+	eq(got.called, true); eq(got.results, nil)
+	eq(assert(mock.parse_json(read(CACHE))).titles['show|1'].mal, 0)
 end)
 
 test('no answer anywhere: nothing shown, nothing cached', function()
@@ -837,7 +903,9 @@ test('a long name made longer by normalising is still cached', function()
 	local m = load_module()
 	local series = string.rep('a×', 66) -- 198 bytes; normalised 'a x a x ...', 263
 	local got = lookup(m, {series = series, episode = 1, anime = true})
-	mock.finish_async(ok_answer('{"data":{"Page":{"media":[]}}}'))
+	mock.finish_async(ok_answer(NONE_ANILIST))
+	mock.finish_async(ok_answer(NONE_KITSU))
+	mock.finish_async(ok_answer(NONE_JIKAN))
 	eq(got.called, true)
 	lookup(m, {series = series, episode = 1, anime = true})
 	eq(#mock.async, 0, 'the "no match" came from the cache')
