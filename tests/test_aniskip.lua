@@ -175,6 +175,15 @@ test('AniList (recorded): Season N, N and the base name of long franchises', fun
 	eq(m.pick(kusuriya, 'The Apothecary Diaries', 2), 58514, 'English Season 2')
 end)
 
+test('a title miss saved before MATCH_REV is asked again; a hit is kept', function()
+	local m = load_module()
+	local t = 1000000
+	eq(m.title_fresh({at = t - 60, mal = 0}, t), false, 'old miss')
+	eq(m.title_fresh({at = t - 60, mal = 0, rev = m.MATCH_REV - 1}, t), false, 'older rev')
+	eq(m.title_fresh({at = t - 60, mal = 0, rev = m.MATCH_REV}, t), true, 'miss of this rev')
+	eq(m.title_fresh({at = t - 60, mal = 5}, t), true, 'hit without rev')
+end)
+
 test('a match must be clear: two ids, movies, specials and missing ids give nothing', function()
 	local m = load_module()
 	local function c(mal, format, names) return {mal = mal, format = format, names = names} end
@@ -193,6 +202,9 @@ test('a match must be clear: two ids, movies, specials and missing ids give noth
 	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu'), 48760, 'II is not season 1')
 	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu', 3), nil, 'II is not season 3')
 	eq(m.pick({c(6, 'TV', {'Show IV'})}, 'Show', 4), 6, 'IV')
+	-- Seanime's name for it against AniList's: a hyphen that joins two words.
+	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama Tadaima Isekai e Odekake-chuu'), 48760, 'Odekake-chuu is Odekakechuu')
+	eq(m.pick({c(7, 'TV', {'Kaguya-sama wa Kokurasetai'})}, 'Kaguya sama wa Kokurasetai'), 7, 'a space still finds a hyphen')
 	eq(m.pick({}, 'Show'), nil, 'nothing found')
 end)
 
@@ -601,6 +613,7 @@ test('no clear match: cached as such, nothing sent to AniSkip', function()
 	eq(got.called, true); eq(got.results, nil)
 	eq(#mock.async, 0, 'no AniSkip')
 	eq(assert(mock.parse_json(read(CACHE))).titles['some unknown show|1'].mal, 0)
+	eq(assert(mock.parse_json(read(CACHE))).titles['some unknown show|1'].rev, m.MATCH_REV, 'saved with the matching rev')
 	clock.t = T0 + 6 * DAY
 	lookup(m, {series = 'Some Unknown Show', episode = 4, anime = true})
 	eq(#mock.async, 0, 'within 7 days: nothing asked')
