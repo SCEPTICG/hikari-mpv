@@ -2,8 +2,8 @@
 -- hikari-skip.lua.
 -- A module, not a script: hikari-skip loads it (see the loader there).
 --
--- hikari-skip only asks when the file has no opening, recap or ending
--- chapters. The
+-- hikari-skip only asks when the file has no opening or ending chapters (a
+-- recap chapter does not count; AniSkip's recap is then not used). The
 -- series, season and episode come from hikari-title.lua, which publishes what
 -- it read from the release name (`[SubsPlease] Sousou no Frieren - 05 (1080p)`
 -- -> Sousou no Frieren, episode 5). From there:

@@ -1400,6 +1400,69 @@ test('skip: automatic skip (openings) skips AniSkip\'s recap as playback enters 
 	eq(mock.osd[#mock.osd], 'Resumen saltado')
 end)
 
+-- AniSkip's answer with these results ({type, start, end}), all for 1470 s.
+local function answer_with(results)
+	local parts = {}
+	for _, r in ipairs(results) do
+		parts[#parts + 1] = string.format('{"interval":{"startTime":%s,"endTime":%s},"skipType":"%s",'
+			.. '"skipId":"x","episodeLength":1470}', r[2], r[3], r[1])
+	end
+	mock.finish_async(ok_answer(data('anilist-sousou-no-frieren.json')))
+	mock.finish_async(ok_answer('{"found":true,"results":[' .. table.concat(parts, ',') .. ']}'))
+end
+
+test('skip: a recap and an opening that start together: in a fixed order, and skipping one leaves the other', function()
+	for _, order in ipairs({{{'op', 0, 90}, {'recap', 0, 30}}, {{'recap', 0, 30}, {'op', 0, 90}}}) do
+		os.remove(CACHE)
+		local s = play(nil, nil, nil, 1470, 0)
+		answer_with(order)
+		eq(s.state.ranges[1].kind.name, 'openings', 'the opening first, whatever AniSkip\'s order')
+		eq(s.state.ranges[2].kind.name, 'recaps')
+		mock.set('time-pos', 10)
+		eq(label(s), 'Saltar opening ›')
+	end
+	-- Through the recap first (the opening turned off), then the opening on
+	-- its own: skipping the recap does not dismiss the opening.
+	os.remove(CACHE)
+	local s = play(nil, nil, nil, 1470, 0)
+	answer_with({{'recap', 0, 30}, {'op', 0, 90}})
+	s.state.ranges = {s.state.ranges[2], s.state.ranges[1]}
+	mock.set('time-pos', 10)
+	eq(label(s), 'Saltar resumen ›')
+	assert(s.skip())
+	eq(mock.commands[#mock.commands][2], '30.000')
+	mock.set('time-pos', 30.1)
+	eq(label(s), 'Saltar opening ›', 'the opening starts at the same second, but it was not skipped')
+end)
+
+-- A file with a Recap chapter and no opening or ending chapters.
+local RECAP_CHAPTERS = {{time = 0, title = 'Recap'}, {time = 90, title = 'Part A'}, {time = 700, title = 'Part B'}}
+
+test('skip: a Recap chapter does not stop AniSkip; its recap is the chapter\'s, not AniSkip\'s', function()
+	os.remove(CACHE)
+	local s = play(nil, nil, RECAP_CHAPTERS, 1470, 0)
+	eq(#mock.async, 1, 'AniSkip asked, as in 0.11')
+	answer_with({{'recap', 5, 60}, {'op', 100, 190}, {'ed', 1300, 1390}})
+	local names = {}
+	for _, r in ipairs(s.state.ranges) do names[#names + 1] = r.kind.name .. '@' .. r.start end
+	eq(table.concat(names, ' '), 'recaps@0 openings@100 endings@1300', 'one recap, the chapter\'s')
+	assert(not s.state.ranges[1].aniskip, 'from the chapter')
+	-- Even with recaps=no: the file marks its recap, AniSkip's is not used.
+	os.remove(CACHE)
+	s = play({['hikari-skip-recaps'] = 'no'}, nil, RECAP_CHAPTERS, 1470, 0)
+	answer_with({{'recap', 5, 60}, {'op', 100, 190}})
+	eq(#s.state.ranges, 1); eq(s.state.ranges[1].kind.name, 'openings')
+	-- A Recap chapter late in the file is not the episode's recap: AniSkip's is used.
+	os.remove(CACHE)
+	s = play(nil, nil, {{time = 0, title = 'Part A'}, {time = 1000, title = 'Recap'}, {time = 1100, title = 'Part B'}}, 1470, 0)
+	answer_with({{'recap', 5, 60}})
+	eq(#s.state.ranges, 1); eq(s.state.ranges[1].kind.name, 'recaps'); assert(s.state.ranges[1].aniskip)
+	-- Opening chapters still stop AniSkip, as before.
+	os.remove(CACHE)
+	play(nil, nil, {{time = 0, title = 'Recap'}, {time = 60, title = 'Opening'}, {time = 150, title = 'Part A'}}, 1470, 0)
+	eq(#mock.async, 0, 'an opening chapter')
+end)
+
 test('skip: automatic skip with AniSkip\'s times: the opening as playback enters it, the ending only to its end', function()
 	os.remove(CACHE)
 	local s = play({['hikari-skip-auto_skip'] = 'all'})

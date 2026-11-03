@@ -28,7 +28,10 @@
 --   skipped whole. `Summary` and `Résumé` are left out on purpose: they also
 --   name a part of the content (the summary of a lecture, a review), and a
 --   wrong match skips what the user wants to see. `Recapture` and `Recaps`
---   are no recap.
+--   are no recap. Recaps come after endings in KINDS, so `Recap ED` or
+--   `Credits Recap` stay endings (hikari-resume counts an episode as watched
+--   once its ending starts). Where in the file a recap counts (at its start)
+--   is up to the caller, as `requires_next`: hikari-skip knows the duration.
 -- - kinds() hands out a new table each time: hikari-skip adds the user's
 --   extra patterns and its on/off options to its copy, and nobody else sees
 --   them.
@@ -53,16 +56,16 @@ local KINDS = {
 		words = {},
 	},
 	{
-		name = 'recaps', label = 'skip_recap', requires_next = true,
-		patterns = {'^recap$', '^recap ', ' recap$', '^previously$', '^previously%.', '^previously…',
-			'^previously on$', '^previously on ', '^previously on%.', '^previously on…'},
-		words = {'あらすじ'},
-	},
-	{
 		name = 'endings', label = 'skip_ending',
 		patterns = {'^ed ', '^ed$', ' ed$', '^ending ', '^ending$', ' ending$',
 			'^credits$', '^credits ', ' credits$'},
 		words = {'エンディング'},
+	},
+	{
+		name = 'recaps', label = 'skip_recap', requires_next = true,
+		patterns = {'^recap$', '^recap ', ' recap$', '^previously$', '^previously%.', '^previously…',
+			'^previously on$', '^previously on ', '^previously on%.', '^previously on…'},
+		words = {'あらすじ'},
 	},
 	{
 		name = 'outros', label = 'skip_outro',

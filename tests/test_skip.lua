@@ -162,6 +162,33 @@ test('ranges: a recap to the next chapter; never as the last chapter', function(
 	eq(i18n.t(ranges[1].kind.label), 'Saltar resumen ›')
 end)
 
+test('ranges: a recap only at the start of the file (RECAP_SHARE), and not without a duration', function()
+	local s = load()
+	eq(s.RECAP_SHARE, 0.3)
+	-- A lesson: its Recap near the end is content.
+	local lesson = chapters({{0, 'Intro'}, {60, 'Part 1'}, {900, 'Recap'}, {1200, 'Outro'}})
+	local ranges = s.build_ranges(lesson, 1420)
+	eq(#ranges, 1, 'only the intro'); eq(ranges[1].kind.name, 'intros')
+	-- Just before and just at 30 %.
+	local before = chapters({{0, 'Part A'}, {425, 'Recap'}, {500, 'Part B'}})
+	eq(#s.build_ranges(before, 1420), 1, 'starts before 30 %')
+	local at = chapters({{0, 'Part A'}, {426, 'Recap'}, {500, 'Part B'}})
+	eq(#s.build_ranges(at, 1420), 0, 'starts at 30 %')
+	-- No duration yet (a stream): not counted until it is known.
+	local unknown = s.build_ranges(RECAP_EPISODE, nil)
+	eq(#unknown, 2, 'the opening and the ending, no recap, without a duration')
+	eq(unknown[1].kind.name, 'openings'); eq(unknown[2].kind.name, 'endings')
+	local p = play(5, RECAP_EPISODE)
+	eq(p.layout().label, 'Saltar resumen ›', 'with the duration')
+end)
+
+test('a recap together with an ending in a title is an ending', function()
+	local s = load()
+	for _, title in ipairs({'Recap ED', 'Credits Recap', 'Recap Ending'}) do
+		eq(s.classify(title).name, 'endings', title)
+	end
+end)
+
 test('extra patterns are added; malformed ones are ignored safely', function()
 	local s = load({['hikari-skip-extra_openings'] = '^op%d+$|^opening %d+$|[',
 		['hikari-skip-extra_endings'] = '^credits$'})

@@ -183,7 +183,7 @@ test('every kind of chapter has its button, its undo button and its message in t
 			for _, code in ipairs(CODES) do assert(entry[code], key .. ' has no ' .. code) end
 		end
 	end
-	eq(table.concat(names, ' '), 'openings intros recaps endings outros')
+	eq(table.concat(names, ' '), 'openings intros endings recaps outros')
 	i18n = fresh({['hikari-language'] = 'es'})
 	eq(i18n.t('skip_recap'), 'Saltar resumen ›')
 	eq(i18n.t('skip_undo_recap'), '‹ Ver resumen')
