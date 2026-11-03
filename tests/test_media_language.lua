@@ -1546,6 +1546,30 @@ test('series: subtitles turned off by hand in another file give way to the serie
 	eq(sets_of('file-local-options/sid'), '', 'not a `no` you left')
 end)
 
+test('series: a track number picked by hand in another file gives way to the series\' tracks', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,'
+		.. '"audio":{"lang":"ja","tag":"ja"},"subs":{"lang":"en","kind":"full","tag":"en"}}]}')
+	local m = load({lang = 'es-ES', series = path})
+	-- Another series: the Latin American dub and the Spanish subtitles by hand.
+	play_episode(m, '/anime/Other - 01.mkv', episode_tracks(), {aid = 1, sid = 2})
+	user_picks('aid', 2)
+	user_picks('sid', 1)
+	mock.end_file()
+	-- mpv keeps both numbers: the next file has tracks like them there.
+	play_episode(m, '/anime/Show - 02.mkv', episode_tracks(), {aid = 1, sid = 2}, {aid = 2, sid = 1})
+	eq(mock.props.aid, 1, 'the series\' Japanese audio')
+	eq(mock.props.sid, 2, 'the series\' English subtitles')
+	eq(sets_of('file-local-options/aid') .. ' ' .. sets_of('file-local-options/sid'), '1 2', 'for this file only')
+	mock.end_file()
+	eq(mock.props['options/aid'] .. ' ' .. mock.props['options/sid'], '2 1', 'what you picked comes back after it')
+	-- --aid=2 --sid=1, never changed by hand: yours, they win.
+	m = load({lang = 'es-ES', series = path})
+	play_episode(m, '/anime/Show - 03.mkv', episode_tracks(), {aid = 1, sid = 2}, {aid = 2, sid = 1})
+	eq(sets_of('file-local-options/aid') .. sets_of('file-local-options/sid'), '', '--aid and --sid win')
+	eq(mock.props.aid .. ' ' .. mock.props.sid, '2 1', 'as given')
+end)
+
 test('series: a track without a language leaves what was saved', function()
 	local path = series_file()
 	local m = load({lang = 'es-ES', series = path})

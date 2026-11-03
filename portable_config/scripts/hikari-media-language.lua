@@ -199,14 +199,16 @@
 --     of `auto` and it counts as a track you picked: a language switch leaves
 --     it. When the audio changed, mpv picks the subtitles again for it, as
 --     for the original audio, unless subtitles are saved too.
---     mpv puts a track number picked by hand back to `auto` for the next
---     file, but keeps a `no`: subtitles turned off by hand in one file stay
---     off in the next ones. So a `no` that the user set in an earlier file
---     (seen by on_track_change in any file, of a series or not: `carried`)
---     counts as mpv's own choice here, and the series' subtitles replace it
---     for that file (mpv puts the `no` back after it). A `no` that was there
---     before any change seen (`--sid=no`, `sid=no` in mpv.conf) is yours and
---     wins, as does any track picked after file-loaded.
+--     mpv keeps what the user picked by hand (`aid`/`sid`) for the next
+--     files: a `no` always, and a track number when the next file has a
+--     track like it at that place (otherwise it goes back to `auto`). So the
+--     value the user last set in an earlier file (seen by on_track_change in
+--     any file, of a series or not: `carried`), still held when this file is
+--     loaded, counts as mpv's own choice here, for the audio and for the
+--     subtitles: the series' track replaces it for that file (mpv puts the
+--     old value back after it). A value that was there before any change
+--     seen (`--aid`/`--sid`, `aid`/`sid` in mpv.conf) is yours and wins, as
+--     does any track picked after file-loaded.
 --   - Forgetting: picking another track replaces it. There is no menu or
 --     key for it; deleting the list forgets every series.
 --   - The list: ~~/hikari-tracks.json, {"version":1,"series":[{key, updated
@@ -497,8 +499,9 @@ local watching, watched_series = false, nil
 -- value hikari itself put there in this file while it still holds it (see
 -- "Per series" in the header).
 local seen, ours = {}, {}
--- property -> `no` when the last change of it by the user, in any file, was
--- `no`: mpv keeps that `no` for the next files (see "Per series").
+-- property -> the value of the last change of it by the user (`no`, `3`), in
+-- any file; nil after `auto`. mpv may keep it for the next files (see "Per
+-- series").
 local carried = {}
 
 local function set_option(name, value)
@@ -1108,7 +1111,7 @@ end
 -- The part of an entry for each track property.
 local PARTS = {aid = 'audio', sid = 'subs'}
 
--- When mpv picked the `property` track (aid, sid) on its own, or holds a `no`
+-- When mpv picked the `property` track (aid, sid) on its own, or holds what
 -- the user left in an earlier file (`carried`), sets it to the one remembered
 -- for the series (`entry`), for this file only. Also when mpv's pick already
 -- is that one: the option then holds it instead of `auto`, so a language
@@ -1120,15 +1123,15 @@ local function apply_remembered(property, entry)
 	local choice = entry and entry[PARTS[property]]
 	if not choice then return nil end
 	local option = mp.get_property('options/' .. property)
-	local left_no = option == 'no' and carried[property] == 'no'
-	if option ~= 'auto' and not left_no then return nil end
+	local left = option ~= nil and option ~= 'auto' and option == carried[property]
+	if option ~= 'auto' and not left then return nil end
 	if mp.get_property_native('track-auto-selection') == false then return nil end
 	local current = mp.get_property_native(property)
 	if type(current) ~= 'number' then current = nil end
 	local id = 'no'
 	if choice.kind == 'none' then
 		-- The `no` left by the user already holds it.
-		if left_no then return 'kept' end
+		if left and option == 'no' then return 'kept' end
 	else
 		local tracks = mp.get_property_native('track-list')
 		if type(tracks) ~= 'table' then return nil end
@@ -1147,7 +1150,7 @@ end
 -- The `property` track (aid, sid) changed. An option that now holds a track
 -- (or `no`) that neither mpv (`auto`) nor hikari (see set_track) put there is
 -- the user's choice: while an episode of a known series plays, it is
--- remembered for the series. A `no` is also noted in `carried`, in any file.
+-- remembered for the series. Its value is also noted in `carried`, in any file.
 -- A track without a language cannot be found again: what was saved stays. No
 -- audio is no choice to keep.
 local function on_track_change(property)
@@ -1157,7 +1160,7 @@ local function on_track_change(property)
 	seen[property] = value
 	if value == ours[property] then return end
 	ours[property] = nil
-	carried[property] = value == 'no' and 'no' or nil
+	carried[property] = value ~= 'auto' and value or nil
 	if value == 'auto' or not watched_series then return end
 	local choice
 	if value == 'no' then
