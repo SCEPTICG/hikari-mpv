@@ -33,7 +33,9 @@
 --   not when it answers "no such series".
 -- - A match must be clear, or nothing is shown: a series (TV, TV_SHORT or ONA)
 --   one of whose titles is, once normalised (lower case, punctuation as
---   spaces, apostrophes dropped, × as x), exactly the series name; for a
+--   spaces, apostrophes dropped, × as x), exactly the series name, or
+--   both with hyphens joining their words instead (Odekake-chuu in a file
+--   name, Odekakechuu on AniList; Kaguya sama still finds Kaguya-sama); for a
 --   season N > 1, exactly the name followed by `Season N`, `Nth Season`,
 --   `Second Season`, `SN`, `N` or N in Roman numerals up to X (as AniList and
 --   Kitsu name sequels: `II`). More than one MyAnimeList id among the
@@ -67,8 +69,9 @@
 --   nothing is shown, only a verbose log line, and nothing is cached (the next
 --   time the episode is opened it asks again).
 -- - Cache: ~~/hikari-aniskip.json, `{"version":1,"titles":{...},"episodes":{...}}`.
---   titles: normalised series name and season -> {at, mal, episodes} (mal 0:
---   no clear match). episodes: "<mal>:<episode>:<length>" -> {at, results}
+--   titles: normalised series name and season -> {at, mal, episodes, rev}
+--   (mal 0: no clear match; rev: MATCH_REV when saved, so a miss saved
+--   before matching improved is asked again). episodes: "<mal>:<episode>:<length>" -> {at, results}
 --   or {at, found=false}, the length (seconds) being the one sent to AniSkip,
 --   so a "not found" for one cut does not stop another from asking. `at` is
 --   the unix time of the answer; entries expire after TTL (shorter for "not
@@ -124,6 +127,9 @@ local MAX_SEGMENT = 600         -- longest opening or ending
 local LENGTH_TOLERANCE = 10     -- seconds between AniSkip's episode length and the file's
 local DAY = 24 * 3600
 M.TTL = {title = 30 * DAY, title_miss = 7 * DAY, times = 30 * DAY, times_miss = 3 * DAY}
+-- The way titles are matched (pick): a title miss saved with another `rev`
+-- (or none) is asked again. 2: Roman numerals and joined hyphens.
+M.MATCH_REV = 2
 M.CACHE_LIMITS = {titles = 500, episodes = 2000}
 M.CACHE_BUDGET = CACHE_BUDGET
 
@@ -172,9 +178,12 @@ end
 
 -- Lower case (ASCII), apostrophes dropped, `×` as x, any other ASCII
 -- punctuation as a space, spaces squeezed. Other UTF-8 is kept as it is.
-function M.normalize(text)
+-- joined: a hyphen joins the words it is between (Odekake-chuu -> odekakechuu)
+-- instead of separating them.
+function M.normalize(text, joined)
 	if type(text) ~= 'string' then return '' end
 	text = text:sub(1, MAX_NAME):lower()
+	if joined then text = text:gsub('%-', '') end
 	text = text:gsub("'", ''):gsub('\226\128\153', ''):gsub('\195\151', ' x ')
 	text = text:gsub('[%c%p%s]', ' '):gsub(' +', ' '):gsub('^ ', ''):gsub(' $', '')
 	return text
@@ -217,11 +226,12 @@ end
 -- nil when none is, or when the matches disagree.
 function M.pick(candidates, series, season)
 	local wanted = M.season_names(M.normalize(series), season)
+	local wanted_joined = M.season_names(M.normalize(series, true), season)
 	local found, episodes = nil, nil
 	for _, c in ipairs(candidates) do
 		if c.mal and FORMATS[c.format] then
 			for _, name in ipairs(c.names) do
-				if wanted[M.normalize(name)] then
+				if wanted[M.normalize(name)] or wanted_joined[M.normalize(name, true)] then
 					if found and found ~= c.mal then return nil end
 					found, episodes = c.mal, c.episodes
 					break
@@ -475,7 +485,7 @@ local function check_title(e)
 	if type(e) ~= 'table' or not is_int(e.at, 0, 1e11) then return nil end
 	if not is_int(e.mal, 0, MAX_ID) then return nil end
 	if e.episodes ~= nil and not is_int(e.episodes, 1, MAX_EPISODE) then return nil end
-	return {at = e.at, mal = e.mal, episodes = e.episodes}
+	return {at = e.at, mal = e.mal, episodes = e.episodes, rev = is_int(e.rev, 1, 99) and e.rev or nil}
 end
 
 local function check_episode(e)
@@ -662,6 +672,8 @@ local function fresh(entry, ttl, t)
 end
 
 function M.title_fresh(entry, t)
+	-- A miss from an older way of matching may match now: ask again.
+	if entry ~= nil and entry.mal == 0 and entry.rev ~= M.MATCH_REV then return false end
 	return entry ~= nil and fresh(entry, entry.mal == 0 and M.TTL.title_miss or M.TTL.title, t)
 end
 
@@ -845,7 +857,7 @@ function M.lookup(query, done)
 	search(query.series, function(candidates)
 		if not candidates then return done(nil) end
 		local mal, episodes = M.pick(candidates, query.series, query.season)
-		M.save('titles', query.key, {at = M.now(), mal = mal or 0, episodes = mal and episodes or nil})
+		M.save('titles', query.key, {at = M.now(), mal = mal or 0, episodes = mal and episodes or nil, rev = M.MATCH_REV})
 		times(mal or 0, episodes)
 	end)
 end
