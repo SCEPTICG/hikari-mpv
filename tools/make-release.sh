@@ -107,9 +107,9 @@ fi
 # What the installer reads from the zip (Get-HikariReleaseSource, Install-HikariTarget):
 # portable_config/ with scripts/hikari-*.lua, script-modules/hikari-*.lua (the
 # texts every script needs, the chapter kinds of hikari-skip and hikari-resume,
-# the release names of hikari-title and hikari-resume, the menus of the
-# seven scripts that have one, and the careful file writes of the six that
-# save something), script-opts/*.conf (suji.conf among them, only
+# the release names of hikari-title, hikari-resume and hikari-media-language,
+# the menus of the seven scripts that have one, and the careful file writes of
+# the six that save something), script-opts/*.conf (suji.conf among them, only
 # installed with suji) and the choice files. LICENSE and README.md go along for
 # whoever opens the zip.
 for f in portable_config/scripts/hikari-palettes.lua portable_config/script-modules/hikari-i18n.lua \

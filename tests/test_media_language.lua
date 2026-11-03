@@ -48,6 +48,7 @@ end
 --            (/etc/mpv/mpv.conf when there is no ~~/mpv.conf)
 --   unknown: option name -> true when this mpv gives no option-info for it
 --   fail:    option name -> true when mp.set_property fails for it
+--   series:  the path of ~~/hikari-tracks.json (none by default)
 -- Options not in `values` hold mpv's defaults, as mpv 0.40 gives them natively.
 local function load(setup)
 	setup = setup or {}
@@ -75,6 +76,7 @@ local function load(setup)
 	end
 	if setup.etc_conf then mock.config_files['mpv.conf'] = conf_file(setup.etc_conf) end
 	for name in pairs(setup.fail or {}) do mock.set_fails[name] = true end
+	mock.expand['~~/hikari-tracks.json'] = setup.series
 	HIKARI_MEDIA_LANGUAGE_TEST = true
 	local chunk = assert(loadfile(SCRIPT))
 	return chunk()
@@ -557,7 +559,14 @@ test('AnimeJaNai: the file is only read, never written', function()
 	eq(f:read('*a'), ANIMEJANAI, 'unchanged')
 	f:close()
 	local src = assert(io.open(SCRIPT, 'rb')):read('*a')
-	assert(not src:find("io.open%([^)]*'w"), 'no file opened for writing')
+	-- The one file opened for writing is the temporary file of the list of
+	-- tracks per series (write_series).
+	local writes = 0
+	for call in src:gmatch("io%.open%([^)]*'w[^)]*%)") do
+		writes = writes + 1
+		eq(call, "io.open(tmp, 'wb')", 'opened for writing')
+	end
+	eq(writes, 1, 'files opened for writing')
 end)
 
 -- Newer AnimeJaNai: its lines live in an [animejanai] profile that mpv.conf
@@ -1207,6 +1216,356 @@ test('reselect: an empty answer from mpv does nothing', function()
 	mock.sets = {}
 	eq(m.reselect('aid'), false, 'result')
 	eq(#mock.sets, 0, 'sets')
+end)
+
+-- Per series -------------------------------------------------------------------
+
+-- A new, empty place for ~~/hikari-tracks.json (no file yet).
+local function series_file()
+	local path = os.tmpname()
+	os.remove(path)
+	tmp_files[#tmp_files + 1] = path
+	return path
+end
+
+local function read_text(path)
+	local f = io.open(path, 'rb')
+	if not f then return nil end
+	local text = f:read('*a')
+	f:close()
+	return text
+end
+
+local function write_text(path, text)
+	local f = assert(io.open(path, 'wb'))
+	f:write(text)
+	f:close()
+end
+
+-- The entry of `key` in the list on disk, or nil.
+local function saved(path, key)
+	local value = mock.parse_json(read_text(path) or 'null')
+	for _, entry in ipairs(type(value) == 'table' and value.series or {}) do
+		if entry.key == key then return entry end
+	end
+	return nil
+end
+
+-- What mpv does after a change of the track playing: the observers of
+-- `aid`/`sid` run.
+local function notify(property)
+	for _, fn in ipairs(mock.observers[property] or {}) do fn(property, mock.props[property]) end
+end
+
+-- The user picks a track (or `no`) from the menu or with a key.
+local function user_picks(property, value)
+	mp.set_property(property, tostring(value))
+	notify(property)
+end
+
+-- Plays the file at `path` (mpv's `path`) as play_tracks does, then lets the
+-- observers see what mpv and hikari picked.
+local function play_episode(m, path, tracks, picks, options)
+	mock.props.path = path
+	play_tracks(m, tracks, picks, options)
+	notify('aid')
+	notify('sid')
+end
+
+-- An episode: Japanese audio and a Latin American dub, Spanish subtitles
+-- (mpv's pick with hikari's lists for Spain), full English ones and English
+-- signs.
+local function episode_tracks()
+	return {
+		{id = 1, type = 'video'},
+		{id = 1, type = 'audio', lang = 'ja', title = 'Japanese', default = true},
+		{id = 2, type = 'audio', lang = 'es-419', title = 'Spanish (Latin America)'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish', default = true},
+		{id = 2, type = 'sub', lang = 'en', title = 'English'},
+		{id = 3, type = 'sub', lang = 'eng', title = 'English [Signs]'},
+	}
+end
+
+local FRIEREN = 'sousou no frieren'
+
+test('series: the key is the series name, normalised, without season, also for streams', function()
+	local m = load()
+	eq(m.series_key('/anime/[SubsPlease] Sousou no Frieren - 05 (1080p) [ABCD1234].mkv'), FRIEREN, 'file')
+	eq(m.series_key('/anime/Sousou.no.Frieren.S02E03.1080p.WEB-DL.mkv'), FRIEREN, 'another season')
+	eq(m.series_key('https://host/x?token=secret&filename=Sousou%20no%20Frieren%20-%2007.mkv'), FRIEREN, 'stream')
+	eq(m.series_key('/films/Some Film (2023).mkv'), nil, 'a film')
+	eq(m.series_key('/anime/Show - OVA.mkv'), nil, 'no plain episode')
+	eq(m.series_key(nil), nil, 'nothing')
+end)
+
+test('series: what is saved of a track', function()
+	local m = load()
+	local a = m.describe({type = 'audio', lang = 'jpn'})
+	eq(a.lang, 'ja', 'jpn is ja'); eq(a.variant, nil, 'no variant'); eq(a.kind, nil, 'no kind for audio')
+	a = m.describe({type = 'audio', lang = 'spa', title = 'Spanish (Latin America)'})
+	eq(a.lang, 'es', 'spa is es'); eq(a.variant, 'es-419', 'variant from the title')
+	local s = m.describe({type = 'sub', lang = 'en', title = 'Signs & Songs'})
+	eq(s.lang .. ' ' .. s.kind, 'en signs', 'signs by title')
+	s = m.describe({type = 'sub', lang = 'ger', forced = true})
+	eq(s.lang .. ' ' .. s.kind, 'de signs', 'forced')
+	eq(m.describe({type = 'sub', lang = 'eng', title = 'Full + Songs'}).kind, 'full', 'full by title')
+	eq(m.describe({type = 'sub', lang = 'kor'}).lang, 'kor', 'other languages as they come')
+	eq(m.describe({type = 'sub'}), nil, 'no language')
+	eq(m.describe({type = 'sub', lang = 'und'}), nil, 'undetermined')
+end)
+
+test('series: a track you pick is saved for the series, nothing else', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	play_episode(m, '/anime/[SubsPlease] Sousou no Frieren - 05 (1080p).mkv', episode_tracks(), {aid = 1, sid = 1})
+	eq(read_text(path), nil, 'nothing saved for mpv\'s own pick')
+	user_picks('sid', 2)
+	local entry = saved(path, FRIEREN)
+	assert(entry and entry.subs, 'saved')
+	eq(entry.subs.lang .. ' ' .. entry.subs.kind, 'en full', 'full English')
+	eq(entry.audio, nil, 'the audio was not picked')
+	local text = read_text(path)
+	assert(not text:find('anime', 1, true) and not text:find('SubsPlease', 1, true), 'no path or file name')
+	-- The audio, later: added to the same series.
+	user_picks('aid', 2)
+	entry = saved(path, FRIEREN)
+	eq(entry.audio.lang .. ' ' .. entry.audio.variant, 'es es-419', 'the Latin American dub')
+	eq(entry.subs.lang, 'en', 'subtitles kept')
+	-- No subtitles at all.
+	user_picks('sid', 'no')
+	eq(saved(path, FRIEREN).subs.kind, 'none', 'none')
+end)
+
+test('series: hikari\'s own switches and --aid/--sid are not saved', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	-- hikari takes Spain's subtitles over the Latin American ones mpv picked.
+	play_episode(m, '/anime/Show - 01.mkv', crunchyroll(), {aid = 1, sid = 3})
+	eq(mock.props.sid, 4, 'hikari\'s switch')
+	notify('sid')
+	eq(read_text(path), nil, 'the variant switch')
+	-- A language switch: mpv picks again, hikari checks the variant again and
+	-- switches, after file-loaded.
+	m = load({lang = 'es-419', series = path})
+	play_episode(m, '/anime/Show - 01.mkv', crunchyroll(), {aid = 1, sid = 3})
+	eq(mock.props['options/sid'], 'auto', 'mpv\'s pick is Latin American')
+	mock.set_script_opt('hikari-language', 'es-ES')
+	eq(mock.props['options/sid'], 4, 'hikari\'s switch after the language switch')
+	notify('aid'); notify('sid')
+	eq(read_text(path), nil, 'after a language switch')
+	-- Tracks fixed when the file starts (command line, a resumed position).
+	play_episode(m, '/anime/Show - 02.mkv', crunchyroll(), {aid = 1, sid = 3}, {sid = 6})
+	eq(read_text(path), nil, '--sid')
+	-- Not an episode of a series: nothing is watched.
+	play_episode(m, '/films/Some Film (2023).mkv', crunchyroll(), {aid = 1, sid = 3})
+	user_picks('sid', 1)
+	eq(read_text(path), nil, 'a film')
+	-- With lavfi-complex nothing is watched either.
+	mock.props['lavfi-complex'] = '[aid1] [aid2] amix [ao]'
+	play_episode(m, '/anime/Show - 03.mkv', crunchyroll(), {aid = 1, sid = 3})
+	user_picks('sid', 1)
+	eq(read_text(path), nil, 'lavfi-complex')
+	mock.props['lavfi-complex'] = ''
+end)
+
+test('series: you pick the track hikari had put before: saved', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	play_episode(m, '/anime/Show - 01.mkv', crunchyroll(), {aid = 1, sid = 3})
+	eq(mock.props.sid, 4, 'hikari\'s switch')
+	user_picks('sid', 1)
+	eq(saved(path, 'show').subs.lang, 'en', 'English')
+	user_picks('sid', 4)
+	eq(saved(path, 'show').subs.variant, 'es-ES', 'back to Spain\'s, now yours')
+	-- hikari's switch, then mpv's pick again after a language switch: the
+	-- track hikari had put is no longer hikari's.
+	os.remove(path)
+	play_episode(m, '/anime/Show - 02.mkv', crunchyroll(), {aid = 1, sid = 3})
+	eq(mock.props.sid, 4, 'hikari\'s switch')
+	mock.set_script_opt('hikari-language', 'es-419')
+	notify('sid')
+	eq(mock.props.sid, 3, 'mpv\'s pick for Latin America')
+	eq(read_text(path), nil, 'nothing saved yet')
+	user_picks('sid', 4)
+	eq(saved(path, 'show').subs.variant, 'es-ES', 'Spain\'s, yours')
+end)
+
+test('series: the next episode, of any season, gets what you picked', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	play_episode(m, '/anime/Sousou no Frieren - 05.mkv', episode_tracks(), {aid = 1, sid = 1})
+	user_picks('sid', 2)
+	mock.end_file()
+	-- Season 2, another release: the English track is the third one.
+	local tracks = episode_tracks()
+	table.insert(tracks, 4, {id = 4, type = 'sub', lang = 'pt-BR'})
+	tracks[5].id, tracks[6].id, tracks[7].id = 1, 3, 2
+	tracks[6].title, tracks[7].title = 'English', 'English [Signs]'
+	tracks[6].lang = 'eng'
+	mock.sets = {}
+	play_episode(m, '/anime/Sousou.no.Frieren.S02E01.1080p.WEB-DL.mkv', tracks, {aid = 1, sid = 1})
+	eq(mock.props.sid, 3, 'full English, not the signs')
+	eq(sets_of('file-local-options/sid'), '3', 'for this file only')
+	eq(mock.props.aid, 1, 'audio as mpv picked it')
+	-- hikari's own switch is not saved as yours.
+	eq(saved(path, FRIEREN).subs.tag, 'en', 'still the first pick')
+end)
+
+test('series: what you picked wins over your own slang and over the variant check', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,'
+		.. '"subs":{"lang":"es","variant":"es-419","kind":"full","tag":"es"}}]}')
+	local m = load({lang = 'es-ES', series = path, conf = 'slang=en\n', values = {slang = {'en'}}})
+	eq(m.managed.slang, false, 'slang is yours')
+	play_episode(m, '/anime/Show - 02.mkv', crunchyroll(), {aid = 1, sid = 1})
+	eq(mock.props.sid, 3, 'the Latin American ones, as picked for the series')
+	eq(m.get_switched().sid, nil, 'not a variant switch')
+	-- A language switch leaves them, as a track you picked.
+	mock.sets = {}
+	mock.set_script_opt('hikari-language', 'en')
+	eq(sets_of('sid') .. sets_of('file-local-options/sid'), '', 'untouched')
+end)
+
+test('series: the audio picked for the series, and mpv picks the subtitles for it', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,'
+		.. '"audio":{"lang":"es","variant":"es-419","tag":"spa"}}]}')
+	local m = load({lang = 'es-ES', series = path})
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'ja'},
+		{id = 2, type = 'audio', lang = 'spa', title = 'Castellano'},
+		{id = 3, type = 'audio', lang = 'spa', title = 'Latino'},
+		{id = 1, type = 'sub', lang = 'es', title = 'Spanish'},
+		{id = 2, type = 'sub', lang = 'es', title = 'Spanish [Forced]', forced = true},
+	}
+	-- mpv: Spain's dub (Spanish first), so only the forced subtitles.
+	play_episode(m, '/anime/Show S03E01.mkv', tracks, {aid = 2, sid = function() return 2 end})
+	eq(mock.props.aid, 3, 'the Latin American dub')
+	eq(sets_of('sid'), '2 auto', 'mpv picked the subtitles again')
+	eq(read_text(path):find('Latino', 1, true), nil, 'nothing new saved')
+	-- No dub of that variant in this release: mpv's pick (here Japanese)
+	-- stays, quietly; a dub of the other variant is not taken for it.
+	table.remove(tracks, 3)
+	mock.logs.warn = {}
+	play_episode(m, '/anime/Show S03E02.mkv', tracks, {aid = 1, sid = 1})
+	eq(sets_of('file-local-options/aid'), '', 'audio untouched')
+	eq(mock.props.aid, 1, 'mpv\'s pick')
+	eq(#mock.logs.warn, 0, 'no warning')
+end)
+
+test('series: a release without the track keeps mpv\'s pick, and none means none', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,"subs":{"lang":"fr","kind":"full"}},'
+		.. '{"key":"other","updated":4,"subs":{"kind":"none"}}]}')
+	local m = load({lang = 'en', series = path})
+	play_episode(m, '/anime/Show - 02.mkv', episode_tracks(), {aid = 1, sid = 2})
+	eq(mock.props.sid, 2, 'no French: mpv\'s pick')
+	eq(#mock.logs.warn, 0, 'no warning')
+	play_episode(m, '/anime/Other - 02.mkv', episode_tracks(), {aid = 1, sid = 2})
+	eq(mock.props.sid, false, 'no subtitles')
+	eq(sets_of('file-local-options/sid'), 'no', 'for this file only')
+	-- Already none: nothing to do.
+	play_episode(m, '/anime/Other - 03.mkv', episode_tracks(), {aid = 1, sid = false})
+	eq(sets_of('file-local-options/sid'), '', 'nothing set')
+	-- A track you picked or fixed stays.
+	play_episode(m, '/anime/Other - 04.mkv', episode_tracks(), {aid = 1, sid = 2}, {sid = 3})
+	eq(mock.props.sid, 3, '--sid')
+	-- track-auto-selection=no: nothing is picked.
+	mock.props['track-auto-selection'] = false
+	play_episode(m, '/anime/Other - 05.mkv', episode_tracks(), {aid = 1, sid = 2})
+	eq(sets_of('file-local-options/sid'), '', 'track-auto-selection=no')
+	mock.props['track-auto-selection'] = nil
+end)
+
+test('series: streams too, without the URL, its token or its host', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	local url = 'https://seanime.local:43211/api/v1/stream/9f2c?token=SECRET123&filename=Sousou%20no%20Frieren%20-%2001.mkv'
+	play_episode(m, url, episode_tracks(), {aid = 1, sid = 1})
+	user_picks('sid', 2)
+	local text = read_text(path)
+	assert(text and text:find(FRIEREN, 1, true), 'saved by series')
+	for _, part in ipairs({'SECRET123', 'token', 'seanime', '43211', 'stream', 'https', '9f2c'}) do
+		assert(not text:find(part, 1, true), part .. ' saved')
+	end
+	play_episode(m, url:gsub('01', '02'), episode_tracks(), {aid = 1, sid = 1})
+	eq(mock.props.sid, 2, 'the next stream gets it')
+end)
+
+test('series: a broken, huge, newer or unchecked list is not used, and is written over', function()
+	local path = series_file()
+	local m
+	for _, case in ipairs({
+		{'not json', 'damaged'}, {'', 'empty'}, {'{"version":1,"series":"x"}', 'damaged'},
+		{'{"version":2,"series":[]}', 'newer hikari'},
+		{'{"version":1,"series":[' .. string.rep('{"key":"show","updated":1},', 30000) .. '{}]}', 'too big'},
+	}) do
+		write_text(path, case[1])
+		m = load({lang = 'es-ES', series = path})
+		eq(#m.read_series(), 0, case[2])
+		eq(#mock.logs.warn, 1, case[2] .. ': one warning')
+		m.read_series()
+		eq(#mock.logs.warn, 1, case[2] .. ': only once')
+	end
+	-- The next pick writes a good list over it.
+	play_episode(m, '/anime/Show - 01.mkv', episode_tracks(), {aid = 1, sid = 1})
+	user_picks('sid', 2)
+	eq(saved(path, 'show').subs.lang, 'en', 'written over')
+	-- Entries and parts that do not check out are left out.
+	write_text(path, '{"version":1,"series":[null,'
+		.. '{"key":"a","updated":1,"audio":{"lang":"jpn"}},'                       -- not as saved
+		.. '{"key":"b","updated":1,"audio":{"lang":"es","variant":"es-MX"}},'      -- unknown variant
+		.. '{"key":"c","updated":1,"subs":{"lang":"en","kind":"most"}},'           -- unknown kind
+		.. '{"key":"d","updated":-1,"subs":{"kind":"none"}},'                      -- bad time
+		.. '{"key":"e\\n","updated":1,"subs":{"kind":"none"}},'                    -- control character
+		.. '{"key":"' .. string.rep('x', 300) .. '","updated":1,"subs":{"kind":"none"}},'
+		.. '{"key":"f","updated":2,"audio":{"lang":"ja","tag":"a b"},"subs":{"kind":"none"}},'
+		.. '{"key":"g","updated":3,"audio":{"lang":"ja","tag":"JA"}}]}')
+	local entries = m.read_series()
+	eq(#entries, 2, 'two left')
+	eq(entries[1].key .. ' ' .. entries[1].audio.tag, 'g ja', 'newest first, tag lower case')
+	eq(entries[2].key, 'f', 'f'); eq(entries[2].audio, nil, 'its bad audio left out')
+	eq(entries[2].subs.kind, 'none', 'its subtitles kept')
+end)
+
+test('series: at most MAX_SERIES, the oldest out; another window\'s series kept', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	local list = {}
+	for i = 1, m.MAX_SERIES do
+		list[#list + 1] = string.format('{"key":"s%d","updated":%d,"subs":{"kind":"none"}}', i, 1000 + i)
+	end
+	write_text(path, '{"version":1,"series":[' .. table.concat(list, ',') .. ']}')
+	m.clock.now = function() return 5000 end
+	play_episode(m, '/anime/Show - 01.mkv', episode_tracks(), {aid = 1, sid = 1})
+	-- Another mpv window saves a series meanwhile.
+	local value = mock.parse_json(read_text(path))
+	value.series[1].updated = 4000
+	value.series[1].key = 'other window'
+	write_text(path, mock.format_json(value))
+	user_picks('sid', 2)
+	local entries = m.read_series()
+	eq(#entries, m.MAX_SERIES, 'bounded')
+	eq(entries[1].key, 'show', 'newest first')
+	eq(entries[2].key, 'other window', 'the other window\'s')
+	eq(saved(path, 's2'), nil, 'the oldest left')
+	assert(saved(path, 's3'), 'the next oldest stays')
+	-- A list with more series than that: only the newest are read.
+	list[#list + 1] = '{"key":"newer","updated":9000,"subs":{"kind":"none"}}'
+	write_text(path, '{"version":1,"series":[' .. table.concat(list, ',') .. ']}')
+	entries = m.read_series()
+	eq(#entries, m.MAX_SERIES, 'read bounded')
+	eq(entries[1].key .. ' ' .. entries[#entries].key, 'newer s2', 'the newest')
+end)
+
+test('series: an unreadable list is not written over', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path .. '/nope'})
+	mock.files[path .. '/nope'] = {is_file = true}
+	play_episode(m, '/anime/Show - 01.mkv', episode_tracks(), {aid = 1, sid = 1})
+	user_picks('sid', 2)
+	eq(#mock.logs.warn, 1, 'one warning')
+	eq(read_text(path .. '/nope'), nil, 'nothing written')
 end)
 
 for _, path in ipairs(tmp_files) do os.remove(path) end

@@ -1,7 +1,8 @@
 -- hikari-release: what a release name says, for hikari's scripts. A module,
 -- not a script: hikari-title.lua (tidy titles, and what hikari-skip looks up
--- on AniSkip) and hikari-resume.lua (continue watching by series) load it, so
--- both read file names the same way.
+-- on AniSkip), hikari-resume.lua (continue watching by series) and
+-- hikari-media-language.lua (tracks per series) load it, so they all read
+-- file names the same way.
 --
 -- Usage:
 --   release.pretty_title('[SubsPlease] Frieren - 05 (1080p)')  -> 'Frieren · E05', true, info, parts

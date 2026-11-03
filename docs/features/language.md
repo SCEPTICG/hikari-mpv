@@ -97,7 +97,7 @@ Some things stay as they are:
 - **Subtitles of the other variant only**: they are used. Subtitles with another accent are better than none.
 - **Whether to show subtitles** is still mpv's decision with the options above (with a dub in your language, only forced ones): hikari only changes which track of your language is used, and plays Japanese instead of a dub of the other variant.
 - **Tracks you chose** (menu, keys, `--aid`/`--sid`, a resumed position) are never touched, and neither is anything with `lavfi-complex`.
-- **It lasts for that file only.** The next file starts again from mpv's own choice.
+- **It lasts for that file only.** The next file starts again from mpv's own choice, or from the tracks you picked for its [series](#the-same-tracks-for-the-whole-series), which come before this check.
 - **Your own `alang` or `slang`** still win. With hikari's lists, hikari may take any track of your language. With a list of yours (or one changed since hikari set it), hikari only chooses between tracks with the same language tag, the ones no list can tell apart: two tracks tagged `es` (or `es` and `spa`, which are the same for mpv), but not `es-419` and `spa`. So with `slang=es-419,en` in your `mpv.conf`, a track tagged `es-419` stays even next to a `spa` one titled *CR_Spanish*. The signs rule above still works with a `slang` of your own, but only between tracks with the same tag, the ones your list does not tell apart.
 
 A script of your own that sets `aid` or `sid` (such as a `sub-castellano.lua` that picks the Spanish subtitles by their title) wins over hikari: once it has picked a track, mpv no longer treats the choice as its own and hikari leaves it. If hikari's choice is what you wanted, you can remove that script.
@@ -105,10 +105,23 @@ A script of your own that sets `aid` or `sid` (such as a `sub-castellano.lua` th
 ### When it applies
 
 - **When mpv starts**, before the first file opens, so the first episode already gets it.
-- **When each file is loaded**, for the [choice between variants](#spanish-and-portuguese-two-variants).
+- **When each file is loaded**, for the [tracks of its series](#the-same-tracks-for-the-whole-series) and the [choice between variants](#spanish-and-portuguese-two-variants).
 - **After every switch with `Alt+l`** (also between the two variants of a language). If a file is playing, mpv picks its tracks again with the new languages, and hikari checks the variant again, but only for the tracks picked automatically: an audio or subtitle track you chose yourself (from the menu, with a key, with `--aid`/`--sid` or saved with your position) stays. The next files use the new languages anyway.
 
-hikari only sets these options while mpv runs; it writes them to no file, so uninstalling hikari leaves nothing behind.
+hikari only sets these options while mpv runs; it writes them to no file. The one file it keeps is the list of [tracks per series](#the-same-tracks-for-the-whole-series), which uninstalling deletes.
+
+### The same tracks for the whole series
+
+When you change the audio or the subtitles yourself (uosc's menu, a key) while an episode plays, hikari remembers that choice for its series. The next episodes of that series, of any season, start the same way, without picking again: Japanese with English subtitles, the dub with no subtitles, only the signs and songs...
+
+- **The series** comes from the file name, read as for the [titles](titles.md): `[SubsPlease] Sousou no Frieren - 05 (1080p).mkv` and `Sousou.no.Frieren.S02E03.1080p.WEB-DL.mkv` are the same series. Streams such as Seanime's count too, by the name in their `filename` parameter. A film, an OVA or a name without a plain episode number has no series, and nothing is remembered for it.
+- **What is remembered** is not the track number, which changes from one release to another, but what finds the track again: its language (for Spanish and Portuguese, also [its variant](#spanish-and-portuguese-two-variants)) and, for subtitles, whether they are full ones or only signs and songs, or no subtitles at all. Audio and subtitles are remembered apart: changing one leaves the other as it was.
+- **It wins** over hikari's recipe and over your own `alang` and `slang`: picked by hand for that series is more precise. It only applies when mpv picked the track on its own: `--aid`/`--sid`, a resumed position with its tracks, or a track you pick in that episode still win. A [language switch](#when-it-applies) leaves it as it leaves a track you picked.
+- **A release without that track** (no English subtitles in this one, say) keeps mpv's own choice, with no message.
+- **Only your changes count.** The tracks mpv picks on its own, the ones hikari switches to (the variant, the series' choice, a language switch) and the ones fixed when the file starts are never remembered.
+- **To change it**, pick another track: it replaces the old one. There is no menu to forget a series; deleting the file below forgets them all.
+
+The list is `hikari-tracks.json`, in mpv's config folder. For each series it holds the series name (lower case, without the season), the languages and kinds picked and when: never the path, the URL or anything in it. It keeps the 200 most recent series (the oldest go first), stays on your computer and is not in the installer's backups; uninstalling deletes it. Several mpv windows can share it: each one reads it again before saving and only changes the series it plays.
 
 ### Your own settings win
 
