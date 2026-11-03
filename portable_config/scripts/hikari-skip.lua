@@ -1,9 +1,10 @@
 -- hikari-skip: "skip opening / ending" button for uosc (and suji).
 --
--- While playback is inside a chapter that looks like an opening or an ending,
--- a rounded button is drawn at the bottom right, above uosc's (or suji's)
--- controls and timeline. Clicking it (or the `skip` binding) jumps to the start of the next
--- chapter. Files with no opening or ending chapters get the times from
+-- While playback is inside a chapter that looks like an opening, a recap
+-- ("previously on") or an ending, a rounded button is drawn at the bottom
+-- right, above uosc's (or suji's) controls and timeline. Clicking it (or the
+-- `skip` binding) jumps to the start of the next chapter. Files with no
+-- opening or ending chapters get the times from
 -- AniSkip when they are anime releases (see below). Outside those ranges
 -- nothing is drawn and no input is taken.
 --
@@ -18,9 +19,12 @@
 -- Decisions:
 -- - Chapters are classified with the same title patterns uosc uses for its
 --   chapter ranges (lib/utils.lua, serialize_chapter_ranges), plus the Japanese
---   words and Credits as an ending (Crunchyroll's chapters):
+--   words and Credits as an ending (Crunchyroll's chapters), and recaps
+--   (`recaps`: Recap, Previously on..., あらすじ):
 --   script-modules/hikari-chapters.lua, shared with hikari-resume.lua.
---   An opening or intro only counts when another chapter follows it.
+--   An opening, intro or recap only counts when another chapter follows it,
+--   and a recap only when it starts before RECAP_SHARE (30 %) of the file,
+--   so not before the duration is known (see recap_counts).
 -- - Layout is in real OSD pixels times a scale factor, like uosc does
 --   (hidpi * scale, or scale_fullscreen when fullscreen or maximized), so the
 --   button keeps its place above uosc's bar in any window size. The default
@@ -95,9 +99,12 @@
 --   already at rest, the bar shows for cursor-autohide ms: mpv's first
 --   mouse-pos after observe_property starts the timer, as a move would.
 -- - The skip seeks `absolute+exact` to the next chapter's start, and the range
---   is "dismissed" so the button goes away at once even if the seek lands a
---   frame short. A dismissed range shows again when playback leaves it, goes
---   before its start, or is moved by a seek far from where the skip went. For
+--   is "dismissed" (by its start and its kind: a recap and an opening may
+--   start at the same second, and skipping one leaves the other) so the
+--   button goes away at once even if the seek lands a frame short. Ranges
+--   that start together are in a fixed order, the order of the kinds
+--   (KIND_RANK), so the same one is offered first. A dismissed range shows
+--   again when playback leaves it, goes before its start, or is moved by a seek far from where the skip went. For
 --   a last-chapter ending: `playlist-next` when the playlist has another
 --   entry, otherwise a seek to one second before the end, so mpv finishes the
 --   file the way it normally would (keep-open, idle...). With neither (no next
@@ -112,13 +119,17 @@
 --   full-width characters count double.
 -- - AniSkip (aniskip=yes, the default): only for a file whose chapters mark no
 --   opening, intro or ending (they count even if the options turn that kind
---   off; an outro chapter does not), once
+--   off; an outro or recap chapter does not, so a file with only a Recap
+--   chapter still gets AniSkip's opening and ending; AniSkip's recap is then
+--   left out, whatever the options say, so there is one recap, the
+--   chapter's), once
 --   it has loaded, with a duration, and only when hikari-title.lua has
 --   published a release with one plain episode that looks like anime
 --   (user-data/hikari_title/release) for the path playing. The lookup, its
 --   checks and its cache are in script-modules/hikari-aniskip.lua. Its
---   opening and ending become ranges like the chapters' ones (same button,
---   same binding, same double-click guard), the opening skipping to its end,
+--   opening, recap and ending become ranges like the chapters' ones (same
+--   button, same binding, same double-click guard), the opening and the
+--   recap skipping to their end,
 --   an ending that runs to the end of the file like a last-chapter ending.
 --   An answer that arrives once the opening is over changes nothing on
 --   screen; one that arrives after the file changed (end-file counts the
@@ -138,9 +149,11 @@
 --   It is checked again when the published value, playlist-pos or
 --   playlist-count changes. next_episode=no leaves all of it as in hikari 0.8.
 -- - Automatic skip (auto_skip=no|openings|endings|all, `no` by default): the
---   ranges that have a button anyway, so the openings, intros, endings and
---   outros options count, and so do AniSkip and streams. "openings" are the
---   opening and intro ranges, "endings" the ending and outro ones; the "Next
+--   ranges that have a button anyway, so the openings, intros, recaps,
+--   endings and outros options count, and so do AniSkip and streams.
+--   "openings" are the opening, intro and recap ranges (what comes before the
+--   episode's story goes on, so the menu keeps its four modes), "endings" the
+--   ending and outro ones; the "Next
 --   episode ›" range of a file without an ending is never skipped on its own
 --   (hikari-resume plays the next episode by its own rules). The skip is the
 --   button's (skip_range): to the next chapter or the end of an AniSkip range,
@@ -186,7 +199,7 @@
 --   playing (the mode turned on) count as settled, and stopping forgets the
 --   last time, so an old one is never compared with a new one.
 -- - Undo: after a skip that stays in the file, the button reads "‹ Watch
---   opening" (intro, ending, preview) for UNDO_TIME seconds, also with suji
+--   opening" (intro, recap, ending, preview) for UNDO_TIME seconds, also with suji
 --   (show-action, hide-action when it ends) and in place of any skip button.
 --   Clicking it or the `skip` binding seeks back to the range's start, and that
 --   range is not skipped on its own again in this file; its own skip button
@@ -293,12 +306,13 @@ local ACTION_MESSAGE = 'skip-action'
 local ROW_BUTTON = 'hikari-skip'
 local ROW_ICON = 'fast_forward'
 -- Automatic skip: the modes, in the menu's order, with the key of their text
--- and the kinds they skip (intros go with openings, outros with endings).
+-- and the kinds they skip (intros and recaps go with openings, outros with
+-- endings).
 local AUTO_MODES = {'no', 'openings', 'endings', 'all'}
 local AUTO_LABELS = {no = 'auto_skip_off', openings = 'auto_skip_openings', endings = 'auto_skip_endings', all = 'auto_skip_all'}
 local AUTO_KINDS = {
-	no = {}, openings = {openings = true, intros = true}, endings = {endings = true, outros = true},
-	all = {openings = true, intros = true, endings = true, outros = true},
+	no = {}, openings = {openings = true, intros = true, recaps = true}, endings = {endings = true, outros = true},
+	all = {openings = true, intros = true, recaps = true, endings = true, outros = true},
 }
 local MENU_TYPE = 'hikari-skip'
 local MODE_MESSAGE = 'set-auto-skip'
@@ -316,6 +330,9 @@ local SETTLE = 3
 -- OWN_MARGIN of where it went.
 local SEEK_MARGIN = 1.5
 local OWN_MARGIN = 1
+-- A recap chapter only counts when it starts before this share of the file
+-- (and the duration is known).
+local RECAP_SHARE = 0.3
 -- A range longer than this share of the file is never skipped on its own.
 local AUTO_MAX_SHARE = 0.9
 -- Continue watching's question (hikari-resume.lua): nothing is skipped on its
@@ -331,11 +348,13 @@ local opts = {
 	openings = true,
 	endings = true,
 	intros = true,
+	recaps = true,
 	outros = false,
 	-- Extra Lua patterns, separated by '|', matched against the lower-case title.
 	extra_openings = '',
 	extra_endings = '',
 	extra_intros = '',
+	extra_recaps = '',
 	extra_outros = '',
 	margin_bottom = 96,
 	margin_right = 16,
@@ -343,7 +362,7 @@ local opts = {
 	opacity = 0.85,
 	scale = 1,
 	scale_fullscreen = 1.3,
-	-- Opening and ending times from AniSkip for files without such chapters.
+	-- Opening, recap and ending times from AniSkip for files without such chapters.
 	aniskip = true,
 	-- "Next episode ›" when the next episode is next in the playlist.
 	next_episode = true,
@@ -405,11 +424,24 @@ local KIND_BY_NAME = {}
 for _, kind in ipairs(KINDS) do KIND_BY_NAME[kind.name] = kind end
 -- The range at the end of a file with no ending, when the next episode is queued.
 local NEXT_KIND = {name = 'next episode', label = 'skip_next_episode', enabled = true}
+-- Ranges that start at the same time go in the order of the kinds (KINDS,
+-- then NEXT_KIND): table.sort is not stable.
+local KIND_RANK = {[NEXT_KIND] = #KINDS + 1}
+for i, kind in ipairs(KINDS) do KIND_RANK[kind] = i end
 
 -- Kind for a chapter title, or nil (see hikari-chapters.lua). With `all`,
 -- kinds turned off in the options count too.
 local function classify(title, all)
 	return chapter_kinds.classify(KINDS, title, all)
+end
+
+-- Does a recap chapter at `time` count? Only at the start of the file: a
+-- recap is the "previously on" before an episode, and a Recap chapter later
+-- (the summary at the end of a lesson) is content. Not while the duration is
+-- unknown: when it comes, the ranges are built again.
+local function recap_counts(time, duration)
+	return type(duration) == 'number' and duration > 0 and duration < math.huge
+		and time < duration * RECAP_SHARE
 end
 
 -- Skippable ranges: {kind, start, finish, next_time}. `finish` is the next
@@ -432,6 +464,7 @@ local function build_ranges(chapters, duration)
 	for i, chapter in ipairs(list) do
 		local kind = classify(chapter.title)
 		local nxt = list[i + 1]
+		if kind and kind.name == 'recaps' and not recap_counts(chapter.time, duration) then kind = nil end
 		if kind and (nxt or not kind.requires_next) then
 			local finish = nxt and nxt.time
 				or (type(duration) == 'number' and duration > chapter.time and duration) or math.huge
@@ -445,30 +478,51 @@ end
 
 -- Does the file mark its opening (or intro, as many releases call the
 -- opening song) or its ending with chapters, whatever the options say? Then
--- AniSkip is not asked.
+-- AniSkip is not asked. Outros and recaps do not count: a file with only a
+-- Recap chapter still gets AniSkip's opening and ending (as before recaps).
 local function has_skip_chapters(chapters)
 	if type(chapters) ~= 'table' then return false end
 	for _, chapter in ipairs(chapters) do
 		local kind = type(chapter) == 'table' and classify(chapter.title, true)
-		if kind and kind.name ~= 'outros' then return true end
+		if kind and kind.name ~= 'outros' and kind.name ~= 'recaps' then return true end
 	end
 	return false
 end
+
+-- Does the file mark its recap with a chapter (one that counts, see
+-- recap_counts), whatever the options say? Then AniSkip's recap is not used:
+-- one recap, the file's own.
+local function has_recap_chapter(chapters, duration)
+	if type(chapters) ~= 'table' then return false end
+	for _, chapter in ipairs(chapters) do
+		if type(chapter) == 'table' and type(chapter.time) == 'number' then
+			local kind = classify(chapter.title, true)
+			if kind and kind.name == 'recaps' and recap_counts(chapter.time, duration) then return true end
+		end
+	end
+	return false
+end
+
+-- AniSkip's kinds of range (hikari-aniskip.lua's select) -> ours.
+local ANISKIP_KINDS = {opening = 'openings', recap = 'recaps', ending = 'endings'}
 
 -- Ranges from AniSkip's results (see hikari-aniskip.lua) for a file of
 -- `duration` seconds, as build_ranges makes them. An ending that runs to the
 -- end of the file skips like a last-chapter ending (next_time nil). With
 -- `next_queued`, so does one that ends within FINAL_MARGIN of the end, and its
--- button stays to the end.
-local function aniskip_ranges(results, duration, next_queued)
+-- button stays to the end. With `chapter_recap` (has_recap_chapter), AniSkip's
+-- recap is left out. AniSkip's recaps are not held to RECAP_SHARE: their type
+-- says what they are, where a chapter only has a title that may mean something
+-- else.
+local function aniskip_ranges(results, duration, next_queued, chapter_recap)
 	local ranges = {}
 	if not aniskip or not results then return ranges end
 	for _, r in ipairs(aniskip.select(results, duration)) do
-		local kind = KIND_BY_NAME[r.kind == 'opening' and 'openings' or 'endings']
-		if kind.enabled then
+		local kind = KIND_BY_NAME[ANISKIP_KINDS[r.kind]]
+		if kind and kind.enabled and not (chapter_recap and kind.name == 'recaps') then
 			local to_end = r.finish >= duration - 1
 			local finish = r.finish
-			if not to_end and next_queued and r.kind ~= 'opening' and r.finish >= duration - FINAL_MARGIN then
+			if not to_end and next_queued and r.kind == 'ending' and r.finish >= duration - FINAL_MARGIN then
 				to_end, finish = true, duration
 			end
 			ranges[#ranges + 1] = {kind = kind, start = r.start, finish = finish,
@@ -611,7 +665,7 @@ end
 
 local state = {
 	chapters = nil, duration = nil, ranges = {},
-	-- dismissed: {start, target} of the range skipped last; `target` is where
+	-- dismissed: {start, kind, target} of the range skipped last; `target` is where
 	-- the skip seeked to (nil for playlist-next).
 	time = nil, current = nil, dismissed = nil,
 	-- AniSkip: `file` counts the files played, so a late answer is dropped;
@@ -663,6 +717,7 @@ end
 local function is_dismissed(index)
 	local range = index and state.ranges[index]
 	return range ~= nil and state.dismissed ~= nil and state.dismissed.start == range.start
+		and state.dismissed.kind == range.kind
 end
 
 -- In a range that has not been skipped, with a file playing.
@@ -949,10 +1004,14 @@ local function rebuild()
 	local before = state.current and state.ranges[state.current]
 	state.ranges = build_ranges(state.chapters, state.duration)
 	if state.results and not has_skip_chapters(state.chapters) and type(state.duration) == 'number' then
-		for _, range in ipairs(aniskip_ranges(state.results, state.duration, state.next_queued)) do
+		local chapter_recap = has_recap_chapter(state.chapters, state.duration)
+		for _, range in ipairs(aniskip_ranges(state.results, state.duration, state.next_queued, chapter_recap)) do
 			state.ranges[#state.ranges + 1] = range
 		end
-		table.sort(state.ranges, function(a, b) return a.start < b.start end)
+		table.sort(state.ranges, function(a, b)
+			if a.start ~= b.start then return a.start < b.start end
+			return KIND_RANK[a.kind] < KIND_RANK[b.kind]
+		end)
 	end
 	-- No ending at all, and the next episode is next: a button for the last 5 %.
 	local duration = state.duration
@@ -971,7 +1030,7 @@ local function rebuild()
 	if state.dismissed then
 		local found = false
 		for _, range in ipairs(state.ranges) do
-			if range.start == state.dismissed.start then found = true break end
+			if range.start == state.dismissed.start and range.kind == state.dismissed.kind then found = true break end
 		end
 		if not found then state.dismissed = nil end
 	end
@@ -999,7 +1058,7 @@ local function skip_range(undo)
 		local count = mp.get_property_number('playlist-count', 0)
 		local duration = mp.get_property_number('duration')
 		if pos and count and pos >= 0 and pos + 1 < count then
-			state.dismissed = {start = range.start}
+			state.dismissed = {start = range.start, kind = range.kind}
 			mp.commandv('playlist-next')
 			refresh()
 			return true
@@ -1009,7 +1068,7 @@ local function skip_range(undo)
 		end
 		target = math.max(range.start, duration - 1)
 	end
-	state.dismissed = {start = range.start, target = target}
+	state.dismissed = {start = range.start, kind = range.kind, target = target}
 	if undo then state.undo = undo end
 	mp.commandv('seek', format_time(target), 'absolute+exact')
 	refresh()
@@ -1247,7 +1306,8 @@ end
 -- hikari-title has published a lookable release for this very path.
 local function maybe_aniskip()
 	if not aniskip or not state.loaded or state.asked then return end
-	if not KIND_BY_NAME.openings.enabled and not KIND_BY_NAME.endings.enabled then return end
+	if not KIND_BY_NAME.openings.enabled and not KIND_BY_NAME.recaps.enabled
+		and not KIND_BY_NAME.endings.enabled then return end
 	if has_skip_chapters(mp.get_property_native('chapter-list')) then return end
 	local duration = mp.get_property_number('duration')
 	if not duration or duration ~= duration or duration <= 0 or duration == math.huge then return end
@@ -1266,7 +1326,7 @@ local function maybe_aniskip()
 		if not results or #results == 0 then return end
 		state.results = results
 		local found = {}
-		for _, range in ipairs(aniskip_ranges(results, duration)) do
+		for _, range in ipairs(aniskip_ranges(results, duration, false, has_recap_chapter(state.chapters, duration))) do
 			found[#found + 1] = range.kind.name .. ' ' .. format_time(range.start) .. '-' .. format_time(range.finish)
 		end
 		msg.verbose('AniSkip ranges for this file: ' .. (#found > 0 and table.concat(found, ', ') or 'none that fit'))
@@ -1442,6 +1502,6 @@ if HIKARI_SKIP_TEST then
 		AUTO_MODES = AUTO_MODES, MENU_TYPE = MENU_TYPE, MODE_MESSAGE = MODE_MESSAGE, STATE_PATH = STATE_PATH,
 		UNDO_TIME = UNDO_TIME, SETTLE = SETTLE, LOAD_GRACE = LOAD_GRACE, FLOW_STEP = FLOW_STEP, auto_mode = auto_mode,
 		menu_data = menu_data, open_menu = open_menu, set_auto_skip = set_auto_skip,
-		ROW_BUTTON = ROW_BUTTON, ROW_ICON = ROW_ICON,
+		ROW_BUTTON = ROW_BUTTON, ROW_ICON = ROW_ICON, RECAP_SHARE = RECAP_SHARE,
 	}
 end

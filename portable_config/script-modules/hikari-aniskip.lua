@@ -1,7 +1,9 @@
--- hikari-aniskip: opening and ending times from AniSkip, for hikari-skip.lua.
+-- hikari-aniskip: opening, recap and ending times from AniSkip, for
+-- hikari-skip.lua.
 -- A module, not a script: hikari-skip loads it (see the loader there).
 --
--- hikari-skip only asks when the file has no opening or ending chapters. The
+-- hikari-skip only asks when the file has no opening or ending chapters (a
+-- recap chapter does not count; AniSkip's recap is then not used). The
 -- series, season and episode come from hikari-title.lua, which publishes what
 -- it read from the release name (`[SubsPlease] Sousou no Frieren - 05 (1080p)`
 -- -> Sousou no Frieren, episode 5). From there:
@@ -14,7 +16,8 @@
 -- 2. Times: AniSkip (https://api.aniskip.com/v2/skip-times/<id>/<episode>),
 --    asking for `op`, `ed`, `mixed-op` and `mixed-ed` (an opening or ending
 --    mixed with scenes of the episode: skipped as openings and endings too)
---    for an episode of this file's length (its duration rounded to seconds).
+--    and `recap` (the "previously on" at the start), for an episode of this
+--    file's length (its duration rounded to seconds).
 -- 3. The answers are kept in ~~/hikari-aniskip.json, so the same episode, or
 --    another of the same series, does not ask again.
 --
@@ -87,6 +90,15 @@
 --   each other's answers or write into the same temporary file. Temporary
 --   files more than a day old (an mpv that died before the rename) are
 --   removed on the first save of each mpv; younger ones are left alone.
+-- - Recaps came after the cache (up to hikari 0.11 only the op and ed types
+--   were asked for): an episode saved before has no recap, and it is not
+--   asked again for one until it expires (TTL.times, 30 days). On purpose:
+--   neither `version` nor a rev for episodes. A new episode is not in the
+--   cache and gets its recap the first time; the ones in it are mostly
+--   episodes already seen, and asking AniSkip again for each of them would
+--   bring back their op and ed only to add a recap few of them have (AniSkip
+--   has far fewer recaps than openings). An older hikari that reads an entry
+--   with a recap drops that entry (a type it does not know) and asks again.
 
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -104,11 +116,12 @@ M.KITSU_URL = 'https://kitsu.app/api/edge/anime?page%5Blimit%5D=20&include=mappi
 -- Kitsu answers 406 to application/json.
 M.KITSU_ACCEPT = 'application/vnd.api+json'
 M.ANISKIP_URL = 'https://api.aniskip.com/v2/skip-times/'
--- types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed, with the brackets
+-- types[]=op&types[]=ed&types[]=mixed-op&types[]=mixed-ed&types[]=recap, with the brackets
 -- encoded so curl does not read them as a glob, and the episode length in
 -- whole seconds (an integer, see M.query): AniSkip answers with the times
 -- whose length is closest to it (see select for the check done here).
-M.ANISKIP_QUERY = '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed&episodeLength='
+M.ANISKIP_QUERY = '?types%5B%5D=op&types%5B%5D=ed&types%5B%5D=mixed-op&types%5B%5D=mixed-ed'
+	.. '&types%5B%5D=recap&episodeLength='
 M.ANILIST_QUERY = 'query ($search: String) { Page(perPage: 25) { media(search: $search, type: ANIME) '
 	.. '{ idMal format episodes title { romaji english native } synonyms } } }'
 
@@ -126,7 +139,7 @@ local MAX_ID = 999999999
 local MAX_EPISODE = 9999
 local MAX_SEASON = 99
 local MAX_SECONDS = 6 * 3600    -- longest episode
-local MAX_SEGMENT = 600         -- longest opening or ending
+local MAX_SEGMENT = 600         -- longest opening, recap or ending
 local LENGTH_TOLERANCE = 10     -- seconds between AniSkip's episode length and the file's
 local DAY = 24 * 3600
 M.TTL = {title = 30 * DAY, title_miss = 7 * DAY, times = 30 * DAY, times_miss = 3 * DAY}
@@ -138,7 +151,7 @@ M.CACHE_LIMITS = {titles = 500, episodes = 2000}
 M.CACHE_BUDGET = CACHE_BUDGET
 
 -- AniSkip skip types -> the kind of range in hikari-skip.
-M.KIND_OF = {op = 'opening', ['mixed-op'] = 'opening', ed = 'ending', ['mixed-ed'] = 'ending'}
+M.KIND_OF = {op = 'opening', ['mixed-op'] = 'opening', ed = 'ending', ['mixed-ed'] = 'ending', recap = 'recap'}
 -- Formats that have episodes with an opening and an ending.
 local FORMATS = {TV = true, TV_SHORT = true, ONA = true}
 -- Jikan's names for them.
@@ -430,7 +443,7 @@ end
 
 -- The ranges for a file of `duration` seconds: per kind, the result whose
 -- episode length is closest to it (within LENGTH_TOLERANCE), cut to the
--- duration. A list of {kind = 'opening'|'ending', start, finish}, by start.
+-- duration. A list of {kind = 'opening'|'recap'|'ending', start, finish}, by start.
 function M.select(results, duration)
 	local ranges = {}
 	if type(results) ~= 'table' or not is_finite(duration) or duration <= 0 then return ranges end
@@ -443,7 +456,7 @@ function M.select(results, duration)
 			best[kind] = {off = off, start = r.start, finish = math.min(r.finish, duration)}
 		end
 	end
-	for _, kind in ipairs({'opening', 'ending'}) do
+	for _, kind in ipairs({'opening', 'recap', 'ending'}) do
 		local b = best[kind]
 		if b and b.finish > b.start then ranges[#ranges + 1] = {kind = kind, start = b.start, finish = b.finish} end
 	end
