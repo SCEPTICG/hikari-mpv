@@ -167,19 +167,25 @@
 --     subtitles at all. Audio and subtitles are saved apart: picking one
 --     leaves what was saved of the other. Nothing else: never the path, the
 --     URL or anything in it, only the normalised series name. A track
---     without a language cannot be found again: picking one forgets what was
---     saved for that kind; no audio is no choice to keep.
+--     without a language (a .srt dropped on mpv) cannot be found again:
+--     picking one leaves what was saved as it was; no audio is no choice to
+--     keep.
 --   - When it is saved: a change of the track playing after file-loaded
 --     whose option (`options/aid`, `options/sid`) now holds a track or `no`
 --     that neither mpv nor hikari put there. mpv's own pick leaves the option
 --     at `auto`. hikari's own switches (the variant, the series' track,
 --     the language switch) go through set_track or reselect, which note what
 --     they put there. Whatever the option held when file-loaded ended
---     (`--aid`/`--sid`, a resumed position, a script that ran before) is not
---     a change. The option is read when the observer runs, not taken from
---     it, so reselect's short step through the track already playing is
---     never seen. Picking the track already playing changes nothing, so it
---     is not saved. Not with `lavfi-complex`.
+--     (`--aid`/`--sid`, a resumed position, a script whose file-loaded ran
+--     before this one's) is not a change. A script of your own that sets the
+--     track on file-loaded too may run after this one (mpv does not order
+--     the scripts' handlers): then its pick is a change like yours and is
+--     saved for the series, which only means hikari picks the same next time.
+--     Both the track playing (`aid`, `sid`) and the option are observed, so
+--     `set sid no` with no subtitles playing, or picking the track already
+--     playing from the menu, is a change too. The option is read when the
+--     observer runs, not taken from it, so reselect's short step through the
+--     track already playing is never seen. Not with `lavfi-complex`.
 --   - When it is used: when a file of that series is loaded and mpv picked
 --     the track on its own (`aid`/`sid` `auto`), before the variant check
 --     and instead of it: picked by hand for this series is more precise than
@@ -188,10 +194,19 @@
 --     track of the saved one is there, one of the other variant never), the
 --     same tag first, mpv's pick of those that tie, else the first one. None
 --     in this release: mpv's pick stays, with no message. Through
---     file-local-options like the variant switch, but it then counts as a
---     track you picked: a language switch leaves it. When the audio changed,
---     mpv picks the subtitles again for it, as for the original audio, unless
---     subtitles are saved too.
+--     file-local-options like the variant switch, also when mpv's pick
+--     already is that track (or no subtitles), so the option holds it instead
+--     of `auto` and it counts as a track you picked: a language switch leaves
+--     it. When the audio changed, mpv picks the subtitles again for it, as
+--     for the original audio, unless subtitles are saved too.
+--     mpv puts a track number picked by hand back to `auto` for the next
+--     file, but keeps a `no`: subtitles turned off by hand in one file stay
+--     off in the next ones. So a `no` that the user set in an earlier file
+--     (seen by on_track_change in any file, of a series or not: `carried`)
+--     counts as mpv's own choice here, and the series' subtitles replace it
+--     for that file (mpv puts the `no` back after it). A `no` that was there
+--     before any change seen (`--sid=no`, `sid=no` in mpv.conf) is yours and
+--     wins, as does any track picked after file-loaded.
 --   - Forgetting: picking another track replaces it. There is no menu or
 --     key for it; deleting the list forgets every series.
 --   - The list: ~~/hikari-tracks.json, {"version":1,"series":[{key, updated
@@ -474,13 +489,17 @@ local playing = false
 -- property (aid, sid) -> the track hikari switched to in this file for the
 -- regional variant (see the header).
 local switched = {}
--- The series of the file playing (see series_key), when its track changes
--- are watched: set at the end of file-loaded, nil from start-file on.
-local watched_series = nil
+-- Whether the track changes of the file playing are watched (from the end of
+-- file-loaded to start-file or end-file), and its series (see series_key), if
+-- it has one.
+local watching, watched_series = false, nil
 -- property (aid, sid) -> its option as last seen (`auto`, `no`, `3`), and the
 -- value hikari itself put there in this file while it still holds it (see
 -- "Per series" in the header).
 local seen, ours = {}, {}
+-- property -> `no` when the last change of it by the user, in any file, was
+-- `no`: mpv keeps that `no` for the next files (see "Per series").
+local carried = {}
 
 local function set_option(name, value)
 	local ok, err
@@ -1064,8 +1083,8 @@ local function remembered(key)
 	return nil
 end
 
--- Saves `choice` (see describe; nil forgets it) as the `part` (audio, subs)
--- of the series `key`. The list is read again first and only that series
+-- Saves `choice` (see describe) as the `part` (audio, subs) of the series
+-- `key`. The list is read again first and only that series
 -- changes, so two mpv windows keep each other's: it goes first, and the
 -- oldest beyond MAX_SERIES go.
 local function remember(key, part, choice)
@@ -1078,11 +1097,10 @@ local function remember(key, part, choice)
 			break
 		end
 	end
-	if not entry and not choice then return end
 	entry = entry or {key = key}
 	entry[part] = choice
 	entry.updated = math.floor(clock.now())
-	if entry.audio or entry.subs then table.insert(entries, 1, entry) end
+	table.insert(entries, 1, entry)
 	for i = #entries, MAX_SERIES + 1, -1 do entries[i] = nil end
 	if write_series(entries) then msg.verbose('Remembered the ' .. part .. ' picked for this series') end
 end
@@ -1090,43 +1108,57 @@ end
 -- The part of an entry for each track property.
 local PARTS = {aid = 'audio', sid = 'subs'}
 
--- When mpv picked the `property` track (aid, sid) on its own, switches it to
--- the one remembered for the series (`entry`), for this file only. Returns
--- 'kept' when mpv's pick already is that one, 'switched', or nil when nothing
--- is remembered or this file has no such track (mpv's pick stays). Not with
+-- When mpv picked the `property` track (aid, sid) on its own, or holds a `no`
+-- the user left in an earlier file (`carried`), sets it to the one remembered
+-- for the series (`entry`), for this file only. Also when mpv's pick already
+-- is that one: the option then holds it instead of `auto`, so a language
+-- switch leaves it. Returns 'kept' when that one was already playing,
+-- 'switched' when another one plays now, or nil when nothing is remembered or
+-- this file has no such track (mpv's pick stays). Not with
 -- track-auto-selection=no: then mpv picks nothing, as asked.
 local function apply_remembered(property, entry)
 	local choice = entry and entry[PARTS[property]]
-	if not choice or mp.get_property_native('options/' .. property) ~= 'auto' then return nil end
+	if not choice then return nil end
+	local option = mp.get_property('options/' .. property)
+	local left_no = option == 'no' and carried[property] == 'no'
+	if option ~= 'auto' and not left_no then return nil end
 	if mp.get_property_native('track-auto-selection') == false then return nil end
 	local current = mp.get_property_native(property)
+	if type(current) ~= 'number' then current = nil end
 	local id = 'no'
 	if choice.kind == 'none' then
-		if type(current) ~= 'number' then return 'kept' end
+		-- The `no` left by the user already holds it.
+		if left_no then return 'kept' end
 	else
 		local tracks = mp.get_property_native('track-list')
 		if type(tracks) ~= 'table' then return nil end
 		id = remembered_track(tracks, TRACK_TYPES[property], choice, current)
 		if not id then return nil end
-		if id == current then return 'kept' end
 	end
-	msg.verbose(property .. ': track ' .. id .. ' instead of ' .. tostring(current) .. ', as picked for this series')
+	if (id == 'no' and current == nil) or id == current then
+		msg.verbose(property .. ': track ' .. id .. ' kept, as picked for this series')
+		return set_track(property, id) and 'kept' or nil
+	end
+	msg.verbose(property .. ': track ' .. id .. ' instead of ' .. tostring(current or 'no') .. ', as picked for this series')
 	if not set_track(property, id) then return nil end
 	return 'switched'
 end
 
--- The `property` track (aid, sid) changed. While an episode of a known series
--- plays, an option that now holds a track (or `no` subtitles) that neither
--- mpv (`auto`) nor hikari (see set_track) put there is the user's choice, and
--- it is remembered for the series. A track without a language cannot be found
--- again: it forgets what was saved. No audio is no choice to keep.
+-- The `property` track (aid, sid) changed. An option that now holds a track
+-- (or `no`) that neither mpv (`auto`) nor hikari (see set_track) put there is
+-- the user's choice: while an episode of a known series plays, it is
+-- remembered for the series. A `no` is also noted in `carried`, in any file.
+-- A track without a language cannot be found again: what was saved stays. No
+-- audio is no choice to keep.
 local function on_track_change(property)
-	if not watched_series then return end
+	if not watching then return end
 	local value = mp.get_property('options/' .. property)
 	if value == nil or value == seen[property] then return end
 	seen[property] = value
-	if value == 'auto' or value == ours[property] then return end
+	if value == ours[property] then return end
 	ours[property] = nil
+	carried[property] = value == 'no' and 'no' or nil
+	if value == 'auto' or not watched_series then return end
 	local choice
 	if value == 'no' then
 		if property ~= 'sid' then return end
@@ -1137,8 +1169,8 @@ local function on_track_change(property)
 		for _, t in ipairs(type(tracks) == 'table' and tracks or {}) do
 			if type(t) == 'table' and t.type == TRACK_TYPES[property] and t.id == id then track = t end
 		end
-		if not track then return end
-		choice = describe(track)
+		choice = track and describe(track)
+		if not choice then return end
 	end
 	remember(watched_series, PARTS[property], choice)
 end
@@ -1154,7 +1186,7 @@ local reselect
 -- episode of a series are watched (see on_track_change).
 local function on_file_loaded()
 	playing = true
-	switched, ours, watched_series = {}, {}, nil
+	switched, ours, watching, watched_series = {}, {}, false, nil
 	if complex_filters() then return end
 	local key = series_key(mp.get_property_native('path'))
 	local entry = remembered(key)
@@ -1165,7 +1197,7 @@ local function on_file_loaded()
 		prefer_variant('sid')
 	end
 	for _, property in ipairs(TRACKS) do seen[property] = mp.get_property('options/' .. property) end
-	watched_series = key
+	watching, watched_series = true, key
 end
 
 -- Lets mpv pick the `property` track (aid, sid) again, when mpv picked it on
@@ -1219,16 +1251,20 @@ end
 apply(i18n.variant())
 
 local function on_file_gone()
-	playing, switched, ours, watched_series = false, {}, {}, nil
+	playing, switched, ours, watching, watched_series = false, {}, {}, false, nil
 end
 
 mp.register_event('start-file', on_file_gone)
 mp.register_event('file-loaded', on_file_loaded)
 mp.register_event('end-file', on_file_gone)
 i18n.on_change(on_language)
--- `aid`/`sid` change with the track playing: on_track_change reads the option.
+-- `aid`/`sid` change with the track playing, `options/aid`/`options/sid` with
+-- the option alone (`set sid no` when none was playing): on_track_change reads
+-- the option either way.
 for _, property in ipairs(TRACKS) do
-	mp.observe_property(property, 'string', function() on_track_change(property) end)
+	local function changed() on_track_change(property) end
+	mp.observe_property(property, 'string', changed)
+	mp.observe_property('options/' .. property, 'string', changed)
 end
 
 if HIKARI_MEDIA_LANGUAGE_TEST then

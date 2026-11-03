@@ -1253,14 +1253,23 @@ end
 
 -- What mpv does after a change of the track playing: the observers of
 -- `aid`/`sid` run.
+-- Like mpv, only when the property changed since the observers last saw it
+-- (the first time always, as when an observer is registered).
+local notified = setmetatable({}, {__mode = 'k'})
 local function notify(property)
+	notified[mp] = notified[mp] or {}
+	local last, value = notified[mp], tostring(mock.props[property])
+	if last[property] == value then return end
+	last[property] = value
 	for _, fn in ipairs(mock.observers[property] or {}) do fn(property, mock.props[property]) end
 end
 
--- The user picks a track (or `no`) from the menu or with a key.
+-- The user picks a track (or `no`) from the menu or with a key: mpv tells the
+-- observers of the track playing and of the option, each if it changed.
 local function user_picks(property, value)
 	mp.set_property(property, tostring(value))
 	notify(property)
+	notify('options/' .. property)
 end
 
 -- Plays the file at `path` (mpv's `path`) as play_tracks does, then lets the
@@ -1464,9 +1473,10 @@ test('series: a release without the track keeps mpv\'s pick, and none means none
 	play_episode(m, '/anime/Other - 02.mkv', episode_tracks(), {aid = 1, sid = 2})
 	eq(mock.props.sid, false, 'no subtitles')
 	eq(sets_of('file-local-options/sid'), 'no', 'for this file only')
-	-- Already none: nothing to do.
+	-- Already none: held for this file, so a language switch leaves it.
 	play_episode(m, '/anime/Other - 03.mkv', episode_tracks(), {aid = 1, sid = false})
-	eq(sets_of('file-local-options/sid'), '', 'nothing set')
+	eq(sets_of('file-local-options/sid'), 'no', 'held')
+	eq(mock.props.sid, false, 'still none')
 	-- A track you picked or fixed stays.
 	play_episode(m, '/anime/Other - 04.mkv', episode_tracks(), {aid = 1, sid = 2}, {sid = 3})
 	eq(mock.props.sid, 3, '--sid')
@@ -1475,6 +1485,78 @@ test('series: a release without the track keeps mpv\'s pick, and none means none
 	play_episode(m, '/anime/Other - 05.mkv', episode_tracks(), {aid = 1, sid = 2})
 	eq(sets_of('file-local-options/sid'), '', 'track-auto-selection=no')
 	mock.props['track-auto-selection'] = nil
+end)
+
+test('series: mpv already picked the series\' tracks: they still survive a language switch', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,'
+		.. '"audio":{"lang":"ja","tag":"jpn"},"subs":{"kind":"none"}}]}')
+	local m = load({lang = 'en', series = path})
+	local tracks = {
+		{id = 1, type = 'audio', lang = 'jpn'},
+		{id = 2, type = 'audio', lang = 'spa'},
+		{id = 1, type = 'sub', lang = 'eng'},
+		{id = 2, type = 'sub', lang = 'spa'},
+	}
+	-- mpv: Japanese and no subtitles, as saved; with Spanish it would take
+	-- the dub and the Spanish subtitles.
+	local spanish = false
+	play_episode(m, '/anime/Show - 03.mkv', tracks, {
+		aid = function() return spanish and 2 or 1 end,
+		sid = function() return spanish and 2 or false end,
+	})
+	eq(sets_of('file-local-options/aid') .. ' ' .. sets_of('file-local-options/sid'), '1 no', 'held for this file')
+	spanish = true
+	mock.sets = {}
+	mock.set_script_opt('hikari-language', 'es-ES')
+	notify('aid'); notify('sid')
+	eq(mock.props.aid, 1, 'still Japanese')
+	eq(mock.props.sid, false, 'still no subtitles')
+	eq(sets_of('aid') .. sets_of('sid'), '', 'not picked again')
+	-- Held by hikari, not picked by you: the list is as it was.
+	eq(saved(path, 'show').updated, 5, 'nothing saved')
+end)
+
+test('series: subtitles turned off by hand in another file give way to the series\' ones', function()
+	local path = series_file()
+	write_text(path, '{"version":1,"series":[{"key":"show","updated":5,"subs":{"lang":"en","kind":"full"}}]}')
+	local m = load({lang = 'es-ES', series = path})
+	-- A film, subtitles off by hand (`set sid no`, though mpv showed none):
+	-- mpv keeps that `no` for the next file.
+	play_episode(m, '/films/Some Film (2023).mkv', episode_tracks(), {aid = 1, sid = false})
+	user_picks('sid', 'no')
+	eq(read_text(path):find('none', 1, true), nil, 'nothing saved for a film')
+	mock.end_file()
+	play_episode(m, '/anime/Show - 04.mkv', episode_tracks(), {aid = 1, sid = 1}, {sid = 'no'})
+	eq(mock.props.sid, 2, 'the series\' English subtitles')
+	eq(sets_of('file-local-options/sid'), '2', 'for this file only')
+	mock.end_file()
+	eq(mock.props['options/sid'], 'no', 'the `no` comes back after it')
+	-- A series without subtitles of its own: the `no` stays.
+	play_episode(m, '/anime/Other - 01.mkv', episode_tracks(), {aid = 1, sid = 1}, {sid = 'no'})
+	eq(sets_of('file-local-options/sid'), '', 'no series choice')
+	-- --sid=no (or sid=no in mpv.conf), never changed by hand: yours, it wins.
+	m = load({lang = 'es-ES', series = path})
+	play_episode(m, '/anime/Show - 05.mkv', episode_tracks(), {aid = 1, sid = 1}, {sid = 'no'})
+	eq(sets_of('file-local-options/sid'), '', '--sid=no wins')
+	-- A `no` of yours followed by a track picked by hand: nothing left behind.
+	user_picks('sid', 1)
+	mock.end_file()
+	play_episode(m, '/anime/Show - 06.mkv', episode_tracks(), {aid = 1, sid = 1}, {sid = 'no'})
+	eq(sets_of('file-local-options/sid'), '', 'not a `no` you left')
+end)
+
+test('series: a track without a language leaves what was saved', function()
+	local path = series_file()
+	local m = load({lang = 'es-ES', series = path})
+	local tracks = episode_tracks()
+	tracks[#tracks + 1] = {id = 4, type = 'sub', title = 's.srt', external = true}
+	play_episode(m, '/anime/Show - 01.mkv', tracks, {aid = 1, sid = 1})
+	user_picks('sid', 2)
+	local before = read_text(path)
+	user_picks('sid', 4)
+	eq(read_text(path), before, 'unchanged')
+	eq(saved(path, 'show').subs.lang, 'en', 'still English')
 end)
 
 test('series: streams too, without the URL, its token or its host', function()
