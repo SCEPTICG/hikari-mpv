@@ -187,6 +187,12 @@ test('a match must be clear: two ids, movies, specials and missing ids give noth
 	eq(m.pick({c(3, 'ONA', {'Show'})}, 'Show'), 3, 'ONA')
 	eq(m.pick({c(4, 'TV_SHORT', {'Show 2nd Season'})}, 'Show', 2), 4, 'TV_SHORT')
 	eq(m.pick({c(5, 'TV', {'Show 2'})}, 'Show'), nil, 'a sequel is not season 1')
+	local skeleton = {c(48760, 'TV', {'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu'}),
+		c(60522, 'TV', {'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu II'})}
+	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu', 2), 60522, 'Roman numeral II')
+	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu'), 48760, 'II is not season 1')
+	eq(m.pick(skeleton, 'Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu', 3), nil, 'II is not season 3')
+	eq(m.pick({c(6, 'TV', {'Show IV'})}, 'Show', 4), 6, 'IV')
 	eq(m.pick({}, 'Show'), nil, 'nothing found')
 end)
 
