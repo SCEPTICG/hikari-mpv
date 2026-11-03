@@ -786,8 +786,9 @@ end
 -- ambiguous. done(mal, episodes, true) from the first that picks one, or as
 -- soon as one finds the matches ambiguous (mal nil: the others are not
 -- asked, a clearer answer from them may still be the wrong series);
--- done(nil, nil, true) when those that answered know no such series;
--- done(nil) when none answered.
+-- done(nil, nil, true) when all three answered and know no such series;
+-- done(nil) when one of them did not answer (it might have known it: asked
+-- again next time instead of a miss kept for days).
 local function search(series, judge, done)
 	local sources = {
 		{name = 'AniList', url = M.ANILIST_URL, parse = M.parse_anilist,
@@ -795,12 +796,12 @@ local function search(series, judge, done)
 		{name = 'Kitsu', url = M.KITSU_URL .. url_encode(series), parse = M.parse_kitsu, accept = M.KITSU_ACCEPT},
 		{name = 'Jikan', url = M.JIKAN_URL .. url_encode(series), parse = M.parse_jikan},
 	}
-	local answered = false
+	local failed = false
 	local function ask(i)
 		local source = sources[i]
 		if not source then
-			if answered then return done(nil, nil, true) end
-			return done(nil)
+			if failed then return done(nil) end
+			return done(nil, nil, true)
 		end
 		if i == 1 then
 			msg.verbose('AniSkip: asking ' .. source.name .. ' for the MyAnimeList id of "' .. series .. '"')
@@ -810,12 +811,12 @@ local function search(series, judge, done)
 		fetch(source.name, source.url, source.body, function(answer)
 			local list, err = source.parse(answer)
 			if list then
-				answered = true
 				local mal, episodes, ambiguous = judge(list)
 				if mal or ambiguous then return done(mal, episodes, true) end
 				msg.verbose('AniSkip: ' .. source.name .. ' knows no such series')
-			elseif answer then
-				msg.verbose('AniSkip: ' .. source.name .. ': ' .. tostring(err))
+			else
+				failed = true
+				if answer then msg.verbose('AniSkip: ' .. source.name .. ': ' .. tostring(err)) end
 			end
 			ask(i + 1)
 		end, source.accept)
