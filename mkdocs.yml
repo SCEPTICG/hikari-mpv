@@ -29,7 +29,6 @@ theme:
         icon: material/weather-night
         name: Dark mode
   features:
-    - navigation.tabs
     - navigation.sections
     - navigation.top
     - navigation.footer
