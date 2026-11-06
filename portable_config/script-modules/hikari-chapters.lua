@@ -18,6 +18,11 @@
 --   Credits (and Preview). Like ED and Ending, with or without a chapter
 --   after it. `End Credits` is one of them; `Credit` alone is not (no release
 --   we know of uses it), nor are `Discredits` or `Creditscene`.
+-- - Openings also take `Opening` followed by a separator (` - `, ` – `,
+--   ` — `, `:`, ` (`, ` [`) or by `Theme` or `Song`, which uosc does not:
+--   `Opening - "Song" by Artist` is a common way to name the chapter (GitHub
+--   issue #3). Not `Opening ...` in general, as `Ending ...` is: `Opening
+--   Night` or `Opening Ceremony` name a part of the content.
 -- - kinds() hands out a new table each time: hikari-skip adds the user's
 --   extra patterns and its on/off options to its copy, and nobody else sees
 --   them.
@@ -33,7 +38,9 @@ M.MAX_TITLE = 200
 local KINDS = {
 	{
 		name = 'openings', label = 'skip_opening', requires_next = true,
-		patterns = {'^op ', '^op$', ' op$', '^opening$', ' opening$'},
+		patterns = {'^op ', '^op$', ' op$', '^opening$', ' opening$',
+			'^opening %- ', '^opening – ', '^opening — ', '^opening:', '^opening %(', '^opening %[',
+			'^opening theme', '^opening song'},
 		words = {'オープニング'},
 	},
 	{
