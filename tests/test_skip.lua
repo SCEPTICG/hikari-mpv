@@ -72,7 +72,9 @@ end
 test('openings and endings are recognised like uosc (plus Japanese)', function()
 	local s = load()
 	for _, title in ipairs({'OP', 'op', 'Opening', '  OPENING  ', 'OP Theme', 'Episode 1 OP',
-		'Main Opening', 'オープニング', 'オープニングテーマ'}) do
+		'Main Opening', 'オープニング', 'オープニングテーマ',
+		'Opening - “Gurenge” by LiSA', 'Opening – Gurenge', 'Opening — Gurenge', 'Opening: Gurenge',
+		'Opening:', 'Opening (Creditless)', 'Opening [NCOP]', 'Opening Theme', 'OPENING SONG'}) do
 		local kind = s.classify(title)
 		eq(kind and kind.name, 'openings', title)
 	end
@@ -85,7 +87,8 @@ end)
 
 test('lookalike titles are not openings or endings', function()
 	local s = load()
-	for _, title in ipairs({'Operation', 'Opening Night Part', 'Openings', 'OP1', 'Top', 'Edward',
+	for _, title in ipairs({'Operation', 'Opening Night Part', 'Opening Night - Part 1', 'Opening Ceremony',
+		'Opening-Night', 'Openings', 'Openings - Part 1', 'OP1', 'Top', 'Edward',
 		'Edge', 'Bed', 'Endings', 'Pending', 'The End', 'Part A', '', 'Chapter 1',
 		'Credit', 'Discredits', 'Creditscene'}) do
 		eq(s.classify(title), nil, title)
