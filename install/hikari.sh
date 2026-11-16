@@ -23,8 +23,8 @@
 #     --no-menu                ask with numbers and typed answers, not keyboard menus
 #     --anime4k yes|no         answer the Anime4K questions instead of asking
 #     --interface uosc|suji    the interface to install instead of asking:
-#                              uosc (the usual one) or suji (hikari's own,
-#                              experimental). Without it and without
+#                              uosc (the usual one) or suji (hikari's
+#                              own). Without it and without
 #                              questions, each folder keeps the one hikari
 #                              installed there (uosc on a first install)
 #     --version                show the hikari version in each mpv config folder
@@ -77,12 +77,12 @@ hikari_defaults() {
     UOSC_URL='https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip'
     UOSC_SHA256='4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882'
     UOSC_FONTS=('uosc_icons.otf' 'uosc_textures.ttf')
-    # suji, hikari's own interface (experimental), installed instead of uosc
+    # suji, hikari's own interface, installed instead of uosc
     # when chosen (--interface suji or the Interface question). Its zip holds
     # LICENSE and suji/, which goes to scripts/suji.
-    SUJI_VERSION='0.7.3'
-    SUJI_URL='https://github.com/SCEPTICG/suji/releases/download/v0.7.3/suji.zip'
-    SUJI_SHA256='54887917dbb4887994570bd62fba9543e0eeb03173653653ff6153da7aa808b7'
+    SUJI_VERSION='0.8.0'
+    SUJI_URL='https://github.com/SCEPTICG/suji/releases/download/v0.8.0/suji.zip'
+    SUJI_SHA256='a68f24dd9cd14cb622be8bea87d14b35410bd41021b164e35182f7808ec14400'
     # hikari's row of controls for suji: in portable_config, only installed with suji.
     SUJI_CONF='suji.conf'
     THUMBFAST_COMMIT='0f711de3138c9bd6718209d819ac54022c23ded2'
@@ -413,8 +413,8 @@ hikari_text_en() {
         ui_removed) s='hikari removed from %s' ;;
         interface_title) s='Interface' ;;
         interface_uosc) s='uosc (recommended)' ;;
-        interface_suji) s='suji (experimental)' ;;
-        interface_suji_note) s='hikari'"'"'s own interface, still being tested' ;;
+        interface_suji) s='suji' ;;
+        interface_suji_note) s='hikari'"'"'s own interface' ;;
         interface_prompt) s='Choose an option (Enter: %s)' ;;
         conflicts_found_suji) s='These scripts replace the mpv controls and clash with suji:' ;;
         conflicts_kept_suji) s='Left in place: suji and that interface will both draw controls.' ;;
@@ -609,8 +609,8 @@ hikari_text_es() {
         ui_removed) s='hikari quitado de %s' ;;
         interface_title) s='Interfaz' ;;
         interface_uosc) s='uosc (recomendada)' ;;
-        interface_suji) s='suji (experimental)' ;;
-        interface_suji_note) s='la interfaz propia de hikari, en pruebas' ;;
+        interface_suji) s='suji' ;;
+        interface_suji_note) s='la interfaz propia de hikari' ;;
         interface_prompt) s='Elige una opción (Intro: %s)' ;;
         conflicts_found_suji) s='Estos scripts sustituyen los controles de mpv y chocan con suji:' ;;
         conflicts_kept_suji) s='Se quedan donde están: suji y esa interfaz dibujarán controles a la vez.' ;;

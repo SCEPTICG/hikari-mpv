@@ -4427,7 +4427,7 @@ Test-Case 'as administrator, a linked hikari-originales: refused before any fold
 # ---------------------------------------------------------------------------
 
 Test-Case 'suji: pinned release, and suji.conf in the hikari files' {
-    Assert-Equal $script:SujiUrl 'https://github.com/SCEPTICG/suji/releases/download/v0.7.3/suji.zip' 'URL'
+    Assert-Equal $script:SujiUrl 'https://github.com/SCEPTICG/suji/releases/download/v0.8.0/suji.zip' 'URL'
     Assert-True ($OriginalSujiSha -cmatch '\A[0-9a-f]{64}\z') 'SHA256'
     Assert-True (Test-Path -LiteralPath (P @($RepoRoot, 'portable_config', 'script-opts', 'suji.conf')) -PathType Leaf) 'suji.conf in portable_config'
 }
@@ -4448,7 +4448,7 @@ Test-Case 'suji: install, update, switch to uosc and back (nothing deleted), uni
     Assert-Equal (Get-TestText (P @($cfg, 'script-opts', 'suji.conf'))) (Get-TestText (P @($RepoRoot, 'portable_config', 'script-opts', 'suji.conf'))) 'suji.conf'
     $rec = Read-HikariRecord $cfg
     Assert-Equal $rec.Values['interface'] 'suji' 'record interface'
-    Assert-Equal $rec.Values['suji_version'] '0.7.3' 'record suji version'
+    Assert-Equal $rec.Values['suji_version'] '0.8.0' 'record suji version'
     Assert-Equal $rec.Values['suji_sha256'] $script:SujiSha256 'record suji zip'
     Assert-Equal $rec.Values['suji_preexisting'] 'no' 'record suji before'
     Assert-Equal $rec.Values['suji_conf_preexisting'] 'no' 'record suji.conf before'
@@ -4470,7 +4470,7 @@ Test-Case 'suji: install, update, switch to uosc and back (nothing deleted), uni
     $rec = Read-HikariRecord $cfg
     Assert-Equal $rec.Values['interface'] 'uosc' 'record uosc'
     Assert-Equal ([string]::Join(',', $rec.Aside)) 'scripts-desactivados/suji|scripts/suji' 'aside recorded'
-    Assert-Equal $rec.Values['suji_version'] '0.7.3' 'suji kept in the record'
+    Assert-Equal $rec.Values['suji_version'] '0.8.0' 'suji kept in the record'
     Assert-True (Test-Path -LiteralPath (P @($cfg, 'script-opts', 'suji.conf'))) 'suji.conf left'
 
     # Back to suji: suji back in place, uosc and its fonts set aside.
@@ -4662,7 +4662,7 @@ Test-Case 'the Interface menu: Down and Enter = suji, starts on the one installe
         Use-FakeConsole @('DownArrow', 'Enter')
         Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) 'suji' 'Down, Enter'
         Assert-True ($script:Frames[0].StartsWith('  Interface' + "`n" + $Ptr + ' uosc (recommended)') -or $script:Frames[0].Contains($Ptr + ' uosc (recommended)')) ('starts on uosc: ' + $script:Frames[0])
-        Assert-True ($script:Frames[0].Contains("hikari's own interface, still being tested")) 'suji note'
+        Assert-True ($script:Frames[0].Contains("hikari's own interface")) 'suji note'
         Use-FakeConsole @('Escape')
         Assert-Equal (Read-HikariInterfaceChoice -Targets @($cand)) $null 'Esc'
         Set-TestFile (P @($cfg, 'hikari-installed.txt')) "interface=suji`r`n"
