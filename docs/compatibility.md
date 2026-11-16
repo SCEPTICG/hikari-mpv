@@ -12,7 +12,7 @@ The installer always downloads these exact versions and checks each one against 
 | Component | Version |
 | --- | --- |
 | [uosc](https://github.com/tomasklaen/uosc) | 5.13.0 |
-| [suji](https://github.com/SCEPTICG/suji) (instead of uosc, experimental) | 0.7.3 |
+| [suji](https://github.com/SCEPTICG/suji) (instead of uosc) | 0.8.0 |
 | [thumbfast](https://github.com/po5/thumbfast) | commit `0f711de` |
 | [Anime4K](https://github.com/bloc97/Anime4K) (optional) | 4.0.1 |
 
@@ -32,7 +32,7 @@ uosc 5.13 itself needs mpv 0.33 or newer. hikari is only tested with the recent 
 
 ## hikari without uosc
 
-The installer installs uosc unless you choose [suji](#hikari-with-suji-experimental), and hikari is made to sit on top of it. If uosc is not there anyway (you moved `scripts/uosc` away, or another OSC took its place), hikari keeps working:
+The installer installs uosc unless you choose [suji](#hikari-with-suji), and hikari is made to sit on top of it. If uosc is not there anyway (you moved `scripts/uosc` away, or another OSC took its place), hikari keeps working:
 
 - Its menus open in mpv's own selector instead of uosc's menus: `Alt+p` (palettes), `Alt+t` (subtitles), `Alt+r` (continue watching), `Alt+u` (update), `Alt+l` (language) and `Alt+S` (automatic skip). Type to filter, use the arrow keys and `Enter` to pick, `Esc` to close. The speed and Anime4K menus only have a button in uosc's bar; to reach them without uosc, bind `script-binding hikari_speed/open-menu` and `script-binding hikari_upscale/open-menu` to keys of your own in `input.conf` (the `Ctrl+1`...`Ctrl+0` Anime4K keys work as always).
 - The [continue watching](features/resume.md) question shows in that selector too; `Esc` starts from the beginning.
@@ -42,11 +42,11 @@ The selector needs **mpv 0.39 or newer**. On an older mpv without uosc, a menu k
 
 What only uosc gives you: the buttons of the controls bar (they are uosc's), uosc's own menus, and the colours of the [palettes](features/palettes.md), which colour uosc. Without uosc the palette menu still opens and keeps your choice for when uosc is back; the skip button follows it.
 
-## hikari with suji (experimental)
+## hikari with suji
 
-[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is still being tested (version 0.7.3, experimental), so uosc stays the recommended one.
+[suji](https://github.com/SCEPTICG/suji) is hikari's own interface for mpv, a controls bar written from scratch. It is younger than uosc and still changes from one version to the next, so uosc stays the recommended one.
 
-The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji (experimental)*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.7.3 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
+The installer asks which one you want (*Interface*: *uosc (recommended)* or *suji*), or takes `--interface suji` (`-Interface suji` on Windows). With suji it installs suji 0.8.0 into `scripts/suji` instead of uosc, checked against its SHA256 like everything else, plus `script-opts/suji.conf` with hikari's buttons in suji's row, followed by suji's picture-in-picture button; thumbfast is installed as well. Only one of the two is in place at a time: the one hikari installed before is set aside in `scripts-desactivados`, never deleted, and comes back if you choose it again. See [How the installer works](install/windows.md#how-the-installer-works).
 
 With suji, hikari finds it and uses it:
 

@@ -1728,11 +1728,11 @@ check 'suji: scripts/suji from the zip, no uosc' \
     test "$(cat "$cfg/scripts/suji/main.lua")" = '-- fake suji 0.2.0' -a -f "$cfg/scripts/suji/core/menu.lua" -a ! -e "$cfg/scripts/uosc" -a ! -e "$cfg/fonts/uosc_icons.otf" -a ! -e "$cfg/scripts/LICENSE"
 check 'suji: suji.conf with hikari'"'"'s row' same "$repo/portable_config/script-opts/suji.conf" "$cfg/script-opts/suji.conf"
 check 'suji: thumbfast too' same "$fake/thumbfast.lua" "$cfg/scripts/thumbfast.lua"
-check 'suji: uosc not downloaded' test -z "$(grep uosc.zip "$fake/downloads.log")" -a -n "$(grep -x 'https://github.com/SCEPTICG/suji/releases/download/v0.7.3/suji.zip' "$fake/downloads.log")"
+check 'suji: uosc not downloaded' test -z "$(grep uosc.zip "$fake/downloads.log")" -a -n "$(grep -x 'https://github.com/SCEPTICG/suji/releases/download/v0.8.0/suji.zip' "$fake/downloads.log")"
 check 'suji: the summary has a suji row and no uosc row' \
     test -n "$(ascii_glyphs "$out" | grep -x '  suji        + downloaded')" -a -z "$(grep '^  uosc ' "$out")"
 check 'suji: record' \
-    test "$(rec "$cfg" interface)|$(rec "$cfg" suji_version)|$(rec "$cfg" suji_sha256)|$(rec "$cfg" suji_preexisting)|$(rec "$cfg" suji_conf_preexisting)|$(rec "$cfg" uosc_version)" = "suji|0.7.3|$(sha "$fake/suji.zip")|no|no|"
+    test "$(rec "$cfg" interface)|$(rec "$cfg" suji_version)|$(rec "$cfg" suji_sha256)|$(rec "$cfg" suji_preexisting)|$(rec "$cfg" suji_conf_preexisting)|$(rec "$cfg" uosc_version)" = "suji|0.8.0|$(sha "$fake/suji.zip")|no|no|"
 check 'suji: the hash of each suji file in the record' test "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
 : >"$fake/downloads.log"
 suji_inode=$(inode "$cfg/scripts/suji/main.lua")
@@ -1744,7 +1744,7 @@ printf -- '-- changed\n' >>"$cfg/scripts/suji/core/menu.lua"
 : >"$fake/downloads.log"
 run "$h" --yes
 check 'suji changed: downloaded again, put back as pinned' \
-    test "$(cat "$fake/downloads.log")|$(cat "$cfg/scripts/suji/core/menu.lua")" = 'https://github.com/SCEPTICG/suji/releases/download/v0.7.3/suji.zip|-- core'
+    test "$(cat "$fake/downloads.log")|$(cat "$cfg/scripts/suji/core/menu.lua")" = 'https://github.com/SCEPTICG/suji/releases/download/v0.8.0/suji.zip|-- core'
 
 # From suji to uosc and back: nothing is deleted, what was set aside comes back.
 suji_inode=$(inode "$cfg/scripts/suji/main.lua")
@@ -1753,7 +1753,7 @@ check 'suji -> uosc: exit 0, uosc installed' test "$rc" = 0 -a -f "$cfg/scripts/
 check 'suji -> uosc: suji set aside, not deleted' \
     test ! -e "$cfg/scripts/suji" -a "$(inode "$cfg/scripts-desactivados/suji/main.lua")" = "$suji_inode" -a "$(rec "$cfg" aside)" = 'scripts-desactivados/suji|scripts/suji'
 check 'suji -> uosc: suji.conf left, suji still in the record' \
-    test -f "$cfg/script-opts/suji.conf" -a "$(rec "$cfg" suji_version)" = 0.7.3 -a "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
+    test -f "$cfg/script-opts/suji.conf" -a "$(rec "$cfg" suji_version)" = 0.8.0 -a "$(grep -c '^sha256=scripts/suji/' "$cfg/hikari-installed.txt")" = 3
 uosc_inode=$(inode "$cfg/scripts/uosc/main.lua")
 run "$h" --yes
 check 'uosc, update without --interface: uosc kept, suji stays aside' \
@@ -1883,7 +1883,7 @@ run "$h" --anime4k no
 check 'Interface question: 2 installs suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
 check 'Interface question: asked with its two answers, Enter = uosc on a first install' \
     test -n "$(grep -x 'Interface' "$out")" -a -n "$(grep -F '1) uosc (recommended)' "$out")" \
-    -a -n "$(grep -F "2) suji (experimental): hikari's own interface, still being tested" "$out")" -a -n "$(grep -F 'Choose an option (Enter: uosc):' "$out")"
+    -a -n "$(grep -F "2) suji: hikari's own interface" "$out")" -a -n "$(grep -F 'Choose an option (Enter: uosc):' "$out")"
 answers '1\n1\n\n'
 run "$h" --anime4k no
 check 'Interface question: Enter keeps suji, the one installed' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -n "$(grep -F '(Enter: suji)' "$out")"
@@ -1893,7 +1893,7 @@ check 'Interface question: an invalid answer is asked again, 1 = uosc' \
     test "$rc" = 0 -a "$(rec "$cfg" interface)" = uosc -a -n "$(grep 'Invalid option' "$out")" -a -d "$cfg/scripts-desactivados/suji"
 HIKARI_LANG=es answers '1\n1\n\n'
 HIKARI_LANG=es run "$h" --anime4k no
-check 'Interface question: in Spanish' test -n "$(grep -F '1) uosc (recomendada)' "$out")" -a -n "$(grep -F 'la interfaz propia de hikari, en pruebas' "$out")"
+check 'Interface question: in Spanish' test -n "$(grep -F '1) uosc (recomendada)' "$out")" -a -n "$(grep -F 'la interfaz propia de hikari' "$out")"
 answers '1\n1\n\n'
 run "$h" --anime4k no --interface suji
 check '--interface: no question' test "$rc" = 0 -a -z "$(grep -x 'Interface' "$out")" -a "$(rec "$cfg" interface)" = suji
@@ -2060,7 +2060,7 @@ h=$(newhome menu-suji)
 cfg="$h/.config/mpv"
 PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\x1b[B' '\r'
 check 'menus: Interface, Down and Enter install suji' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji -a -d "$cfg/scripts/suji"
-check 'menus: the Interface menu shows suji'"'"'s note' has "$out" "hikari's own interface, still being tested"
+check 'menus: the Interface menu shows suji'"'"'s note' has "$out" "hikari's own interface"
 PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '\r'
 check 'menus: Interface starts on the one installed (Enter keeps suji)' test "$rc" = 0 -a "$(rec "$cfg" interface)" = suji
 PTY_OPTS='--anime4k no' pty_run "$h" '\r' '\r' '1'

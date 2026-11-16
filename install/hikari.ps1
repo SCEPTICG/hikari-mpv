@@ -72,8 +72,8 @@
 
 .PARAMETER HikariInterface
     Use it as -Interface (alias). uosc or suji: the interface to install
-    instead of asking. uosc is the usual one; suji is hikari's own,
-    experimental. The other one, if hikari installed it, is set aside (never
+    instead of asking. uosc is the usual one; suji is hikari's own. The
+    other one, if hikari installed it, is set aside (never
     deleted). Without it, -Yes keeps in each folder the one hikari installed
     there (uosc on a first install).
 
@@ -159,12 +159,12 @@ $script:UoscSha256 = '4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28ee
 # minus its uosc.conf: hikari ships its own.
 $script:UoscFonts = @('uosc_icons.otf', 'uosc_textures.ttf')
 
-# suji, hikari's own interface (experimental), installed instead of uosc when
+# suji, hikari's own interface, installed instead of uosc when
 # chosen (-Interface suji or the Interface question). Its zip holds LICENSE and
 # suji\, which goes to scripts\suji. Fixed release, verified by SHA256.
-$script:SujiVersion = '0.7.3'
-$script:SujiUrl = 'https://github.com/SCEPTICG/suji/releases/download/v0.7.3/suji.zip'
-$script:SujiSha256 = '54887917dbb4887994570bd62fba9543e0eeb03173653653ff6153da7aa808b7'
+$script:SujiVersion = '0.8.0'
+$script:SujiUrl = 'https://github.com/SCEPTICG/suji/releases/download/v0.8.0/suji.zip'
+$script:SujiSha256 = 'a68f24dd9cd14cb622be8bea87d14b35410bd41021b164e35182f7808ec14400'
 # hikari's row of controls for suji: in portable_config, only installed with suji.
 $script:SujiConf = 'suji.conf'
 # What hikari's uosc and suji are in the folder (one at a time: with both, two
@@ -564,8 +564,8 @@ $script:HikariStringsEn = @{
     ui_removed            = 'hikari removed from {0}'
     interface_title       = 'Interface'
     interface_uosc        = 'uosc (recommended)'
-    interface_suji        = 'suji (experimental)'
-    interface_suji_note   = 'hikari''s own interface, still being tested'
+    interface_suji        = 'suji'
+    interface_suji_note   = 'hikari''s own interface'
     interface_prompt      = 'Choose an option (Enter: {0})'
     conflicts_found_suji  = 'These scripts replace the mpv controls and clash with suji:'
     conflicts_kept_suji   = 'Left in place: suji and that interface will both draw controls.'
@@ -759,8 +759,8 @@ $script:HikariStringsEs = @{
     ui_removed            = 'hikari quitado de {0}'
     interface_title       = 'Interfaz'
     interface_uosc        = 'uosc (recomendada)'
-    interface_suji        = 'suji (experimental)'
-    interface_suji_note   = 'la interfaz propia de hikari, en pruebas'
+    interface_suji        = 'suji'
+    interface_suji_note   = 'la interfaz propia de hikari'
     interface_prompt      = 'Elige una opci\u00f3n (Intro: {0})'
     conflicts_found_suji  = 'Estos scripts sustituyen los controles de mpv y chocan con suji:'
     conflicts_kept_suji   = 'Se quedan donde est\u00e1n: suji y esa interfaz dibujar\u00e1n controles a la vez.'
