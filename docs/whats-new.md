@@ -9,6 +9,14 @@ The new features of each hikari version, newest first. Smaller versions in betwe
 
 To update, run the same command you installed with (see [Windows](install/windows.md) or [macOS and Linux](install/macos-linux.md)): your choices are kept. hikari tells you when a new version is out (see [Update check](features/update-check.md)).
 
+## 0.12: skip the recap, and the same tracks for the whole series
+
+*November 2026*
+
+- **Skip recap ›.** The "previously on..." at the start of an episode gets its own button, from chapters named `Recap`, `Previously on...` or `あらすじ`, and from AniSkip. Automatic skip takes recaps together with openings. See [Skip openings and endings](features/skip.md).
+- **Tracks per series.** Change the audio or the subtitles yourself in an episode, and the next episodes of that series, of any season, start the same way: Japanese with English subtitles, the dub, only signs and songs... It works with Seanime too. See [The same tracks for the whole series](features/language.md#the-same-tracks-for-the-whole-series).
+- **suji 0.8.** suji is no longer experimental, and it brings a picture-in-picture button, next to fullscreen: a small window that stays on top. uosc is still the recommended interface. See [Compatibility](compatibility.md#hikari-with-suji).
+
 ## 0.11: openings and endings skip themselves
 
 *October 2026*
