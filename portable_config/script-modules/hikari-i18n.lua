@@ -278,15 +278,15 @@ local STRINGS = {
 	palettes_group_bars = {
 		en = 'Side bars (4:3)', es = 'Barras laterales (4:3)', de = 'Seitenbalken (4:3)',
 		fr = 'Bandes latérales (4:3)', it = 'Bande laterali (4:3)', pl = 'Pasy boczne (4:3)',
-		pt = 'Barras laterais (4:3)', ro = 'Benzi laterale (4:3)', ru = 'Боковые полосы (4:3)',
-		tr = 'Yan şeritler (4:3)', uk = 'Бічні смуги (4:3)', ['zh-HK'] = '兩側黑邊 (4:3)', ['zh-hans'] = '两侧黑边 (4:3)',
+		pt = 'Barras laterais (4:3)', ro = 'Benzi laterale (4:3)', ru = 'Боковые поля (4:3)',
+		tr = 'Yan bantlar (4:3)', uk = 'Бічні поля (4:3)', ['zh-HK'] = '畫面兩側 (4:3)', ['zh-hans'] = '画面两侧 (4:3)',
 	},
 	bars_black = {
 		en = 'Black', es = 'Negras', de = 'Schwarz', fr = 'Noires', it = 'Nere', pl = 'Czarne', pt = 'Pretas',
 		ro = 'Negre', ru = 'Чёрные', tr = 'Siyah', uk = 'Чорні', ['zh-HK'] = '黑色', ['zh-hans'] = '黑色',
 	},
 	bars_palette = {
-		en = 'Palette colour', es = 'Color de la paleta', de = 'Farbe der Farbpalette', fr = 'Couleur de la palette',
+		en = 'Palette colour', es = 'Color de la paleta', de = 'Palettenfarbe', fr = 'Couleur de la palette',
 		it = 'Colore della palette', pl = 'Kolor palety', pt = 'Cor da paleta', ro = 'Culoarea paletei',
 		ru = 'Цвет палитры', tr = 'Palet rengi', uk = 'Колір палітри',
 		['zh-HK'] = '配色方案顏色', ['zh-hans'] = '配色方案颜色',

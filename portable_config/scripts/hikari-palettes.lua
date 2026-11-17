@@ -387,7 +387,7 @@ end)
 opts.bars = checked_bars(opts.bars)
 local active_id = get_palette(opts.palette).id
 if active_id ~= opts.palette then
-	msg.warn('Unknown palette "' .. tostring(opts.palette) .. '", using ' .. DEFAULT_ID)
+	msg.warn('Unknown palette "' .. (tostring(opts.palette):sub(1, 64):gsub('%c', '?')) .. '", using ' .. DEFAULT_ID)
 end
 
 -- suji's accent, the palette's foreground, while suji is turned on.
@@ -401,14 +401,17 @@ end
 
 -- What the side bars need: osd-dimensions and current-tracks/video, as observed.
 local bars_state = {dims = nil, video = nil}
--- `background-color` when this script started: the user's own or mpv's. Nil
--- when this mpv has no such property; then the bars stay black, with one warning.
-local original_bg = mp.get_property('background-color')
+-- `background-color` as it was just before this script coloured the bars: the
+-- user's own or mpv's. Read again each time the bars get coloured, so a value
+-- changed meanwhile (a conditional profile, the console) is the one put back.
+-- Nil when this mpv has no such property; then the bars stay black, with one warning.
+local original_bg = nil
 local bg_set = nil       -- the colour this script put in background-color, nil when none
 local bg_warned = false
 local stripes_overlay = mp.create_osd_overlay('ass-events')
--- Below uosc, suji and hikari-skip's button (all at the default z, 0): the
--- stripes are only background.
+-- Below uosc, suji and hikari-skip's button (all at the default z, 0). Script
+-- overlays are drawn over subtitles, though, whatever their z: hence the
+-- stripes' place at the outer edge of the bars (see stripes_ass).
 stripes_overlay.z = -10
 local stripes_drawn = nil -- what the overlay shows, nil when removed
 
@@ -432,12 +435,17 @@ local function to_bgr(hex)
 	return (hex:sub(5, 6) .. hex:sub(3, 4) .. hex:sub(1, 2)):upper()
 end
 
--- ASS for the stripes: foreground, heatmap and match, from the image edge out,
+-- ASS for the stripes: foreground, heatmap and match, from the window edge in,
 -- the right bar a mirror of the left one, top to bottom like the stripes on
--- the spine of an 80s VHS box. The three take up 20 % of the bar's width and
--- start 10 % of it away from the image, so they read as part of the frame
--- without touching the picture. Each stripe is a quarter of that 20 %, the two
--- gaps an eighth each: 3 * 1/4 + 2 * 1/8 = 1. A stripe is at least one pixel.
+-- the spine of an 80s VHS box. They sit at the outer edge of each bar, not
+-- next to the picture: with sub-use-margins (mpv's default) a long text
+-- subtitle spreads into the bars, and script overlays are drawn over
+-- subtitles. On 1920x1080 with 240 px bars a long line runs from about x=157
+-- to x=1781; the stripes end at 72 and start at 1848. A sign placed by hand
+-- right at the edge of the window can still end up under them. The three take
+-- up 20 % of the bar's width and start 10 % of it away from the window edge.
+-- Each stripe is a quarter of that 20 %, the two gaps an eighth each:
+-- 3 * 1/4 + 2 * 1/8 = 1. A stripe is at least one pixel.
 -- Nil if a colour is malformed.
 local function stripes_ass(palette, w, h, ml, mr)
 	local events = {}
@@ -445,7 +453,7 @@ local function stripes_ass(palette, w, h, ml, mr)
 		local color = palette[key]
 		if not is_valid_color(color) then return nil end
 		local shapes = {}
-		for _, side in ipairs({{bar = ml, edge = ml, dir = -1}, {bar = mr, edge = w - mr, dir = 1}}) do
+		for _, side in ipairs({{bar = ml, edge = 0, dir = 1}, {bar = mr, edge = w, dir = -1}}) do
 			local width = side.bar * 0.20 / 4
 			local near = side.edge + side.dir * (side.bar * 0.10 + (i - 1) * width * 1.5)
 			local far = near + side.dir * width
@@ -473,6 +481,7 @@ update_bars = function()
 	local w, h, ml, mr = side_bars()
 	local color = nil
 	if opts.bars ~= 'black' and w and is_valid_color(palette.curtain) then color = '#' .. palette.curtain:lower() end
+	if color and not bg_set then original_bg = mp.get_property('background-color') end
 	if color and original_bg == nil then
 		warn_background_once('This mpv has no background-color property: side bars stay black')
 		color = nil

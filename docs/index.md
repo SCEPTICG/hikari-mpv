@@ -60,7 +60,7 @@ A menu opens: choose *Install or update* and the player. There is no need to uni
 
     ![Palette menu](images/palette-menu.jpg)
 
-    Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest, Solarized, hikari's own retro set after 80s and 90s anime (Cel, City Pop, Phosphor) and SCEPTIC. `Alt+p`, applied at once.
+    Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest, Solarized, hikari's own retro set after 80s and 90s anime (Cel, Cel Light, City Pop, Phosphor) and SCEPTIC. `Alt+p`, applied at once.
 
     [:octicons-arrow-right-24: Palettes](features/palettes.md)
 

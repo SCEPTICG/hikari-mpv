@@ -674,7 +674,7 @@ test('select-bars: a known style is applied and saved, an unknown one ignored', 
 	os.remove(path)
 end)
 
-test('stripes: three stripes per bar next to the image, mirrored, below the interfaces; gone without bars', function()
+test('stripes: three stripes at the outer edge of each bar, mirrored, below the interfaces; gone without bars', function()
 	local p = load_bars({[SCRIPT_NAME .. '-palette'] = 'cel', [SCRIPT_NAME .. '-bars'] = 'stripes'}, '#FF000000')
 	local o = p.stripes_overlay
 	assert(o.z < 0, 'z below the default 0')
@@ -688,13 +688,14 @@ test('stripes: three stripes per bar next to the image, mirrored, below the inte
 	local lines = {}
 	for line in (o.data .. '\n'):gmatch('([^\n]*)\n') do lines[#lines + 1] = line end
 	eq(#lines, 3, 'one event per colour')
-	-- 240 px bars: the stripes are 12 px wide with 6 px gaps, the first 24 px from the image.
+	-- 240 px bars: the stripes are 12 px wide with 6 px gaps, the first 24 px from the window
+	-- edge, all clear of a long subtitle line (about x=157 to x=1781).
 	eq(lines[1], '{\\an7\\pos(0,0)\\bord0\\shad0\\blur0\\1c&H3A64E8&\\1a&H00&\\p1}'
-		.. 'm 204 0 l 216 0 l 216 1080 l 204 1080 m 1704 0 l 1716 0 l 1716 1080 l 1704 1080{\\p0}', 'foreground')
-	assert(lines[2]:find('\\1c&H4AB0E8&', 1, true) and lines[2]:find('m 186 0 l 198 0', 1, true)
-		and lines[2]:find('m 1722 0 l 1734 0', 1, true), 'heatmap: ' .. lines[2])
-	assert(lines[3]:find('\\1c&HB8A86F&', 1, true) and lines[3]:find('m 168 0 l 180 0', 1, true)
-		and lines[3]:find('m 1740 0 l 1752 0', 1, true), 'match: ' .. lines[3])
+		.. 'm 24 0 l 36 0 l 36 1080 l 24 1080 m 1884 0 l 1896 0 l 1896 1080 l 1884 1080{\\p0}', 'foreground')
+	assert(lines[2]:find('\\1c&H4AB0E8&', 1, true) and lines[2]:find('m 42 0 l 54 0', 1, true)
+		and lines[2]:find('m 1866 0 l 1878 0', 1, true), 'heatmap: ' .. lines[2])
+	assert(lines[3]:find('\\1c&HB8A86F&', 1, true) and lines[3]:find('m 60 0 l 72 0', 1, true)
+		and lines[3]:find('m 1848 0 l 1860 0', 1, true), 'match: ' .. lines[3])
 	mock.set('osd-dimensions', PILLARBOX)
 	eq(o.updates, 1, 'same picture: not redrawn')
 	-- Another palette: new colours at once.
@@ -711,6 +712,22 @@ test('stripes: three stripes per bar next to the image, mirrored, below the inte
 	mock.messages['select-bars']('palette')
 	eq(o.visible, false, 'palette: no stripes')
 	eq(bg_sets()[#bg_sets()], '#080b0a', 'still the curtain')
+	drop_saved()
+end)
+
+test('a background-color changed after start-up (a profile, the console) is the one put back', function()
+	load_bars({[SCRIPT_NAME .. '-palette'] = 'cel', [SCRIPT_NAME .. '-bars'] = 'palette'}, '#FF102030')
+	mock.props['background-color'] = '#FFAABBCC'
+	mock.set('current-tracks/video', VIDEO)
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set('osd-dimensions', FULL)
+	eq(table.concat(bg_sets(), ' '), '#120e0b #FFAABBCC', 'the newer value back')
+	mock.props['background-color'] = '#FF445566'
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.messages['select-palette']('city_pop')
+	mock.set('osd-dimensions', FULL)
+	eq(table.concat(bg_sets(), ' '), '#120e0b #FFAABBCC #120e0b #120f27 #FF445566',
+		'read again when the bars come back, not between palettes')
 	drop_saved()
 end)
 
