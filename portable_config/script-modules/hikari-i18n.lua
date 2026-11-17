@@ -264,6 +264,39 @@ local STRINGS = {
 		ru = 'Solarized светлая', tr = 'Solarized açık', uk = 'Solarized світла',
 		['zh-HK'] = 'Solarized 淺色', ['zh-hans'] = 'Solarized 浅色',
 	},
+	-- hikari's own palettes after 80s and 90s anime.
+	palettes_group_retro = {
+		en = 'Retro', es = 'Retro', de = 'Retro', fr = 'Rétro', it = 'Retrò', pl = 'Retro', pt = 'Retrô',
+		ro = 'Retro', ru = 'Ретро', tr = 'Retro', uk = 'Ретро', ['zh-HK'] = '復古', ['zh-hans'] = '复古',
+	},
+	palette_cel_light = {
+		en = 'Cel Light', es = 'Cel claro', de = 'Cel hell', fr = 'Cel clair', it = 'Cel chiaro',
+		pl = 'Cel jasny', pt = 'Cel claro', ro = 'Cel luminos', ru = 'Cel светлая',
+		tr = 'Cel açık', uk = 'Cel світла', ['zh-HK'] = 'Cel 淺色', ['zh-hans'] = 'Cel 浅色',
+	},
+	-- The side bars of a 4:3 episode on a wider screen, at the end of the palette menu.
+	palettes_group_bars = {
+		en = 'Side bars (4:3)', es = 'Barras laterales (4:3)', de = 'Seitenbalken (4:3)',
+		fr = 'Bandes latérales (4:3)', it = 'Bande laterali (4:3)', pl = 'Pasy boczne (4:3)',
+		pt = 'Barras laterais (4:3)', ro = 'Benzi laterale (4:3)', ru = 'Боковые полосы (4:3)',
+		tr = 'Yan şeritler (4:3)', uk = 'Бічні смуги (4:3)', ['zh-HK'] = '兩側黑邊 (4:3)', ['zh-hans'] = '两侧黑边 (4:3)',
+	},
+	bars_black = {
+		en = 'Black', es = 'Negras', de = 'Schwarz', fr = 'Noires', it = 'Nere', pl = 'Czarne', pt = 'Pretas',
+		ro = 'Negre', ru = 'Чёрные', tr = 'Siyah', uk = 'Чорні', ['zh-HK'] = '黑色', ['zh-hans'] = '黑色',
+	},
+	bars_palette = {
+		en = 'Palette colour', es = 'Color de la paleta', de = 'Farbe der Farbpalette', fr = 'Couleur de la palette',
+		it = 'Colore della palette', pl = 'Kolor palety', pt = 'Cor da paleta', ro = 'Culoarea paletei',
+		ru = 'Цвет палитры', tr = 'Palet rengi', uk = 'Колір палітри',
+		['zh-HK'] = '配色方案顏色', ['zh-hans'] = '配色方案颜色',
+	},
+	bars_stripes = {
+		en = 'Retro stripes', es = 'Franjas retro', de = 'Retro-Streifen', fr = 'Rayures rétro',
+		it = 'Strisce retrò', pl = 'Paski retro', pt = 'Listras retrô', ro = 'Dungi retro',
+		ru = 'Ретро-полосы', tr = 'Retro şeritler', uk = 'Ретро-смуги',
+		['zh-HK'] = '復古條紋', ['zh-hans'] = '复古条纹',
+	},
 	-- First line of the palette menu in mpv's own selector, when uosc is not there.
 	palettes_need_uosc = {
 		en = 'Palettes change the colours of uosc', es = 'Las paletas cambian los colores de uosc',
