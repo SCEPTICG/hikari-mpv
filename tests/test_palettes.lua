@@ -674,7 +674,7 @@ test('select-bars: a known style is applied and saved, an unknown one ignored', 
 	os.remove(path)
 end)
 
-test('stripes: three stripes at the outer edge of each bar, mirrored, below the interfaces; gone without bars', function()
+test('stripes: three stripes per bar next to the image, mirrored, below the interfaces; gone without bars', function()
 	local p = load_bars({[SCRIPT_NAME .. '-palette'] = 'cel', [SCRIPT_NAME .. '-bars'] = 'stripes'}, '#FF000000')
 	local o = p.stripes_overlay
 	assert(o.z < 0, 'z below the default 0')
@@ -688,14 +688,13 @@ test('stripes: three stripes at the outer edge of each bar, mirrored, below the 
 	local lines = {}
 	for line in (o.data .. '\n'):gmatch('([^\n]*)\n') do lines[#lines + 1] = line end
 	eq(#lines, 3, 'one event per colour')
-	-- 240 px bars: the stripes are 12 px wide with 6 px gaps, the first 24 px from the window
-	-- edge, all clear of a long subtitle line (about x=157 to x=1781).
+	-- 240 px bars: the stripes are 12 px wide with 6 px gaps, the first 24 px from the image.
 	eq(lines[1], '{\\an7\\pos(0,0)\\bord0\\shad0\\blur0\\1c&H3A64E8&\\1a&H00&\\p1}'
-		.. 'm 24 0 l 36 0 l 36 1080 l 24 1080 m 1884 0 l 1896 0 l 1896 1080 l 1884 1080{\\p0}', 'foreground')
-	assert(lines[2]:find('\\1c&H4AB0E8&', 1, true) and lines[2]:find('m 42 0 l 54 0', 1, true)
-		and lines[2]:find('m 1866 0 l 1878 0', 1, true), 'heatmap: ' .. lines[2])
-	assert(lines[3]:find('\\1c&HB8A86F&', 1, true) and lines[3]:find('m 60 0 l 72 0', 1, true)
-		and lines[3]:find('m 1848 0 l 1860 0', 1, true), 'match: ' .. lines[3])
+		.. 'm 204 0 l 216 0 l 216 1080 l 204 1080 m 1704 0 l 1716 0 l 1716 1080 l 1704 1080{\\p0}', 'foreground')
+	assert(lines[2]:find('\\1c&H4AB0E8&', 1, true) and lines[2]:find('m 186 0 l 198 0', 1, true)
+		and lines[2]:find('m 1722 0 l 1734 0', 1, true), 'heatmap: ' .. lines[2])
+	assert(lines[3]:find('\\1c&HB8A86F&', 1, true) and lines[3]:find('m 168 0 l 180 0', 1, true)
+		and lines[3]:find('m 1740 0 l 1752 0', 1, true), 'match: ' .. lines[3])
 	mock.set('osd-dimensions', PILLARBOX)
 	eq(o.updates, 1, 'same picture: not redrawn')
 	-- Another palette: new colours at once.
@@ -729,6 +728,93 @@ test('a background-color changed after start-up (a profile, the console) is the 
 	eq(table.concat(bg_sets(), ' '), '#120e0b #FFAABBCC #120e0b #120f27 #FF445566',
 		'read again when the bars come back, not between palettes')
 	drop_saved()
+end)
+
+-- The values this script gave sub-use-margins, in order.
+local function subs_sets()
+	local out = {}
+	for _, set in ipairs(mock.sets) do
+		if set[1] == 'sub-use-margins' then out[#out + 1] = set[2] end
+	end
+	return table.concat(out, ' ')
+end
+
+test('stripes keep text subtitles inside the picture while drawn, and give sub-use-margins back on every way out', function()
+	load_bars({[SCRIPT_NAME .. '-palette'] = 'cel', [SCRIPT_NAME .. '-bars'] = 'stripes'}, '#FF000000')
+	mock.props['sub-use-margins'] = 'yes'
+	mock.set('osd-dimensions', PILLARBOX)
+	eq(subs_sets(), '', 'no video yet')
+	mock.set('current-tracks/video', VIDEO)
+	eq(subs_sets(), 'no', 'stripes: inside the picture')
+	mock.messages['select-palette']('phosphor')
+	eq(subs_sets(), 'no', 'another palette: not set again')
+	mock.set('osd-dimensions', FULL)
+	eq(subs_sets(), 'no yes', 'no bars: back')
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set('current-tracks/video', nil)
+	eq(subs_sets(), 'no yes no yes', 'no video (idle): back')
+	mock.set('current-tracks/video', VIDEO)
+	mock.set('current-tracks/video', {id = 1, image = true, albumart = false})
+	eq(subs_sets(), 'no yes no yes no yes', 'a picture: back')
+	mock.set('current-tracks/video', VIDEO)
+	mock.messages['select-bars']('palette')
+	eq(subs_sets(), 'no yes no yes no yes no yes', 'palette: back')
+	mock.messages['select-bars']('stripes')
+	mock.messages['select-bars']('black')
+	eq(subs_sets(), 'no yes no yes no yes no yes no yes', 'black: back')
+	eq(mock.props['sub-use-margins'], 'yes')
+	drop_saved()
+end)
+
+test('palette (colour only) leaves sub-use-margins alone', function()
+	load_bars({[SCRIPT_NAME .. '-bars'] = 'palette'}, '#FF000000')
+	mock.props['sub-use-margins'] = 'yes'
+	mock.set('current-tracks/video', VIDEO)
+	mock.set('osd-dimensions', PILLARBOX)
+	eq(#bg_sets(), 1, 'coloured')
+	eq(subs_sets(), '', 'untouched')
+end)
+
+test('sub-use-margins changed after start-up is the one given back; a refused set marks nothing', function()
+	load_bars({[SCRIPT_NAME .. '-bars'] = 'stripes'}, '#FF000000')
+	mock.props['sub-use-margins'] = 'yes'
+	mock.set('current-tracks/video', VIDEO)
+	mock.props['sub-use-margins'] = 'no'   -- a profile turned it off meanwhile
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set('osd-dimensions', FULL)
+	eq(subs_sets(), 'no no', 'its own value back')
+	-- mpv refuses: nothing marked, nothing to give back.
+	mock.sets = {}
+	mock.props['sub-use-margins'] = 'yes'
+	mock.set_fails['sub-use-margins'] = true
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set('osd-dimensions', FULL)
+	eq(subs_sets(), 'no', 'one refused try, no give-back')
+	eq(mock.props['sub-use-margins'], 'yes')
+	-- A refused give-back is tried again on the next update.
+	mock.set_fails['sub-use-margins'] = nil
+	mock.sets = {}
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set_fails['sub-use-margins'] = true
+	mock.set('osd-dimensions', FULL)
+	mock.set_fails['sub-use-margins'] = nil
+	mock.set('osd-dimensions', LETTERBOX)
+	eq(subs_sets(), 'no yes yes', 'given back on the second try')
+	eq(mock.props['sub-use-margins'], 'yes')
+end)
+
+test('a refused background-color give-back stays marked and is tried again', function()
+	load_bars({[SCRIPT_NAME .. '-bars'] = 'palette'}, '#FF102030')
+	mock.set('current-tracks/video', VIDEO)
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set_fails['background-color'] = true
+	mock.set('osd-dimensions', FULL)
+	mock.set_fails['background-color'] = nil
+	mock.set('osd-dimensions', LETTERBOX)
+	eq(table.concat(bg_sets(), ' '), '#111111 #FF102030 #FF102030', 'tried again')
+	eq(mock.props['background-color'], '#FF102030')
+	mock.set('osd-dimensions', FULL)
+	eq(#bg_sets(), 3, 'then left alone')
 end)
 
 test('stripes in a narrow bar are still at least one pixel wide', function()

@@ -28,11 +28,13 @@
 -- Side bars: a 4:3 episode on a wider screen leaves bars left and right. The
 -- `bars` option (script-opts=hikari_palettes-bars=<value>, also in the menu)
 -- can colour them: `black` leaves mpv alone, `palette` sets mpv's
--- `background-color` to the palette's curtain, `stripes` does that and draws
--- three VHS-style stripes in each bar. Only while there are bars at both sides
--- of a real video: otherwise `background-color` goes back to what it was when
--- this script started (the user's own, or mpv's), and no stripes. The saved
--- file carries the choice with the palette.
+-- `background-color` to the palette's curtain, `stripes` does that, draws
+-- three VHS-style stripes in each bar and keeps text subtitles inside the
+-- picture (`sub-use-margins`) so they do not end up under them. Only while
+-- there are bars at both sides of a real video: otherwise `background-color`
+-- and `sub-use-margins` go back to what they were just before this script
+-- changed them (the user's own, or mpv's), and no stripes. The saved file
+-- carries the choice with the palette.
 
 local msg = require('mp.msg')
 local options = require('mp.options')
@@ -408,10 +410,15 @@ local bars_state = {dims = nil, video = nil}
 local original_bg = nil
 local bg_set = nil       -- the colour this script put in background-color, nil when none
 local bg_warned = false
+-- `sub-use-margins` as it was just before the stripes turned it off, read
+-- again each time like `background-color`; subs_set is true while it is off
+-- because of them. See update_bars.
+local original_subs = nil
+local subs_set = false
 local stripes_overlay = mp.create_osd_overlay('ass-events')
 -- Below uosc, suji and hikari-skip's button (all at the default z, 0). Script
--- overlays are drawn over subtitles, though, whatever their z: hence the
--- stripes' place at the outer edge of the bars (see stripes_ass).
+-- overlays are drawn over subtitles whatever their z, so while the stripes
+-- are there text subtitles are kept inside the picture (see update_bars).
 stripes_overlay.z = -10
 local stripes_drawn = nil -- what the overlay shows, nil when removed
 
@@ -435,17 +442,17 @@ local function to_bgr(hex)
 	return (hex:sub(5, 6) .. hex:sub(3, 4) .. hex:sub(1, 2)):upper()
 end
 
--- ASS for the stripes: foreground, heatmap and match, from the window edge in,
+-- ASS for the stripes: foreground, heatmap and match, from the image edge out,
 -- the right bar a mirror of the left one, top to bottom like the stripes on
--- the spine of an 80s VHS box. They sit at the outer edge of each bar, not
--- next to the picture: with sub-use-margins (mpv's default) a long text
--- subtitle spreads into the bars, and script overlays are drawn over
--- subtitles. On 1920x1080 with 240 px bars a long line runs from about x=157
--- to x=1781; the stripes end at 72 and start at 1848. A sign placed by hand
--- right at the edge of the window can still end up under them. The three take
--- up 20 % of the bar's width and start 10 % of it away from the window edge.
--- Each stripe is a quarter of that 20 %, the two gaps an eighth each:
--- 3 * 1/4 + 2 * 1/8 = 1. A stripe is at least one pixel.
+-- the spine of an 80s VHS box. The three take up 20 % of the bar's width and
+-- start 10 % of it away from the image, so they read as part of the frame
+-- without touching the picture. Each stripe is a quarter of that 20 %, the two
+-- gaps an eighth each: 3 * 1/4 + 2 * 1/8 = 1. A stripe is at least one pixel.
+-- They can sit this close to the picture because subtitles stay inside it
+-- while they are drawn (update_bars). With mpv's default sub-use-margins a
+-- long line gets within 7 to 68 px of the window edge (libass 0.17.3, 4:3
+-- video, windows 600 to 2160 px high): that room follows the window height,
+-- not the bar, and was too narrow for stripes of a visible width.
 -- Nil if a colour is malformed.
 local function stripes_ass(palette, w, h, ml, mr)
 	local events = {}
@@ -453,7 +460,7 @@ local function stripes_ass(palette, w, h, ml, mr)
 		local color = palette[key]
 		if not is_valid_color(color) then return nil end
 		local shapes = {}
-		for _, side in ipairs({{bar = ml, edge = 0, dir = 1}, {bar = mr, edge = w, dir = -1}}) do
+		for _, side in ipairs({{bar = ml, edge = ml, dir = -1}, {bar = mr, edge = w - mr, dir = 1}}) do
 			local width = side.bar * 0.20 / 4
 			local near = side.edge + side.dir * (side.bar * 0.10 + (i - 1) * width * 1.5)
 			local far = near + side.dir * width
@@ -495,11 +502,23 @@ update_bars = function()
 			end
 		end
 	elseif bg_set then
-		mp.set_property('background-color', original_bg)
-		bg_set = nil
+		-- Kept as set when mpv refuses: the next update tries again.
+		if mp.set_property('background-color', original_bg) then bg_set = nil end
 	end
 
 	local data = opts.bars == 'stripes' and w and stripes_ass(palette, w, h, ml, mr) or nil
+	-- Text subtitles inside the picture while the stripes are drawn, as on a
+	-- TV of the time: the stripes would cover a line spreading into the bars.
+	-- ASS subtitles are left alone: they only go into the bars with
+	-- sub-ass-force-margins, off by default, and whoever turned it on wants
+	-- them there. With `palette` (colour only) nothing covers
+	-- subtitles, so sub-use-margins is not touched.
+	if data and not subs_set then
+		original_subs = mp.get_property('sub-use-margins')
+		if original_subs ~= nil and mp.set_property('sub-use-margins', 'no') then subs_set = true end
+	elseif not data and subs_set then
+		if mp.set_property('sub-use-margins', original_subs) then subs_set = false end
+	end
 	if data then
 		local key = w .. 'x' .. h .. '\n' .. data
 		if key ~= stripes_drawn then
