@@ -10,7 +10,7 @@
 [![Built on uosc](https://img.shields.io/badge/built%20on-uosc%205.13-f5a97f?style=for-the-badge&labelColor=363a4f&logoColor=cad3f5&logo=mpv)](https://github.com/tomasklaen/uosc)
 
 **A modern theme for the [mpv](https://mpv.io) video player, built on [uosc](https://github.com/tomasklaen/uosc).**<br>
-14 colour palettes · skip openings and endings · timeline thumbnails · subtitle styles · automatic Anime4K upscaling<br>
+18 colour palettes · skip openings and endings · timeline thumbnails · subtitle styles · automatic Anime4K upscaling<br>
 installed with one command on Windows, macOS and Linux
 
 [Quick install](#quick-install) · [What you get](#what-you-get) · [Screenshots](#screenshots) · [**Documentation**](https://scepticg.github.io/hikari-mpv/)
@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/de84639c-2a86-45aa-b26d-b40d31ae2f42
 
 ## What you get
 
-- **14 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original and hikari's own, SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away.
+- **18 colour palettes**: Catppuccin Mocha and Latte, Tokyo Night, Dracula, Nord, Gruvbox (dark and light), Rosé Pine, Kanagawa, One Dark, Everforest, Solarized light, uosc's original, hikari's own retro set after 80s and 90s anime (Cel, City Pop, Phosphor, Cel Light) and SCEPTIC. Picked from a menu (`Alt+p`) and applied straight away. The side bars of a 4:3 episode can take the palette's colour, or retro stripes.
 - **Your language**: hikari's menus, buttons and messages in English, Spanish, German, French, Italian, Polish, Portuguese, Romanian, Russian, Turkish, Ukrainian and Chinese (Simplified and Hong Kong), the languages of uosc. It follows your system, and `Alt+l` or its button changes it; uosc follows along, and so do the audio and subtitle tracks mpv picks (your dub, otherwise Japanese with your subtitles; Spain or Latin America, Brazil or Portugal).
 - **Skip openings and endings**: a *Skip opening ›* button while a chapter looks like an opening, intro, recap or ending, or, for anime episodes without such chapters, at the times [AniSkip](https://aniskip.com) knows; one click or `Alt+s` skips it, or, if you turn it on with `Alt+S` or its button, hikari skips openings, endings or both on its own.
 - **Timeline thumbnails** through thumbfast, on network streams too.
@@ -61,7 +61,7 @@ A menu opens: choose *Install or update* and the player. There is no need to uni
 <table>
   <tr>
     <td width="50%"><img src="docs/images/player.jpg" alt="mpv with the hikari theme: filled timeline, title bar and controls bar in the SCEPTIC palette"><br><sub><b>The player</b>: filled timeline with chapters, title bar and hikari's buttons (SCEPTIC palette).</sub></td>
-    <td width="50%"><img src="docs/images/palette-menu.jpg" alt="hikari palette menu in mpv with 14 colour palettes"><br><sub><b>Palettes</b> (<code>Alt+p</code>): 14 palettes, applied at once.</sub></td>
+    <td width="50%"><img src="docs/images/palette-menu.jpg" alt="hikari palette menu in mpv"><br><sub><b>Palettes</b> (<code>Alt+p</code>): 18 palettes, applied at once.</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/skip-opening.jpg" alt="Skip opening button in mpv during the opening chapter"><br><sub><b>Skip opening ›</b>: shown during openings, intros and endings.</sub></td>

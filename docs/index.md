@@ -1,6 +1,6 @@
 ---
 title: "hikari: a modern mpv theme built on uosc, with palettes, skip opening and Anime4K"
-description: hikari is a theme for the mpv video player built on uosc, with 14 colour palettes, a skip opening and ending button, timeline thumbnails, subtitle styles and automatic Anime4K upscaling. One-command install on Windows, macOS and Linux.
+description: hikari is a theme for the mpv video player built on uosc, with 18 colour palettes, a skip opening and ending button, timeline thumbnails, subtitle styles and automatic Anime4K upscaling. One-command install on Windows, macOS and Linux.
 hide:
   - toc
 ---
@@ -54,13 +54,13 @@ A menu opens: choose *Install or update* and the player. There is no need to uni
 
 <div class="grid cards" markdown>
 
--   :material-palette:{ .lg } **14 colour palettes**
+-   :material-palette:{ .lg } **18 colour palettes**
 
     ---
 
     ![Palette menu](images/palette-menu.jpg)
 
-    Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest, Solarized and hikari's own, SCEPTIC. `Alt+p`, applied at once.
+    Catppuccin, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, One Dark, Everforest, Solarized, hikari's own retro set after 80s and 90s anime (Cel, Cel Light, City Pop, Phosphor) and SCEPTIC. `Alt+p`, applied at once.
 
     [:octicons-arrow-right-24: Palettes](features/palettes.md)
 
