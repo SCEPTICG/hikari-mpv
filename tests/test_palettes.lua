@@ -803,6 +803,52 @@ test('sub-use-margins changed after start-up is the one given back; a refused se
 	eq(mock.props['sub-use-margins'], 'yes')
 end)
 
+-- The change-list watch-later-options commands sent, as `remove x` / `append x`.
+local function watch_later_changes()
+	local out = {}
+	for _, c in ipairs(mock.commands) do
+		if c[1] == 'change-list' and c[2] == 'watch-later-options' then out[#out + 1] = c[3] .. ' ' .. c[4] end
+	end
+	return table.concat(out, ';')
+end
+
+test('while the stripes turn sub-use-margins off, it is out of watch-later-options', function()
+	load_bars({[SCRIPT_NAME .. '-bars'] = 'stripes'}, '#FF000000')
+	mock.props['sub-use-margins'] = 'yes'
+	mock.props['watch-later-options'] = {'start', 'sub-use-margins', 'volume'}
+	mock.set('current-tracks/video', VIDEO)
+	mock.set('osd-dimensions', PILLARBOX)
+	eq(watch_later_changes(), 'remove sub-use-margins', 'taken out with the stripes')
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.messages['select-palette']('cel')
+	eq(watch_later_changes(), 'remove sub-use-margins', 'once')
+	mock.set('osd-dimensions', FULL)
+	eq(watch_later_changes(), 'remove sub-use-margins;append sub-use-margins', 'back with the user\'s value')
+	eq(subs_sets(), 'no yes')
+	-- Not in the user's list: never touched.
+	mock.commands = {}
+	mock.props['watch-later-options'] = {'start', 'volume'}
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set('osd-dimensions', FULL)
+	eq(watch_later_changes(), '', 'not listed: left alone')
+	-- sub-use-margins refused: the list is not touched either.
+	mock.props['watch-later-options'] = {'sub-use-margins'}
+	mock.set_fails['sub-use-margins'] = true
+	mock.set('osd-dimensions', PILLARBOX)
+	eq(watch_later_changes(), '', 'nothing set, nothing removed')
+	mock.set_fails['sub-use-margins'] = nil
+	-- The give-back of sub-use-margins refused: still out of the list until it works.
+	mock.set('osd-dimensions', FULL)
+	mock.commands = {}
+	mock.set('osd-dimensions', PILLARBOX)
+	mock.set_fails['sub-use-margins'] = true
+	mock.set('osd-dimensions', FULL)
+	eq(watch_later_changes(), 'remove sub-use-margins', 'still out')
+	mock.set_fails['sub-use-margins'] = nil
+	mock.set('osd-dimensions', LETTERBOX)
+	eq(watch_later_changes(), 'remove sub-use-margins;append sub-use-margins', 'back together')
+end)
+
 test('a refused background-color give-back stays marked and is tried again', function()
 	load_bars({[SCRIPT_NAME .. '-bars'] = 'palette'}, '#FF102030')
 	mock.set('current-tracks/video', VIDEO)

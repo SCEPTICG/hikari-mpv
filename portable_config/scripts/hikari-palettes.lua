@@ -415,6 +415,8 @@ local bg_warned = false
 -- because of them. See update_bars.
 local original_subs = nil
 local subs_set = false
+-- True while this script has taken sub-use-margins out of watch-later-options.
+local watch_later_removed = false
 local stripes_overlay = mp.create_osd_overlay('ass-events')
 -- Below uosc, suji and hikari-skip's button (all at the default z, 0). Script
 -- overlays are drawn over subtitles whatever their z, so while the stripes
@@ -513,11 +515,29 @@ update_bars = function()
 	-- sub-ass-force-margins, off by default, and whoever turned it on wants
 	-- them there. With `palette` (colour only) nothing covers
 	-- subtitles, so sub-use-margins is not touched.
+	-- Meanwhile sub-use-margins is out of watch-later-options (in it by
+	-- default): with save-position-on-quit, closing mpv with the stripes on
+	-- would save hikari's `no`, and resuming would bring it back as the user's.
 	if data and not subs_set then
 		original_subs = mp.get_property('sub-use-margins')
-		if original_subs ~= nil and mp.set_property('sub-use-margins', 'no') then subs_set = true end
+		if original_subs ~= nil and mp.set_property('sub-use-margins', 'no') then
+			subs_set = true
+			local list = mp.get_property_native('watch-later-options')
+			local listed = false
+			for _, name in ipairs(type(list) == 'table' and list or {}) do
+				if name == 'sub-use-margins' then listed = true end
+			end
+			if listed and mp.commandv('change-list', 'watch-later-options', 'remove', 'sub-use-margins') then
+				watch_later_removed = true
+			end
+		end
 	elseif not data and subs_set then
 		if mp.set_property('sub-use-margins', original_subs) then subs_set = false end
+	end
+	-- Back in the list once the user's value is; tried again if mpv refuses.
+	if not subs_set and watch_later_removed
+		and mp.commandv('change-list', 'watch-later-options', 'append', 'sub-use-margins') then
+		watch_later_removed = false
 	end
 	if data then
 		local key = w .. 'x' .. h .. '\n' .. data
