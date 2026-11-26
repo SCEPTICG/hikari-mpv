@@ -833,7 +833,7 @@ Test-Case 'download URLs: HTTPS and GitHub only' {
 
 Test-Case 'pinned versions and hashes' {
     Assert-Equal $OriginalUoscSha '4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882' 'uosc sha'
-    Assert-Equal $OriginalThumbSha 'a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf' 'thumbfast sha'
+    Assert-Equal $OriginalThumbSha '6f695a6ca40e0e34be11f67d64f184be34aebd104747420b84bd6e0af7464212' 'thumbfast sha'
     Assert-Equal $OriginalAnime4KSha '139cd282086457c5adc79caf7b75b8b825091d71c9b54958c18745fea62d7ed7' 'Anime4K sha'
     Assert-Equal $script:Anime4KUrl 'https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip' 'Anime4K url'
     Assert-True ($script:Anime4KUrl.Contains('/v' + $script:Anime4KVersion + '/')) 'Anime4K url has version'
@@ -4126,6 +4126,9 @@ function Invoke-Sosc030 {
     # As in Invoke-IexHarness: stderr of the child must not throw under 5.1.
     $ErrorActionPreference = 'Continue'
     $text = $SoscOriginal
+    # Today's pins, so the fake downloads serve it after Renovate moves them.
+    $text = $text -replace "(?m)^\`$script:UoscUrl = '[^']*'", ("`$script:UoscUrl = '" + $script:UoscUrl + "'")
+    $text = $text -replace "(?m)^\`$script:ThumbfastUrl = '[^']*'", ("`$script:ThumbfastUrl = '" + $script:ThumbfastUrl + "'")
     $text = $text -replace "(?m)^\`$script:UoscSha256 = '[0-9a-f]{64}'", ("`$script:UoscSha256 = '" + $script:UoscSha256 + "'")
     $text = $text -replace "(?m)^\`$script:ThumbfastSha256 = '[0-9a-f]{64}'", ("`$script:ThumbfastSha256 = '" + $script:ThumbfastSha256 + "'")
     $text = $text -replace "(?m)^\`$script:Anime4KSha256 = '[0-9a-f]{64}'", ("`$script:Anime4KSha256 = '" + $script:Anime4KSha256 + "'")

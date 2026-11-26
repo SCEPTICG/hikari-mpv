@@ -1642,7 +1642,7 @@ printf -- '-- mine\n' >>"$cfg/scripts/thumbfast.lua"
 : >"$fake/downloads.log"
 run "$h" --yes
 check 'thumbfast changed: only thumbfast downloaded, put back' \
-    test "$(cat "$fake/downloads.log")/$(cat "$cfg/scripts/thumbfast.lua")" = 'https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua/-- fake thumbfast'
+    test "$(cat "$fake/downloads.log")/$(cat "$cfg/scripts/thumbfast.lua")" = 'https://raw.githubusercontent.com/po5/thumbfast/3b02f84d6f1fd2fd94110357e06b989883420a8c/thumbfast.lua/-- fake thumbfast'
 printf '// mine\n' >"$cfg/shaders/Anime4K_Thin_HQ.glsl"
 : >"$fake/downloads.log"
 run "$h" --yes
@@ -1706,7 +1706,7 @@ check 'summary, error: the step fails, then the whole message' \
     test "$rc" = 1 -a -n "$(ascii_glyphs "$out" | grep -x '  x Installing')" -a -n "$(grep 'incomplete or repeated hikari block' "$out")" \
     -a -n "$(grep -F 'Your previous config is in' "$out")" -a -n "$(grep -F "To undo the changes, copy what is in that backup back into $cfg." "$out")"
 check 'summary, error: no line saying it was installed' test -z "$(grep -E 'installed in|Restart' "$out")"
-HIKARI_TEST_FAIL_URL='https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua' run "$(newhome summary-dlerror)" --yes
+HIKARI_TEST_FAIL_URL='https://raw.githubusercontent.com/po5/thumbfast/3b02f84d6f1fd2fd94110357e06b989883420a8c/thumbfast.lua' run "$(newhome summary-dlerror)" --yes
 check 'summary, failed download: the row fails and the error says which URL' \
     test "$rc" = 1 -a -n "$(ascii_glyphs "$out" | grep -x '  thumbfast   x')" -a -n "$(grep -F 'Error: Could not download https://raw.githubusercontent.com/po5/thumbfast/' "$out")"
 

@@ -175,9 +175,9 @@ $script:SujiItems = @('scripts/suji')
 $script:HikariInterfaceChoice = ''
 
 # thumbfast: fixed commit, verified by SHA256.
-$script:ThumbfastCommit = '0f711de3138c9bd6718209d819ac54022c23ded2'
-$script:ThumbfastUrl = 'https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua'
-$script:ThumbfastSha256 = 'a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf'
+$script:ThumbfastCommit = '3b02f84d6f1fd2fd94110357e06b989883420a8c'
+$script:ThumbfastUrl = 'https://raw.githubusercontent.com/po5/thumbfast/3b02f84d6f1fd2fd94110357e06b989883420a8c/thumbfast.lua'
+$script:ThumbfastSha256 = '6f695a6ca40e0e34be11f67d64f184be34aebd104747420b84bd6e0af7464212'
 
 # Anime4K (https://github.com/bloc97/Anime4K, MIT): fixed release, verified by
 # SHA256. The zip is flat: 39 Anime4K_*.glsl files and nothing else. Only files

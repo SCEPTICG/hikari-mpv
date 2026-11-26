@@ -85,9 +85,9 @@ hikari_defaults() {
     SUJI_SHA256='a68f24dd9cd14cb622be8bea87d14b35410bd41021b164e35182f7808ec14400'
     # hikari's row of controls for suji: in portable_config, only installed with suji.
     SUJI_CONF='suji.conf'
-    THUMBFAST_COMMIT='0f711de3138c9bd6718209d819ac54022c23ded2'
-    THUMBFAST_URL='https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua'
-    THUMBFAST_SHA256='a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf'
+    THUMBFAST_COMMIT='3b02f84d6f1fd2fd94110357e06b989883420a8c'
+    THUMBFAST_URL='https://raw.githubusercontent.com/po5/thumbfast/3b02f84d6f1fd2fd94110357e06b989883420a8c/thumbfast.lua'
+    THUMBFAST_SHA256='6f695a6ca40e0e34be11f67d64f184be34aebd104747420b84bd6e0af7464212'
     ANIME4K_VERSION='4.0.1'
     ANIME4K_URL='https://github.com/bloc97/Anime4K/releases/download/v4.0.1/Anime4K_v4.0.zip'
     ANIME4K_SHA256='139cd282086457c5adc79caf7b75b8b825091d71c9b54958c18745fea62d7ed7'
