@@ -9,6 +9,13 @@ The new features of each hikari version, newest first. Smaller versions in betwe
 
 To update, run the same command you installed with (see [Windows](install/windows.md) or [macOS and Linux](install/macos-linux.md)): your choices are kept. hikari tells you when a new version is out (see [Update check](features/update-check.md)).
 
+## 0.13: retro palettes, and side bars for 4:3 episodes
+
+*November 2026*
+
+- **Retro palettes.** A new group in the palette menu, after the anime of the 80s and 90s: **Cel** (hand-painted celluloid), **City Pop** (the album covers and city nights of the 80s), **Phosphor** (the amber and green screens of 90s science fiction) and **Cel Light**, Cel by day. 18 palettes in all. See [Palettes](features/palettes.md).
+- **Side bars for 4:3 episodes.** An older series in 4:3 leaves a bar at each side of the picture. The palette menu now decides what they look like: black as before, the palette's colour, or retro stripes like the spine of a VHS box. With the stripes, subtitles keep to the picture, as on a TV of the time. Widescreen episodes are left alone. See [Side bars](features/palettes.md#side-bars).
+
 ## 0.12: skip the recap, and the same tracks for the whole series
 
 *November 2026*
